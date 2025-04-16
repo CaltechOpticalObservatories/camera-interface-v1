@@ -15,7 +15,10 @@ add_library(utilities STATIC
 add_library(logentry STATIC
         ${PROJECT_UTILS_DIR}/logentry.cpp
 )
-target_link_libraries(logentry $<IF:$<PLATFORM_ID:Darwin>,,stdc++fs>)
+target_link_libraries(logentry
+        utilities
+        $<IF:$<PLATFORM_ID:Darwin>,,stdc++fs>
+        )
 
 add_library(network STATIC
         ${PROJECT_UTILS_DIR}/network.cpp
