@@ -8,6 +8,7 @@
 
 #pragma once
 
+#include <functional>
 #include <iomanip>
 #include <vector>
 #include <sstream>
@@ -29,6 +30,22 @@
 #include <string>
 #include <string_view>
 #include <cctype>
+#include <set>
+#include <limits>
+#include <ctime>
+#include "time.h"
+#include <dirent.h>
+#include <map>
+#include <json.hpp>
+#include <condition_variable>
+#include <initializer_list>
+#include <bitset>
+#include <cstdlib>
+#include <arpa/inet.h>
+#include <netdb.h>
+
+#define TO_DEGREES ( 360. / 24. )
+#define TO_HOURS   ( 24. / 360. )
 
 extern std::string tmzone_cfg; /// time zone if set in cfg file
 extern std::mutex generate_tmpfile_mtx;
@@ -246,3 +263,66 @@ public:
 };
 
 /***** Time *****************************************************************/
+
+
+/***** NumberPool ***********************************************************/
+/**
+ * @class   NumberPool
+ * @brief   manages a pool of numbers
+ * @details Provides function of getting the lowest available number out
+ *          of a pool of numbers, and the ability to return a number back
+ *          to the pool. The pool grows as needed. The pool is meant to
+ *          contain positive integers and if the number would exceed the
+ *          max value for int, then -1 is returned.
+ *
+ */
+class NumberPool {
+  private:
+    std::mutex pool_lock;        /// protects pool access from multiple threads
+    int next_number;             /// next number available
+    std::set<int> used_numbers;  /// The pool is a set (for automatic sorting) which
+                                 /// represents the numbers that are being used, so
+                                 /// missing numbers are the available numbers.
+  public:
+
+    /**
+     * Constructed with the starting number of the pool
+     */
+    NumberPool( int starting_number ) : next_number(starting_number) { }
+
+
+    /***** NumberPool::get_next_number ****************************************/
+    /**
+     * @brief      gets the lowest available number from the pool
+     * @details    This returns the lowest missing value in the set and works
+     *             because a std::set is auto-sorted.
+     * @return     positive int or -1 if pool exceeds max allowed by an int
+     *
+     */
+    int get_next_number() {
+      std::lock_guard<std::mutex> lock( pool_lock );
+      int number = next_number;
+      used_numbers.insert( number );
+      if ( next_number < std::numeric_limits<int>::max() ) ++next_number;
+      else return -1;
+      return number;
+    }
+    /***** NumberPool::get_next_number ****************************************/
+
+
+    /***** NumberPool::release_number *****************************************/
+    /**
+     * @brief      returns indicated number back to the pool
+     * @details    numbers are "returned" by removing them from the set of used numbers
+     * @param[in]  number  number to put back into pool
+     *
+     */
+    void release_number( int number ) {
+      std::lock_guard<std::mutex> lock( pool_lock );
+      used_numbers.erase( number );
+      if ( number < next_number ) next_number = number;
+      return;
+    }
+    /***** NumberPool::release_number *****************************************/
+};
+/***** NumberPool ***********************************************************/

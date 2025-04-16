@@ -1,4 +1,17 @@
+/**
+ * @file    shutter.h
+ * @brief   defines a Camera::Shutter class for Bonn shutter
+ * @author  David Hale <dhale@astro.caltech.edu>
+ * @details
+ *
+ */
+
 #pragma once
+
+#include <fcntl.h>
+#include <sys/ioctl.h>
+#include <termios.h>
+#include <unistd.h>
 
 namespace Camera {
 
