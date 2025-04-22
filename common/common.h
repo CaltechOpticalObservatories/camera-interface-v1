@@ -13,6 +13,8 @@
 #include <mutex>
 #include <map>
 #include <condition_variable>
+#include <zmqpp/zmqpp.hpp>
+#include <nlohmann/json.hpp>
 
 #include "logentry.h"
 
@@ -207,9 +209,12 @@ namespace Common {
 
         void service_running(bool state) { this->is_running = state; }; /// set service running
         bool service_running() { return this->is_running; }; /// is the service running?
-
+        void enqueue_and_log(std::string function, std::string message);
+        void enqueue_and_log(std::string tag, std::string function, std::string message);
         void enqueue(std::string message); /// push an element into the queue.
         std::string dequeue(void); /// pop an element from the queue
     };
     /**************** Common::Queue *********************************************/
+
 }
+
