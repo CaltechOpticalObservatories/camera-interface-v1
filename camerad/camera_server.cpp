@@ -1,29 +1,23 @@
 /**
  * @file    camera_server.cpp
- * @brief   
- * @details 
+ * @brief   implementation of camera daemon server
  * @author  David Hale <dhale@astro.caltech.edu>
  *
  */
 
 #include "camera_server.h"
 
-#include "network.h"
-
 // The CONTROLLER_xxxx is defined by the CMakeLists file 
 // and selects which Interface implementation to use.
 //
-#ifdef CONTROLLER_BOB
-  #include "bob_interface.h"
-  using ControllerType = Camera::BobInterface;
-#elif CONTROLLER_ARCHON
+#ifdef CONTROLLER_ARCHON
   #include "archon_interface.h"
   using ControllerType = Camera::ArchonInterface;
 #elif CONTROLLER_ASTROCAM
   #include "astrocam_interface.h"
   using ControllerType = Camera::AstroCamInterface;
 #else
-#error "ERROR controller not defined"
+  #error "ERROR controller not defined"
 #endif
 
 
@@ -163,6 +157,26 @@ namespace Camera {
                   ret = HELP;
       }
       else
+      if ( cmd == CAMERAD_ABORT ) {
+        this->interface->abort(args, retstring);
+      }
+      else
+      if ( cmd == CAMERAD_AUTODIR ) {
+        this->interface->autodir(args, retstring);
+      }
+      else
+      if ( cmd == CAMERAD_BASENAME ) {
+        this->interface->basename(args, retstring);
+      }
+      else
+      if ( cmd == CAMERAD_BIAS ) {
+        this->interface->bias(args, retstring);
+      }
+      else
+      if ( cmd == CAMERAD_BIN ) {
+        this->interface->bias(args, retstring);
+      }
+      else
       if ( cmd == CAMERAD_EXIT ) {
 //                server.exit_cleanly();                  // shutdown the server
                   }
@@ -172,7 +186,7 @@ namespace Camera {
       }
       else
       if ( cmd == CAMERAD_TEST ) {
-        this->interface->myfunction();
+        this->interface->test(args, retstring);
       }
 #ifdef CONTROLLER_BOB
       else

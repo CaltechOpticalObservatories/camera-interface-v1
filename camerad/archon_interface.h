@@ -10,15 +10,24 @@
 #include "camera_interface.h"          //!< defines Camera::Interface base class
 
 namespace Camera {
+  class Controller;
+
   class ArchonInterface : public Interface {
+    friend Controller;
+
     public:
       ArchonInterface();
       ~ArchonInterface() override;
 
-      // these virtual functions are inherited by the Camera::Interface class
-      // and implemented in archon_interface.cpp
+      // These are virtual functions inherited by the Camera::Interface base class
+      // and have their own controller-specific implementations which are
+      // implemented in archon_interface.cpp.
       //
-      void myfunction() override;
+      long abort( const std::string args, std::string &retstring ) override;
+      long autodir( const std::string args, std::string &retstring ) override;
+      long basename( const std::string args, std::string &retstring ) override;
+      long bias( const std::string args, std::string &retstring ) override;
+      long bin( const std::string args, std::string &retstring ) override;
       long connect_controller( const std::string args, std::string &retstring ) override;
       long disconnect_controller( const std::string args, std::string &retstring ) override;
       long exptime( const std::string args, std::string &retstring ) override;
