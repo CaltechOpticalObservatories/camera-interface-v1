@@ -5,10 +5,115 @@ namespace Camera {
   AstroCamInterface::AstroCamInterface() = default;
   AstroCamInterface::~AstroCamInterface() = default;
 
-  void AstroCamInterface::myfunction() {
-    std::string function("Camera::AstroCamInterface::myfunction");
-    logwrite(function, "AstroCam implementation of myfunction");
+
+  /***** Camera::AstroCamInterface::abort *************************************/
+  /**
+   * @brief
+   * @param[in]  args
+   * @param[out] retstring
+   * @return     ERROR | NO_ERROR
+   *
+   */
+  long AstroCamInterface::abort( const std::string args, std::string &retstring ) {
+    const std::string function("Camera::AstroCamInterface::abort");
+    logwrite(function, "not yet implemented");
+    return ERROR;
   }
+  /***** Camera::AstroCamInterface::abort *************************************/
+
+
+  /***** Camera::AstroCamInterface::autodir ***********************************/
+  /**
+   * @brief
+   * @param[in]  args
+   * @param[out] retstring  
+   * @return     ERROR | NO_ERROR 
+   *
+   */
+  long AstroCamInterface::autodir( const std::string args, std::string &retstring ) {
+    const std::string function("Camera::AstroCamInterface::autodir");
+    logwrite(function, "not yet implemented");
+    return ERROR;
+  } 
+  /***** Camera::AstroCamInterface::autodir ***********************************/
+
+
+  /***** Camera::AstroCamInterface::basename **********************************/
+  /**
+   * @brief      set or get the image basename
+   * @param[in]  args       requested base name
+   * @param[out] retstring  current base name
+   * @return     ERROR | NO_ERROR | HELP
+   *
+   */
+  long AstroCamInterface::basename( const std::string args, std::string &retstring ) {
+    const std::string function("Camera::AstroCamInterface::basename");
+    long error=NO_ERROR;
+
+    // Help
+    //
+    if (args=="?" || args=="help") {
+      retstring = CAMERAD_BASENAME;
+      retstring.append( " [ <name> ]\n" );
+      retstring.append( "  set or get image basename\n" );
+      return HELP;
+    }
+
+    // Base name cannot contain a "/" because that would be a subdirectory,
+    // and subdirectories are not checked here, only by imdir command.
+    //
+    if ( args.find('/') != std::string::npos ) {
+      logwrite( function, "ERROR basename cannot contain '/' character" );
+      error = ERROR;
+    }
+    // if name is supplied the set the image name
+    else if ( !args.empty() ) {
+      this->camera_info.base_name = args;
+      error = NO_ERROR;
+    }
+
+    // In any case, log and return the current value.
+    //
+    logwrite(function, "base name is "+std::string(this->camera_info.base_name));
+    retstring = this->camera_info.base_name;
+
+    return error;
+  }
+  /***** Camera::AstroCamInterface::basename **********************************/
+
+
+  /***** Camera::AstroCamInterface::bias **************************************/
+  /**
+   * @brief      set a bias voltage
+   * @details    not implemented for AstroCam
+   * @param[in]  args       contains <module> <chan> <voltage>
+   * @param[out] retstring  
+   * @return     ERROR | NO_ERROR | HELP
+   *
+   */
+  long AstroCamInterface::bias( const std::string args, std::string &retstring ) {
+    const std::string function("Camera::AstroCamInterface::bias");
+    logwrite(function, "ERROR not implemented");
+    return ERROR;
+  }
+  /***** Camera::AstroCamInterface::bias **************************************/
+
+
+  /***** Camera::AstroCamInterface::bin ***************************************/
+  /**
+   * @brief      set binning
+   * @param[in]  args       
+   * @param[out] retstring  
+   * @return     ERROR | NO_ERROR | HELP
+   *
+   */
+  long AstroCamInterface::bin( const std::string args, std::string &retstring ) {
+    const std::string function("Camera::AstroCamInterface::bin");
+    logwrite(function, "not yet implemented");
+    return ERROR;
+  }
+  /***** Camera::AstroCamInterface::bin ***************************************/
+
 
   /***** Camera::AstroCamInterface::connect_controller ************************/
   /**
@@ -156,6 +261,22 @@ namespace Camera {
     return NO_ERROR;
   }
   /***** Camera::AstroCamInterface::exptime ***********************************/
+
+
+  /***** Camera::AstroCamInterface::test **************************************/
+  /**
+   * @brief
+   * @param[in]  args
+   * @param[out] retstring
+   * @return     ERROR | NO_ERROR
+   *
+   */
+  long AstroCamInterface::test( const std::string args, std::string &retstring ) {
+    const std::string function("Camera::AstroCamInterface::test");
+    logwrite(function, "not yet implemented");
+    return ERROR;
+  }
+  /***** Camera::AstroCamInterface::test **************************************/
 
 }
 
