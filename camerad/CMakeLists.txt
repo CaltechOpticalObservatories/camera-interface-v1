@@ -21,7 +21,7 @@ link_directories(${PROJECT_BASE_DIR}/lib)
 # ----------------------------------------------------------------------------
 
 # ----------------------------------------------------------------------------
-# AstroCam ARC-64/66 PCI/e interfaces
+# Camera Interface Base
 # ----------------------------------------------------------------------------
 if (${INTERFACE_TYPE} STREQUAL "AstroCam")
     message(STATUS "compiling for AstroCam GenIII PCI/PCIe")
@@ -144,6 +144,9 @@ include_directories(${BOOST_INCLUDES})
 
 find_package(Threads)
 
+# ----------------------------------------------------------------------------
+# build the camera daemon
+# ----------------------------------------------------------------------------
 add_executable(camerad
         ${CAMERA_DIR}/camerad.cpp
         ${INTERFACE_INCLUDES}
@@ -153,6 +156,9 @@ add_executable(camerad
 # Everyone gets this:
 # ----------------------------------------------------------------------------
 
+# ----------------------------------------------------------------------------
+# link everything
+# ----------------------------------------------------------------------------
 target_link_libraries(camerad
         camera
         network

@@ -66,32 +66,55 @@ namespace Camera {
    *
    */
   void Server::doit( Network::TcpSocket sock ) {
+    const std::string function("Camera::Server::doit");
+    std::stringstream message;
     std::string cmd, args;
     bool connection_open=true;
     long ret;
 
     while (connection_open) {
+
+      // wait (poll) connected socket for incomming data
+      //
       int pollret;
       if ( ( pollret=sock.Poll() ) <= 0 ) {
-        std::cerr << "Poll error\n";
-        break;
+        if (pollret==0) {
+          message.str(""); message << "Poll timeout on fd " << sock.getfd() << " thread " << sock.id;
+          logwrite(function, message.str());
+        }
+        if (pollret <0) {
+          message.str(""); message << "Poll error on fd " << sock.getfd() << " thread " << sock.id << ": " << strerror(errno);
+          logwrite(function, message.str());
+        }
+        break;                      // this will close the connection
       }
 
+      // Data available, now read from connected socket...
+      //
       std::string sbuf;
       char delim='\n';
       if ( ( ret=sock.Read( sbuf, delim ) ) <= 0 ) {
-        if (ret<0) {
-          std::cerr << "Read error\n";
-          break;
+        if (ret<0) {                // could be an actual read error
+          message.str(""); message << "Read error on fd " << sock.getfd() << ": " << strerror(errno);
+          logwrite(function, message.str());
         }
+        if (ret==-2) {
+          message.str(""); message << "timeout reading from fd " << sock.getfd();
+          logwrite( function, message.str() );
+         }
+        break;                      // Breaking out of the while loop will close the connection.
+                                    // This probably means that the client has terminated abruptly, 
+                                    // having sent FIN but not stuck around long enough
+                                    // to accept CLOSE and give the LAST_ACK.
       }
 
+      // convert the input buffer into a string and remove any trailing linefeed
+      // and carriage return
+      //
       sbuf.erase(std::remove(sbuf.begin(), sbuf.end(), '\r' ), sbuf.end());
       sbuf.erase(std::remove(sbuf.begin(), sbuf.end(), '\n' ), sbuf.end());
 
-      if ( sbuf.empty() ) sbuf="help";                 // no command automatically displays help
-
-      std::cerr << "received: " << sbuf << "\n";
+      if (sbuf.empty()) {sock.Write("\n"); continue;}  // acknowledge empty command so client doesn't time out
 
       try {
         std::size_t cmd_sep = sbuf.find_first_of(" "); // find the first space, which separates command from argument list
@@ -101,7 +124,7 @@ namespace Camera {
         if (cmd.empty()) {sock.Write("\n"); continue;} // acknowledge empty command so client doesn't time out
 
         if (cmd_sep == std::string::npos) {            // If no space was found,
-          args="";                                     // then the arg list is empty,
+          args.clear();                                // then the arg list is empty,
         }
         else {
           args= sbuf.substr(cmd_sep+1);                // otherwise args is everything after that space.
@@ -109,13 +132,46 @@ namespace Camera {
 
         if ( ++this->cmd_num == INT_MAX ) this->cmd_num = 0;
 
-        std::cerr << "thread " << sock.id << " received command on fd " << sock.getfd() << " (" << this->cmd_num << ") : " << cmd << " " << args << "\n";
+        message.str(""); message << "thread " << sock.id << " received command on fd " << sock.getfd()
+                                 << " (" << this->cmd_num << ") : " << cmd << " " << args;
+        logwrite(function, message.str());
       }
-      catch(...) { }
+      catch (const std::exception &e) {
+        message.str(""); message << "ERROR parsing command from thread " << sock.id << " fd " << sock.getfd()
+                                 << " (" << this->cmd_num << ") \"" << cmd << " " << args << "\" : "
+                                 << e.what();
+        logwrite(function, message.str());
+        cmd = "_EXCEPTION_";         // skips command processing below
+      }
 
+      //
+      // Process commands here
+      //
+
+      ret = NOTHING;
       std::string retstring;
 
-      if ( cmd == "test" ) {
+      if ( cmd == "_EXCEPTION_" ) {  // skips checking commands
+      }
+      else
+      if ( cmd == "-h" || cmd == "--help" || cmd == "help" || cmd == "?" ) {
+                  retstring="camera { <CMD> } [<ARG>...]\n";
+                  retstring.append( "  where <CMD> is one of:\n" );
+                  for ( const auto &s : CAMERAD_SYNTAX ) {
+                    retstring.append("  "); retstring.append( s ); retstring.append( "\n" );
+                  }
+                  ret = HELP;
+      }
+      else
+      if ( cmd == CAMERAD_EXIT ) {
+//                server.exit_cleanly();                  // shutdown the server
+                  }
+      else
+      if ( cmd == CAMERAD_EXPTIME ) {
+        this->interface->exptime(args, retstring);
+      }
+      else
+      if ( cmd == CAMERAD_TEST ) {
         this->interface->myfunction();
       }
 #ifdef CONTROLLER_BOB
@@ -125,7 +181,39 @@ namespace Camera {
       }
 #endif
 
-      sock.Write(retstring+" "+std::string("DONE\n"));
+      // unknown commands generate an error
+      //
+      else {
+        message.str(""); message << "ERROR unknown command: " << cmd;
+        logwrite(function, message.str());
+        ret = ERROR;
+      }
+
+      // If retstring not empty then append "DONE" or "ERROR" depending on value of ret,
+      // and log the reply along with the command number. Write the reply back to the socket.
+      //
+      // Don't append anything nor log the reply if the command was just requesting help.
+      //
+      if (ret != NOTHING) {
+        if ( ! retstring.empty() ) retstring.append( " " );
+        if ( ret != HELP && ret != JSON ) retstring.append( ret == NO_ERROR ? "DONE" : "ERROR" );
+
+        if ( ret == JSON ) {
+          message.str(""); message << "command (" << this->cmd_num << ") reply with JSON message";
+          logwrite( function, message.str() );
+        }
+        else
+        if ( ! retstring.empty() && ret != HELP ) {
+          retstring.append( "\n" );
+          message.str(""); message << "command (" << this->cmd_num << ") reply: " << retstring;
+          logwrite( function, message.str() );
+        }
+
+      if ( sock.Write( retstring ) < 0 ) connection_open=false;
+      }
+
+      if (!sock.isblocking()) break;       // Non-blocking connection exits immediately.
+                                           // Keep blocking connection open for interactive session.
     }
     return;
   }

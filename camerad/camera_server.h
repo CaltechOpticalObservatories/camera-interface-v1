@@ -14,6 +14,7 @@
 #include <limits.h>
 //#include <json.hpp>
 
+#include "common.h"
 #include "camera_interface.h"
 #include "utilities.h"
 #include "network.h"
