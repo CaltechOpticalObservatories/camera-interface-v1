@@ -133,16 +133,16 @@ find_library(CCFITS_LIB CCfits NAMES libCCfits PATHS /usr/local/lib)
 find_library(CFITS_LIB cfitsio NAMES libcfitsio PATHS /usr/local/lib)
 
 # OpenCV
-#
 find_package( OpenCV REQUIRED )
 include_directories( ${OpenCV_INCLUDE_DIRS} )
 
-# Boost
-#
-find_package(Boost REQUIRED COMPONENTS thread chrono)
-include_directories(${BOOST_INCLUDES})
 
 find_package(Threads)
+find_package(nlohmann_json REQUIRED)
+
+# Boost
+find_package(Boost REQUIRED COMPONENTS thread chrono)
+include_directories(${BOOST_INCLUDES})
 
 # ----------------------------------------------------------------------------
 # build the camera daemon

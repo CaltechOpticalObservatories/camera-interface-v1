@@ -10,7 +10,6 @@
 #include "camera_interface.h"          //!< defines Camera::Interface base class
 
 namespace Camera {
-
   class ArchonInterface : public Interface {
     public:
       ArchonInterface();
@@ -26,4 +25,3 @@ namespace Camera {
   };
 
 }
-

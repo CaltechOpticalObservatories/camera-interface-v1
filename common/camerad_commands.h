@@ -88,4 +88,3 @@ const std::vector<std::string> CAMERAD_SYNTAX = {
                                                   CAMERAD_USEFRAMES,
                                                   CAMERAD_WRITEKEYS
                                                 };
-

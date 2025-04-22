@@ -747,9 +747,13 @@ long md5_file(const std::string &filename, std::string &hash) {
         }
 
         instream.close();
+    } catch (std::ifstream::failure &e) {
+        std::cerr << "md5_file( " << filename << " ): " << e.what() << "\n";
+        hash = "ERROR";
+        return 1;
     }
     catch (std::exception &e) {
-        std::cerr << "ERROR md5_file( " << filename << " ): " << e.what() << "\n";
+        std::cerr << "md5_file( " << filename << " ): " << e.what() << "\n";
         hash = "ERROR";
         return 1;
     }
@@ -768,6 +772,7 @@ long md5_file(const std::string &filename, std::string &hash) {
 
     return 0;
 }
+
 /***** md5_file *************************************************************/
 
 
@@ -949,14 +954,16 @@ std::string generate_temp_filename(const std::string &prefix) {
 
 /***** generate_temp_filename ***********************************************/
 
+
 /***** rtrim ***********************************************/
 /**
- * @s      string from which to trim trailing whitespaces
+ * @brief      trim trailing white space from a string
+ * @details    The input string will be modified.
+ * @param[in]  s  reference to string
  *
  */
 void rtrim(std::string &s) {
     /// trim off trailing whitespace from a string
     s.erase(std::find_if(s.rbegin(), s.rend(), [](unsigned char ch) { return !std::isspace(ch); }).base(), s.end());
 }
-
 /***** rtrim ***********************************************/
