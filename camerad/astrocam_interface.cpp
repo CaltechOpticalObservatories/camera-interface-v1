@@ -138,9 +138,24 @@ namespace Camera {
    *
    */
   long AstroCamInterface::disconnect_controller( const std::string args, std::string &retstring ) {
-    return ERROR;
+    const std::string function("Camera::AstroCamInterface::disconnect_controller");
+    logwrite(function, "not yet implemented");
+    return NO_ERROR;
   }
   /***** Camera::AstroCamInterface::disconnect_controller *********************/
+
+
+  /***** Camera::AstroCamInterface::exptime ***********************************/
+  /**
+   * @brief
+   *
+   */
+  long AstroCamInterface::exptime( const std::string args, std::string &retstring ) {
+    const std::string function("Camera::AstroCamInterface::exptime");
+    logwrite(function, "not yet implemented");
+    return NO_ERROR;
+  }
+  /***** Camera::AstroCamInterface::exptime ***********************************/
 
 }
 

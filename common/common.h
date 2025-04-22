@@ -22,8 +22,19 @@ constexpr long ERROR = 1;
 constexpr long BUSY = 2;
 constexpr long TIMEOUT = 3;
 constexpr long HELP = 4;
+constexpr long JSON = 5;
+constexpr long ABORT = 6;
+constexpr long EXIT = 999;
+
+const std::string JEOF = "EOF\n";              ///< used to terminate JSON messages
+const std::string TELEMREQUEST = "sendtelem";  ///< common daemon command used to request telemetry
+const std::string SNAPSHOT = "snapshot";       ///< common daemon command forces publish of telemetry
+
+constexpr bool EXT = true;   ///< constant for use_extension arg of Common::Header::add_key()
+constexpr bool PRI = !EXT;   ///< constant for use_extension arg of Common::Header::add_key()
 
 namespace Common {
+
     /**************** Common::FitsKeys ******************************************/
     /*
      * @class  FitsKeys
@@ -120,7 +131,6 @@ namespace Common {
 #endif
             return (NO_ERROR);
         }
-
         /***** Common::FitsKeys::addkey *****************************************/
 
 
@@ -175,7 +185,6 @@ namespace Common {
             return;
         }
     };
-
     /**************** Common::FitsKeys ******************************************/
 
 
@@ -202,6 +211,5 @@ namespace Common {
         void enqueue(std::string message); /// push an element into the queue.
         std::string dequeue(void); /// pop an element from the queue
     };
-
     /**************** Common::Queue *********************************************/
 }

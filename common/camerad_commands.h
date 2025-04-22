@@ -18,6 +18,7 @@ const std::string CAMERAD_BUFFER("buffer");
 const std::string CAMERAD_CLOSE("close");
 const std::string CAMERAD_CONFIG("config");
 const std::string CAMERAD_ECHO("echo");
+const std::string CAMERAD_EXIT("exit");
 const std::string CAMERAD_EXPOSE("expose");
 const std::string CAMERAD_EXPTIME("exptime");
 const std::string CAMERAD_FITSNAME("fitsname");
@@ -58,6 +59,7 @@ const std::vector<std::string> CAMERAD_SYNTAX = {
                                                   CAMERAD_CONFIG,
                                                   CAMERAD_ECHO,
                                                   CAMERAD_EXPOSE,
+                                                  CAMERAD_EXIT,
                                                   CAMERAD_EXPTIME+" [ <exptime in msec> ]",
                                                   CAMERAD_FITSNAME,
                                                   CAMERAD_FITSNAMING+" [ time | number ]",
