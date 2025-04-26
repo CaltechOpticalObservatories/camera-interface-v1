@@ -51,6 +51,7 @@ namespace Camera {
       std::string offset;
       std::string gain;
       int n_hdrshift;
+      std::string power_status;             //!< Archon power status
       std::mutex archon_mutex;
       Network::TcpSocket sock;
       network_details archon_network_details;

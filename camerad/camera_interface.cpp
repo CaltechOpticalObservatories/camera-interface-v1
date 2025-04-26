@@ -13,4 +13,16 @@ namespace Camera {
     logwrite(function, "common implementation function");
   }
 
+  /***** Camera::Interface::disconnect_controller *****************************/
+  /**
+   * @brief      disconnect camera controller
+   * @details    use this to disconnect before exiting because it takes
+   *             no arguments and returns nothing
+   *
+   */
+  void Interface::disconnect_controller() {
+    std::string retstring;
+    this->disconnect_controller("", retstring);
+  }
+  /***** Camera::Interface::disconnect_controller *****************************/
 }

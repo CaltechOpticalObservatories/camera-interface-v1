@@ -263,6 +263,19 @@ namespace Camera {
   /***** Camera::AstroCamInterface::exptime ***********************************/
 
 
+  /***** Camera::AstroCamInterface::power *************************************/
+  /**
+   * @brief
+   *
+   */
+  long AstroCamInterface::power( const std::string args, std::string &retstring ) {
+    const std::string function("Camera::AstroCamInterface::power");
+    logwrite(function, "not yet implemented");
+    return NO_ERROR;
+  }
+  /***** Camera::AstroCamInterface::power *************************************/
+
+
   /***** Camera::AstroCamInterface::test **************************************/
   /**
    * @brief

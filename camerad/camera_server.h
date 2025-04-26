@@ -37,6 +37,7 @@ namespace Camera {
       std::atomic<int> threads_active;
       std::atomic<int> cmd_num;
 
+      void exit_cleanly();
       void block_main(std::shared_ptr<Network::TcpSocket> socket);
       void doit(Network::TcpSocket sock);
   };

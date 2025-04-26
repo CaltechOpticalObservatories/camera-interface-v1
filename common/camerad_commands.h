@@ -39,6 +39,7 @@ const std::string CAMERAD_MODEXPTIME("modexptime");
 const std::string CAMERAD_NATIVE("native");
 const std::string CAMERAD_OPEN("open");  const int CAMERAD_OPEN_TIMEOUT(10000);
 const std::string CAMERAD_PAUSE("pause");
+const std::string CAMERAD_POWER("power");
 const std::string CAMERAD_PREEXPOSURES("preexposures");
 const std::string CAMERAD_READOUT("readout");
 const std::string CAMERAD_RESUME("resume");
