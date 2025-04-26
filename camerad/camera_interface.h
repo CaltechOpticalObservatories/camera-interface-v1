@@ -28,6 +28,7 @@ namespace Camera {
       //
       void set_server(Camera::Server* s);
       void func_shared();
+      void disconnect_controller();
 
       // These virtual functions have interface-specific implementations
       // and must be implemented by derived classes, implemented in xxxx_interface.cpp
@@ -40,6 +41,7 @@ namespace Camera {
       virtual long connect_controller( std::string args, std::string &retstring ) = 0;
       virtual long disconnect_controller( std::string args, std::string &retstring ) = 0;
       virtual long exptime( std::string args, std::string &retstring ) = 0;
+      virtual long power( std::string args, std::string &retstring ) = 0;
       virtual long test( std::string args, std::string &retstring ) = 0;
 
   };

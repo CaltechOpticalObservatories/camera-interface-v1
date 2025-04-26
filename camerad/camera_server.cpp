@@ -23,14 +23,43 @@
 
 namespace Camera {
 
+
+  /***** Camera::Server::Server ***********************************************/
+  /**
+   * @brief      Server constructor
+   *
+   */
   Server::Server() : interface(nullptr), id_pool(N_THREADS) {
     interface = new ControllerType();   // instantiate specific controller implementation
     interface->set_server(this);        // pointer back to this Server instance
   }
+  /***** Camera::Server::Server ***********************************************/
 
+
+  /***** Camera::Server::~Server **********************************************/
+  /**
+   * @brief      Server destructor
+   *
+   */
   Server::~Server() {
     delete interface;
   }
+  /***** Camera::Server::~Server **********************************************/
+
+
+  /***** Camera::Server::exit_cleanly *****************************************/
+  /**
+   * @brief      exit the server
+   *
+   */
+  void Server::exit_cleanly() {
+    const std::string function("Camera::Server::exit_cleanly");
+    this->interface->disconnect_controller();
+    logwrite(function, "server exiting");
+    exit(EXIT_SUCCESS);
+  }
+  /***** Camera::Server::exit_cleanly *****************************************/
+
 
   /***** Camera::Server::block_main *******************************************/
   /**
@@ -149,12 +178,12 @@ namespace Camera {
       }
       else
       if ( cmd == "-h" || cmd == "--help" || cmd == "help" || cmd == "?" ) {
-                  retstring="camera { <CMD> } [<ARG>...]\n";
-                  retstring.append( "  where <CMD> is one of:\n" );
-                  for ( const auto &s : CAMERAD_SYNTAX ) {
-                    retstring.append("  "); retstring.append( s ); retstring.append( "\n" );
-                  }
-                  ret = HELP;
+        retstring="camera { <CMD> } [<ARG>...]\n";
+        retstring.append( "  where <CMD> is one of:\n" );
+        for ( const auto &s : CAMERAD_SYNTAX ) {
+          retstring.append("  "); retstring.append( s ); retstring.append( "\n" );
+        }
+        ret = HELP;
       }
       else
       if ( cmd == CAMERAD_ABORT ) {
@@ -177,12 +206,24 @@ namespace Camera {
         this->interface->bias(args, retstring);
       }
       else
+      if ( cmd == CAMERAD_CLOSE ) {
+        this->interface->disconnect_controller(args, retstring);
+      }
+      else
       if ( cmd == CAMERAD_EXIT ) {
-//                server.exit_cleanly();                  // shutdown the server
-                  }
+        this->exit_cleanly();
+      }
       else
       if ( cmd == CAMERAD_EXPTIME ) {
         this->interface->exptime(args, retstring);
+      }
+      else
+      if ( cmd == CAMERAD_OPEN ) {
+        this->interface->connect_controller(args, retstring);
+      }
+      else
+      if ( cmd == CAMERAD_POWER ) {
+        this->interface->power(args, retstring);
       }
       else
       if ( cmd == CAMERAD_TEST ) {
