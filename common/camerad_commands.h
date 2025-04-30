@@ -32,6 +32,7 @@ const std::string CAMERAD_INTERFACE("interface");
 const std::string CAMERAD_ISOPEN("isopen");
 const std::string CAMERAD_KEY("key");
 const std::string CAMERAD_LOAD("load");
+const std::string CAMERAD_LOADTIMING("loadtiming");
 const std::string CAMERAD_LONGERROR("longerror");
 const std::string CAMERAD_MEX("mex");
 const std::string CAMERAD_MEXAMPS("mexamps");
@@ -73,6 +74,7 @@ const std::vector<std::string> CAMERAD_SYNTAX = {
                                                   CAMERAD_ISOPEN,
                                                   CAMERAD_KEY,
                                                   CAMERAD_LOAD,
+                                                  CAMERAD_LOADTIMING,
                                                   CAMERAD_LONGERROR,
                                                   CAMERAD_MEX,
                                                   CAMERAD_MEXAMPS,

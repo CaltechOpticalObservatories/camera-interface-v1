@@ -263,6 +263,32 @@ namespace Camera {
   /***** Camera::AstroCamInterface::exptime ***********************************/
 
 
+  /***** Camera::AstroCamInterface::load_firmware *****************************/
+  /**
+   * @brief
+   *
+   */
+  long AstroCamInterface::load_firmware( const std::string args, std::string &retstring ) {
+    const std::string function("Camera::AstroCamInterface::load_firmware");
+    logwrite(function, "not yet implemented");
+    return NO_ERROR;
+  }
+  /***** Camera::AstroCamInterface::load_firmware *****************************/
+
+
+  /***** Camera::AstroCamInterface::native ************************************/
+  /**
+   * @brief
+   *
+   */
+  long AstroCamInterface::native( const std::string args, std::string &retstring ) {
+    const std::string function("Camera::AstroCamInterface::native");
+    logwrite(function, "not yet implemented");
+    return NO_ERROR;
+  }
+  /***** Camera::AstroCamInterface::native ************************************/
+
+
   /***** Camera::AstroCamInterface::power *************************************/
   /**
    * @brief
