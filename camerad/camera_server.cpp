@@ -218,8 +218,16 @@ namespace Camera {
         this->interface->exptime(args, retstring);
       }
       else
+      if ( cmd == CAMERAD_LOAD ) {
+        this->interface->load_firmware(args, retstring);
+      }
+      else
       if ( cmd == CAMERAD_OPEN ) {
         this->interface->connect_controller(args, retstring);
+      }
+      else
+      if ( cmd == CAMERAD_NATIVE ) {
+        this->interface->native(args, retstring);
       }
       else
       if ( cmd == CAMERAD_POWER ) {
@@ -229,6 +237,12 @@ namespace Camera {
       if ( cmd == CAMERAD_TEST ) {
         this->interface->test(args, retstring);
       }
+#ifdef CONTROLLER_ARCHON
+      else
+      if ( cmd == CAMERAD_LOADTIMING ) {
+        dynamic_cast<ArchonInterface*>(interface)->load_timing(args, retstring);
+      }
+#endif
 #ifdef CONTROLLER_BOB
       else
       if ( cmd == "bob" ) {

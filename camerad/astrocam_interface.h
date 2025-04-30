@@ -41,6 +41,8 @@ namespace Camera {
       long bin( const std::string args, std::string &retstring ) override;
       long connect_controller( const std::string args, std::string &retstring ) override;
       long disconnect_controller( const std::string args, std::string &retstring ) override;
+      long load_firmware( const std::string args, std::string &retstring ) override;
+      long native( const std::string args, std::string &retstring ) override;
       long power( const std::string args, std::string &retstring ) override;
       long test( const std::string args, std::string &retstring ) override;
 

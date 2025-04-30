@@ -19,6 +19,7 @@ namespace Camera {
     protected:
       Camera::Server* server=nullptr;
       Camera::Information camera_info;
+      Common::FitsKeys systemkeys;
 
     public:
       virtual ~Interface() = default;
@@ -41,6 +42,8 @@ namespace Camera {
       virtual long connect_controller( std::string args, std::string &retstring ) = 0;
       virtual long disconnect_controller( std::string args, std::string &retstring ) = 0;
       virtual long exptime( std::string args, std::string &retstring ) = 0;
+      virtual long load_firmware( std::string args, std::string &retstring ) = 0;
+      virtual long native( std::string args, std::string &retstring ) = 0;
       virtual long power( std::string args, std::string &retstring ) = 0;
       virtual long test( std::string args, std::string &retstring ) = 0;
 
