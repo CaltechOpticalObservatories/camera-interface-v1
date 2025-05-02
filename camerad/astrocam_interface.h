@@ -9,6 +9,7 @@
 
 #include "camera_interface.h"
 #include "astrocam_controller.h"
+#include "astrocam_exposure_modes.h"
 
 #include <map>
 #include <memory>
@@ -58,5 +59,6 @@ namespace Camera {
       long disconnect_controller();
       long disconnect_controller(int dev);
       long exptime( const std::string args, std::string &retstring ) override;
+      long expose( const std::string args, std::string &retstring ) override;
   };
 }

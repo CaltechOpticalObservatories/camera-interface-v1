@@ -218,6 +218,10 @@ namespace Camera {
         this->interface->exptime(args, retstring);
       }
       else
+      if ( cmd == CAMERAD_EXPOSE ) {
+        this->interface->expose(args, retstring);
+      }
+      else
       if ( cmd == CAMERAD_LOAD ) {
         this->interface->load_firmware(args, retstring);
       }
