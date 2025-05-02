@@ -10,16 +10,19 @@
 #include "common.h"
 #include "camera_information.h"
 #include "camerad_commands.h"
+#include "exposure_modes.h"
 
 namespace Camera {
 
-  class Server;
+  class Server;  // forward declaration for Interface class
 
   class Interface {
     protected:
       Camera::Server* server=nullptr;
       Camera::Information camera_info;
       Common::FitsKeys systemkeys;
+
+      std::unique_ptr<ExposureMode> exposure_mode;
 
     public:
       virtual ~Interface() = default;
@@ -42,6 +45,7 @@ namespace Camera {
       virtual long connect_controller( std::string args, std::string &retstring ) = 0;
       virtual long disconnect_controller( std::string args, std::string &retstring ) = 0;
       virtual long exptime( std::string args, std::string &retstring ) = 0;
+      virtual long expose( std::string args, std::string &retstring ) = 0;
       virtual long load_firmware( std::string args, std::string &retstring ) = 0;
       virtual long native( std::string args, std::string &retstring ) = 0;
       virtual long power( std::string args, std::string &retstring ) = 0;

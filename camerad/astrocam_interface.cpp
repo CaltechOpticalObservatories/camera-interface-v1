@@ -263,6 +263,31 @@ namespace Camera {
   /***** Camera::AstroCamInterface::exptime ***********************************/
 
 
+  /***** Camera::AstroCamInterface::expose ************************************/
+  /**
+   * @brief      
+   * @param      
+   * @param      
+   * @return     ERROR | NO_ERROR | HELP
+   *
+   */
+  long AstroCamInterface::expose( const std::string args, std::string &retstring ) {
+    const std::string function("Camera::AstroCamInterface::expose");
+    logwrite(function, "not yet implemented");
+
+    // Help
+    //
+    if (args.empty() || args=="?" || args=="help") {
+      retstring = CAMERAD_EXPOSE;
+      retstring.append( " <tbd>\n" );
+      retstring.append( "  TBD\n" );
+      return HELP;
+    }
+    return NO_ERROR;
+  }
+  /***** Camera::AstroCamInterface::expose ************************************/
+
+
   /***** Camera::AstroCamInterface::load_firmware *****************************/
   /**
    * @brief
@@ -312,8 +337,19 @@ namespace Camera {
    */
   long AstroCamInterface::test( const std::string args, std::string &retstring ) {
     const std::string function("Camera::AstroCamInterface::test");
-    logwrite(function, "not yet implemented");
-    return ERROR;
+
+    // initialize the exposure mode to Expose_CCD and call that expose
+    //
+    logwrite(function, "calling exposure_mode->expose() for Expose_CCD");
+    this->exposure_mode = std::make_unique<Expose_CCD>(this);
+    if (this->exposure_mode) this->exposure_mode->expose();
+
+    if (!this->exposure_mode) {
+      logwrite(function, "ERROR exposure mode undefined!");
+      return ERROR;
+    }
+
+    return NO_ERROR;
   }
   /***** Camera::AstroCamInterface::test **************************************/
 
