@@ -12,6 +12,7 @@
 
 #include "common.h"
 #include "camera_information.h"
+#include "deinterlace_modes.h"
 
 namespace Camera {
 
@@ -30,6 +31,8 @@ namespace Camera {
     protected:
       Camera::Interface* interface;   //!< pointer to the Camera::Interface class
 
+      std::unique_ptr<DeInterlaceBase> deinterlacer;
+
       // Each exposure gets its own copy of the Camera::Information class.
       // There is one each for processed and unprocessed images.
       //
@@ -42,6 +45,12 @@ namespace Camera {
       virtual ~ExposureMode() = default;
 
       virtual long expose() = 0;
+
+      template<typename T> void create_deinterlacer(const std::string &mode,
+                                                    const std::vector<T> &buf,
+                                                    const size_t bufsz) {
+        this->deinterlacer = deinterface_factory(mode, buf, bufsz);
+      }
   };
   /***** Camera::ExposureMode *************************************************/
 
