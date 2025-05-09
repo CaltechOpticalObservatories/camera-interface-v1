@@ -37,6 +37,19 @@ namespace Camera {
     // loop:
     // subsequent frame pairs, read, deinterlace, write
 
+    // create an appropriate deinterlacer object
+    //
+    try { this->deinterlacer = make_deinterlacer("rxrv");
+    }
+    catch(const std::exception &e) {
+      logwrite(function, "ERROR: "+std::string(e.what()));
+      return ERROR;
+    }
+
+    // call a deinterlacer function
+    //
+    this->deinterlacer->test();
+
     return NO_ERROR;
   }
   /***** Camera::Expose_RXRV *************************************************/
