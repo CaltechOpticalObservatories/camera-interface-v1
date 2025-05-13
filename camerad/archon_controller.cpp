@@ -11,8 +11,12 @@
 namespace Camera {
 
   Controller::Controller() : 
-    interface(nullptr), is_connected(false), is_busy(false), is_firmwareloaded(false)
+    interface(nullptr), framebuf(nullptr), framebuf_bytes(0), is_connected(false), is_busy(false), is_firmwareloaded(false)
   {
+  }
+
+  Controller::~Controller() {
+    delete[] framebuf;
   }
 
   /***** Camera::Controller::set_interface ************************************/
@@ -26,6 +30,32 @@ namespace Camera {
     this->interface = _interface;
   }
   /***** Camera::Controller::set_interface ************************************/
+
+
+  /***** Camera::Controller::allocate_framebuf ********************************/
+  /**
+   * @brief      allocate memory for frame buffer
+   * @param[in]  reqsz  size in bytes of Archon frame buffer
+   * @return     ERROR | NO_ERROR
+   *
+   */
+  long Controller::allocate_framebuf(uint32_t reqsz) {
+    const std::string function("Camera::Controller::allocate_framebuf");
+    try {
+      if (reqsz>0) {
+        delete[] this->framebuf;
+        this->framebuf = new char[reqsz];
+        this->framebuf_bytes = reqsz;
+      }
+      else throw std::runtime_error("invalid requested size");
+    }
+    catch(const std::exception &e) {
+      logwrite(function, "ERROR allocating framebuf: "+std::string(e.what()));
+      this->framebuf_bytes = 0;
+    }
+    return (this->framebuf_bytes>0 ? NO_ERROR : ERROR);
+  }
+  /***** Camera::Controller::allocate_framebuf ********************************/
 
 
   /***** Camera::Controller::write_config_key *********************************/

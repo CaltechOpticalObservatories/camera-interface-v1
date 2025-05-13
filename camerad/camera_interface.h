@@ -22,7 +22,7 @@ namespace Camera {
       Camera::Information camera_info;
       Common::FitsKeys systemkeys;
 
-      std::unique_ptr<ExposureMode> exposure_mode;
+      std::unique_ptr<ExposureModeBase> exposure_mode;
 
     public:
       virtual ~Interface() = default;

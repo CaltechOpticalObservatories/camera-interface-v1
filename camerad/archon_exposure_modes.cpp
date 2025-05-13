@@ -5,6 +5,7 @@
  */
 
 #include "archon_exposure_modes.h"
+#include "archon_interface.h"
 
 namespace Camera {
 
@@ -29,6 +30,8 @@ namespace Camera {
   long Expose_RXRV::expose() {
     const std::string function("Camera::Expose_RXRV::expose");
     logwrite(function, "hi");
+
+    this->interface->allocate_framebuf(100);
 
     // read first frame pair
 

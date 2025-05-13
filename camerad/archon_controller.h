@@ -34,12 +34,15 @@ namespace Camera {
 
     public:
       Controller();
-      ~Controller() = default;
+      ~Controller();
 
     private:
       ArchonInterface* interface;      //!< pointer back to the parent interface
 
       void set_interface(ArchonInterface* _interface);
+
+      char* framebuf;                  //!< local frame buffer read from Archon
+      uint32_t framebuf_bytes;         //!< size of framebuf in bytes
 
       bool is_connected;               //!< true if controller connected
       bool is_busy;
@@ -58,6 +61,7 @@ namespace Camera {
       Network::TcpSocket sock;
       network_details archon_network_details;
 
+      long allocate_framebuf(uint32_t reqsz);
       long write_config_key(const char* key, const char* newvalue, bool &changed);
       long write_config_key(const char* key, int newvalue, bool &changed);
 
