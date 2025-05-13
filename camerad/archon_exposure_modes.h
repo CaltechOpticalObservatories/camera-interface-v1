@@ -1,6 +1,6 @@
 /**
  * @file     archon_exposure_modes.h
- * @brief    defines Archon-specific exposure mode classes
+ * @brief    delcares Archon-specific exposure mode classes
  * @details  Declares classes that implement exposure modes supported by
  *           Archon. These classes override virtual functions in the
  *           ExposureMode base class to provide mode-specific behavior.
@@ -13,20 +13,22 @@
 
 namespace Camera {
 
-  class Expose_Raw : public ExposureMode {
-    using ExposureMode::ExposureMode;
+  class ArchonInterface;     // forward declaration
+
+  class Expose_Raw : public ExposureMode<Camera::ArchonInterface> {
+    using ExposureMode<Camera::ArchonInterface>::ExposureMode;
 
     long expose() override;
   };
 
-  class Expose_CCD : public ExposureMode {
-    using ExposureMode::ExposureMode;
+  class Expose_CCD : public ExposureMode<Camera::ArchonInterface> {
+    using ExposureMode<Camera::ArchonInterface>::ExposureMode;
 
     long expose() override;
   };
 
-  class Expose_RXRV : public ExposureMode {
-    using ExposureMode::ExposureMode;
+  class Expose_RXRV : public ExposureMode<Camera::ArchonInterface> {
+    using ExposureMode<Camera::ArchonInterface>::ExposureMode;
 
     long expose() override;
   };
