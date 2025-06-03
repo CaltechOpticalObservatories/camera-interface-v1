@@ -4715,6 +4715,8 @@ namespace Archon {
 
   /***** Archon::Interface::process_image *************************************/
   void Interface::process_image(std::shared_ptr<ImageBuffer> &image) {
+    const std::string function("Archon::Interface::process_image");
+    std::stringstream message;
 
     switch (this->camera_info.datatype) {
       case USHORT_IMG:
@@ -4736,8 +4738,9 @@ namespace Archon {
 
 
   template<typename T>
-  void Interface::deinterlace_buffer(std::shared_ptr<ImageBuffer> buffer) {
+  void Interface::deinterlace_queue(std::shared_ptr<ImageBuffer> buffer) {
 
+/***
     if (mcdsbuf_0) memset(mcdsbuf_0, 0, cds_info.section_size * sizeof(int32_t));
     if (mcdsbuf_1) memset(mcdsbuf_1, 0, cds_info.section_size * sizeof(int32_t));
 
@@ -4762,6 +4765,7 @@ namespace Archon {
                                );
 
     deinterlacer.do_deinterlace();
+***/
   }
 
 

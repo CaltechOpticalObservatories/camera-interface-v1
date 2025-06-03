@@ -888,7 +888,7 @@ namespace Archon {
       void frame_acquisition_loop(int nseq);
       void frame_processing_loop();
       void process_image(std::shared_ptr<ImageBuffer> &image);
-      template<typename T> void deinterlace_buffer(std::shared_ptr<ImageBuffer> buffer);
+      template<typename T> void deinterlace_queue(std::shared_ptr<ImageBuffer> buffer);
 
       // Add any pre-exposures onto the requested number of sequences,
       // using 1 if not supplied.
