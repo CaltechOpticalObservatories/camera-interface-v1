@@ -8,6 +8,7 @@
 #ifndef ARCHON_H
 #define ARCHON_H
 
+#include <queue>
 #include <CCfits/CCfits>           //!< needed here for types in set_axes()
 #include <atomic>
 #include <chrono>
@@ -32,7 +33,7 @@
 #include "config.h"
 #include "logentry.h"
 #include "network.h"
-#include "fits.h"
+#include "build_date.h"
 #include "fits_file.h"
 #include "nirc2.h"
 #include "opencv2/opencv.hpp"
@@ -852,6 +853,15 @@ namespace Archon {
   };
   /***** Archon::DeInterlace **************************************************/
 
+  struct ImageBuffer {
+    int seq;
+    int slice;
+    int cubedepth;
+    int framenum;
+    uint64_t timestamp;
+    size_t bufsize;
+    std::shared_ptr<char[]> rawpixels;
+  };
 
   /***** Archon::Interface ****************************************************/
   /**
@@ -866,6 +876,34 @@ namespace Archon {
       int n_hdrshift;                      //!< number of right-shift bits for Archon buffer in HDR mode
       struct timespec cal_systime;
       uint64_t cal_archontime;
+
+      std::queue<std::shared_ptr<ImageBuffer>> image_queue;
+      std::mutex queue_mutex;
+      std::condition_variable queue_cv;
+
+      std::atomic<bool> stop_threads;
+
+      std::shared_ptr<ImageBuffer> cds_frame_pending;
+
+      void frame_acquisition_loop(int nseq);
+      void frame_processing_loop();
+      void process_image(std::shared_ptr<ImageBuffer> &image);
+      template<typename T> void deinterlace_buffer(std::shared_ptr<ImageBuffer> buffer);
+
+      // Add any pre-exposures onto the requested number of sequences,
+      // using 1 if not supplied.
+      //
+      int parse_sequence_count(const std::string &nseq_in) {
+        if (nseq_in.empty()) {
+          return 1 + this->camera_info.num_pre_exposures;
+        }
+        try {
+          int nseq = std::stoi(nseq_in);
+          if ( nseq <= 0) return -1;
+          else return nseq + this->camera_info.num_pre_exposures;
+        }
+        catch (const std::exception&) { return -1; }
+      }
 
     public:
       Interface();
@@ -995,8 +1033,10 @@ namespace Archon {
       long lock_buffer(int buffer);
       long get_timer(unsigned long int *timer);
       long fetch(uint64_t bufaddr, uint32_t bufblocks);
+      long read_frame_cache(char* buffer, int slice);
       long read_frame();                     //!< read Archon frame buffer into host memory
       long read_frame(Camera::frame_type_t frame_type); /// read Archon frame buffer into host memory
+      long read_frame( Camera::frame_type_t frame_type, char* ptr );
       long read_frame( Camera::frame_type_t frame_type, char* &ptr );
       long read_frame( Camera::frame_type_t frame_type, char* &ptr, int ringcount_in );
       long write_frame();                    //!< write (a previously read) Archon frame buffer to disk
