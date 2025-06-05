@@ -695,17 +695,19 @@ private:
         // each image.
         try {
           for (int i = 0; i < size; i++) {
-            if (this->cache_mutex.try_lock_for(boost::chrono::milliseconds(1))){
-              boost::lock_guard<boost::timed_mutex> lock(this->cache_mutex,
-                                                         boost::adopt_lock_t());
+            if (this->mex_cache.empty() == false) {
               this->mex_frames.push_back(this->mex_cache[0]);
-              this->mex_cache.pop_front();
+              if (this->cache_mutex.try_lock_for(boost::chrono::milliseconds(1))) {
+                boost::lock_guard<boost::timed_mutex> lock(this->cache_mutex, boost::adopt_lock_t());
+                this->mex_cache.pop_front();
+              }
             }
           }
         }
         catch ( std::exception &e ) {
-          message.str(""); message << "ERROR exception occured: " << e.what();
+          message << "ERROR exception occured: " << e.what();
           logwrite( function, message.str() );
+          message.str("");
         }
       }
 

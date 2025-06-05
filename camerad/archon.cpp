@@ -1206,11 +1206,11 @@ namespace Archon {
     error = this->archon_cmd(scmd.str());
 
     if (error != NO_ERROR) {
-      message << "ERROR: prepping parameter \"" << paramname << "=" << value;
+      message << "ERROR prepping parameter \"" << paramname << "=" << value;
+      logwrite( function, message.str() );
     }
 
-    logwrite( function, message.str() );
-    return(error);
+    return error;
   }
   /**************** Archon::Interface::prep_parameter *************************/
 
@@ -3908,24 +3908,18 @@ namespace Archon {
         this->cds_info.datatype = LONG_IMG;
         this->cds_info.bitpix = 32;
       }
-      std::thread( std::ref( Archon::Interface::dothread_runcds ), this ).detach();
-      error = this->alloc_cdsring();
+//    std::thread( std::ref( Archon::Interface::dothread_runcds ), this ).detach();
+//    error = this->alloc_cdsring();
     }
 #ifdef LOGLEVEL_DEBUG
     else { logwrite( function, "[DEBUG] iscds=false. alloc_cdsring() was not called!" ); }
 #endif
 
+    if (initialize_processing_buffers()==ERROR) return ERROR;
+
     this->lastframe = this->frame.bufframen[this->frame.index];     // save the last frame number acquired (wait_for_readout will need this)
 
-    // Before initiating the exposure, there is a kludge needed for SAMPMODE_SINGLE.
-    // This mode is the same as SAMPMODE_RXV with 2 frames, except that NIRC2 only
-    // wants 1. So we let the user tell us 1 frame but then we have to tell Archon
-    // 2 frames, and then discard the first one so that no one knows.
-    //
-    if ( this->camera_info.sampmode == SAMPMODE_SINGLE ) nseqstr = std::to_string( 2 );  // override nseq
-
-    stop_threads=false;
-    cds_frame_pending.reset();
+    is_producer_finished=false;
 
     std::thread producer(&Interface::frame_acquisition_loop, this, nseq);
     std::thread consumer(&Interface::frame_processing_loop, this);
@@ -3933,535 +3927,36 @@ namespace Archon {
     producer.join();
     {
     std::lock_guard<std::mutex> lock(queue_mutex);
-    stop_threads=true;
+    is_producer_finished=true;
     }
+
+    logwrite(function, "waiting for frame processing to finish");
+
     queue_cv.notify_all();
     consumer.join();
 
+    logwrite(function, "exposure complete");
+
     return error;
-
-/* ++++++++++ everything after here is the old way, here for reference ++++++++++ */
-
-    //
-    // *** initiate the exposure here ***
-    //
-    error = this->prep_parameter(this->exposeparam, nseqstr);
-    if (error == NO_ERROR) error = this->load_parameter(this->exposeparam, nseqstr);
-    if ( error != NO_ERROR ) {
-      logwrite( function, "ERROR: could not initiate exposure" );
-      this->cleanup_memory();
-      return error;
-    }
-    debug( "EXPOSURE_INITIATED" );
-    logwrite(function, "exposure started");
-
-    // get system time and Archon's timer after exposure starts
-    // start_timer is used to determine when the exposure has ended, in wait_for_exposure()
-    //
-    this->camera_info.start_time = get_timestamp();                 // current system time formatted as YYYY-MM-DDTHH:MM:SS.sss
-    if ( this->get_timer(&this->start_timer) != NO_ERROR ) {        // Archon internal timer (one tick=10 nsec)
-      logwrite( function, "ERROR: could not get start time" );
-      this->cleanup_memory();
-      return( ERROR );
-    }
-    this->last_frame_timer = this->start_timer;                             // initialize timer, used as reference for wait_for_exposure
-    this->camera.set_fitstime(this->camera_info.start_time);                // sets camera.fitstime (YYYYMMDDHHMMSS) used for filename
-    error=this->camera.get_fitsname( "_unp", this->camera_info.fits_name);  // assemble the FITS filename with added "raw"tag
-    if ( error != NO_ERROR ) {
-      logwrite( function, "ERROR: couldn't validate fits filename" );
-      this->cleanup_memory();
-      return( error );
-    }
-
-    this->camera_info.systemkeys.keydb = this->systemkeys.keydb;    // copy the systemkeys database object into camera_info
-
-    this->add_filename_key();                                       // add filename to system keys database
-
-    // Prepare the cds info struct if a processed file is requested
-    //
-    if ( this->camera_info.iscds ) {
-      this->cds_info.systemkeys.keydb  = this->systemkeys.keydb;    // copy the systemkeys database object into cds_info
-      this->cds_info.start_time = this->camera_info.start_time;     // start time is the same
-      error=this->camera.get_fitsname( this->cds_info.fits_name);   // assemble the FITS filename
-      if ( error != NO_ERROR ) {
-        logwrite( function, "ERROR: couldn't validate fits filename" );
-        this->cleanup_memory();
-        return( error );
-      }
-      this->add_filename_key( this->cds_info );                     // add filename to cds system keys database
-    }
-
-    if (this->camera.writekeys_when=="before") this->copy_keydb();  // copy the ACF and userkeys database into camera_info
-
-    // Open the FITS file now for multi-extensions
-    //
-    // *** THIS IS THE FITS FILE CREATION USED BY NIRC2 ***
-    //
-    if ( this->camera.mex() && !this->camera.mexamps() ) {
-#ifdef LOGLEVEL_DEBUG
-      logwrite( function, "[DEBUG] opening fits file for multi-exposure sequence using multi-extensions" );
-#endif
-      this->camera_info.writekeys_before = (this->camera.writekeys_when=="before"?true:false);
-      this->__fits_file = std::make_unique<FITS_file<uint16_t>>(true);  // true = multi-extension
-
-      // Also open a CDS file if needed
-      //
-      if ( this->camera_info.iscds ) {
-#ifdef LOGLEVEL_DEBUG
-        logwrite( function, "[DEBUG] opening fits file for CDS processed images" );
-#endif
-        this->cds_info.writekeys_before = (this->camera.writekeys_when=="before"?true:false);
-        this->__file_cds = std::make_unique<FITS_file<int32_t>>(false);  // false = not multi-extension
-      }
-
-      if ( error != NO_ERROR ) {
-        this->camera.log_error( function, "couldn't open fits file" );
-        this->cleanup_memory();
-        return( error );
-      }
-    }
-#ifdef LOGLEVEL_DEBUG
-    logwrite( function, "[DEBUG] opened fits file for multi-exposure sequence using multi-extensions" );
-#endif
-
-//  //TODO only use camera_info -- don't use fits_info -- is this OK? TO BE CONFIRMED
-//  this->fits_info = this->camera_info;                            // copy the camera_info class, to be given to fits writer  //TODO
-
-//  this->lastframe = this->frame.bufframen[this->frame.index];     // save the last frame number acquired (wait_for_readout will need this)
-
-    if (nseq > 1) {
-      message.str(""); message << "starting sequence of " << nseq << " frames. lastframe=" << this->lastframe;
-      logwrite(function, message.str());
-    }
-
-    // If not RAW mode then wait for Archon frame buffer to be ready,
-    // then read the latest ready frame buffer to the host. If this
-    // is a squence, then loop over all expected frames.
-    //
-    if ( mode != "RAW" ) {                                          // If not raw mode then
-      int expcount = 0;                                             // counter used only for tracking pre-exposures
-
-      //
-      // -- MAIN SEQUENCE LOOP --
-      //
-      while (nseq-- > 0) {
-
-        this->camera_info.ncoadd = this->camera_info.nseq - nseq;
-        this->cds_info.ncoadd    = this->camera_info.nseq - nseq;
-
-        // prepare and store the appropriate header key for this particular "coadd" (they're not all coadds)
-        //
-        message.str("");
-        switch( this->camera_info.sampmode ) {
-          case SAMPMODE_SINGLE:
-          case SAMPMODE_CDS:
-          case SAMPMODE_MCDS:
-            message << "NCOADD=" << this->camera_info.ncoadd << "// coadd number";
-            break;
-          case SAMPMODE_UTR:
-            message << "NRAMP=" << this->camera_info.ncoadd << "// ramp number";
-            break;
-          case SAMPMODE_RXV:
-          case SAMPMODE_RXRV:
-            message << "NFRAME=" << this->camera_info.ncoadd << "// frame number";
-            break;
-        }
-        this->extkeys.addkey( message.str() );
-
-        // Wait for any pre-exposures, first the exposure delay then the readout,
-        // but then continue to the next because pre-exposures are not read from
-        // the Archon's buffer.
-        //
-        if ( ++expcount <= this->camera_info.num_pre_exposures ) {
-
-          message.str(""); message << "pre-exposure " << expcount << " of " << this->camera_info.num_pre_exposures;
-          logwrite( function, message.str() );
-
-          if ( this->camera_info.exposure_time != 0 ) {                 // wait for the exposure delay to complete (if there is one)
-            error = this->wait_for_exposure();
-            if ( error != NO_ERROR ) {
-              logwrite( function, "ERROR: waiting for pre-exposure" );
-              this->cleanup_memory();
-              return error;
-            }
-          }
-
-          error = this->wait_for_readout();                             // Wait for the readout into frame buffer,
-          if ( error != NO_ERROR ) {
-            logwrite( function, "ERROR: waiting for pre-exposure readout" );
-            this->cleanup_memory();
-            return error;
-          }
-
-          continue;
-        }  // end wait for pre-exposures
-
-        // Erase the extensions keys database
-        //
-        this->extkeys.erasedb();
-
-        // When looping over multiple read/writes where a FITS file has to be
-        // opened for each frame (non-mex) then do that in a separate thread
-        // because this can take some time.
-        //
-        if ( !this->camera.mex() || this->camera.mexamps() ) {
-          this->openfits_error.store( false, std::memory_order_seq_cst );
-          std::thread( std::ref( Archon::Interface::dothread_openfits ), this ).detach();
-        }
-
-        if (this->camera.writekeys_when=="after") this->copy_keydb();   // copy the ACF and userkeys database into camera_info
-
-        {
-        char *ptr_image;
-        try {
-          ptr_image = this->image_ring.at(this->ringcount);
-#ifdef LOGLEVEL_DEBUG
-          message.str(""); message << "[DEBUG] this->image_ring[" << this->ringcount << "] = " << std::hex << (void*)this->image_ring.at(this->ringcount)
-                                   << " ptr_image=" << std::hex << (void*)ptr_image;
-          logwrite(function, message.str());
-#endif
-        }
-        catch ( std::out_of_range & ) {
-          message.str(""); message << "ringcount " << this->ringcount
-                                   << " out of range addressing image_ring.size=" << this->image_ring.size();
-          this->camera.log_error( function, message.str() );
-          this->cleanup_memory();
-          return(ERROR);
-        }
-
-        // Read each frame into the image buffer pointed to by ptr_image.
-        // For data cubes this will loop over cubedepth and all frames go into the same buffer.
-        // For single-frame reads, cubedepth=1 so this happens only once.
-        //
-        uint64_t ts0=0, dts=0;
-        int slicecounter;
-        switch ( this->camera_info.sampmode ) {
-          case SAMPMODE_SINGLE:
-            slicecounter = 2;
-            break;
-          case SAMPMODE_RXRV:
-            slicecounter = 1;
-            break;
-          default:
-            slicecounter = this->camera_info.cubedepth;
-            break;
-        }
-
-        // Loop over the number of slices in this datacube
-        //
-        for ( int slice=0; !this->camera.is_aborted() && slice < slicecounter; slice++ ) {
-          message.str(""); message << "waiting for ";
-          if ( this->camera_info.sampmode == SAMPMODE_SINGLE && slice==0 ) {
-            message << "first frame (discarded)";
-          }
-          else if ( this->camera_info.sampmode == SAMPMODE_SINGLE && slice==1 ) {
-            message << "slice 1 of 1";
-          }
-          else {
-            message << "slice " << std::dec << slice+1 << " of " << slicecounter;
-          }
-          logwrite( function, message.str() );
-
-          error = this->wait_for_readout();                             // Wait for the readout into Archon frame buffer,
-
-          if ( this->camera_info.sampmode == SAMPMODE_SINGLE && slice == 0 ) {
-            logwrite( function, "[SAMPMODE_SINGLE] ----- waiting for exposure delay -----" );
-            this->last_frame_timer = this->frame.buftimestamp[this->frame.index];
-            error=wait_for_exposure();
-            if ( error != NO_ERROR ) { logwrite( function, "ERROR" ); return error; }
-            continue;
-          }
-
-          this->camera_info.stop_time = get_timestamp();                // current system time formatted as YYYY-MM-DDTHH:MM:SS.sss
-          this->cds_info.stop_time = get_timestamp();                   // current system time formatted as YYYY-MM-DDTHH:MM:SS.sss
-
-          if ( slice==0 ) ts0 = this->frame.buftimestamp[this->frame.index];  // retain the BUFnTIMESTAMP of the first frame
-          dts = (this->frame.buftimestamp[this->frame.index]-ts0);      // delta time stamp is change in BUFnTIMESTAMP since the first frame
-
-          if ( this->camera_info.sampmode == SAMPMODE_SINGLE ) dts=0;   // no delta timestamp for single
-
-          // At the halfway point, use this dts to add a header keyword for TRUITIME
-          //
-          if ( ( slicecounter%2 == 0 ) && ( slice == slicecounter/2 ) ) {
-            double truitime = static_cast<double>(dts)/100000000.0;
-            std::stringstream truitimestr;
-            truitimestr << truitime;
-            this->cds_info.systemkeys.addkey( "TRUITIME", truitime, "True integration time in seconds (calculated)", 3 );  // new FITS engine will pick this up
-            this->camera_info.systemkeys.addkey( "TRUITIME", truitime, "True integration time in seconds (calculated)", 3 );  // new FITS engine will pick this up
-          }
-
-          // Add Archon TIMESTAMP for this frame buffer to the extkeys database.
-          // This keyword database is erased with each exposure and will be written
-          // only for multi-extension files, which means that camera_info.ismex must be true.
-          //
-          int slice_ts = ( this->camera_info.sampmode==SAMPMODE_SINGLE ? slice : slice+1 );
-          message.str(""); message << "TS" << slice_ts << "=" << std::dec << std::fixed << std::setprecision(0)
-                                   << this->frame.buftimestamp[this->frame.index]
-                                   << "// Archon timestamp for slice " << slice_ts << " in 10ns";
-          this->extkeys.addkey( message.str() );
-
-          message.str(""); message << "DTS" << slice_ts << "=" << std::dec << dts
-                                   << "// Archon delta TS slice " << slice_ts << " in 10ns";
-          this->extkeys.addkey( message.str() );
-
-          message.str(""); message << "NSLICE=" << slice_ts << "// slice number";
-          this->extkeys.addkey( message.str() );
-
-          // close FITS object on error
-          //
-          if ( error != NO_ERROR ) {
-            logwrite( function, "ERROR waiting for readout: closing FITS file" );
-            this->camera_info.writekeys_before = (this->camera.writekeys_when=="before"?true:false);
-            if (this->__fits_file) this->__fits_file->complete();
-            if ( this->camera_info.iscds ) {
-              this->cds_info.writekeys_before = (this->camera.writekeys_when=="before"?true:false);
-              if (this->__file_cds) this->__file_cds->complete();
-            }
-            this->cleanup_memory();
-            return error;
-          }
-
-          // If this ring buffer is already locked for writing then there is a problem
-          //
-          if ( (*this->ringlock.at( this->ringcount )).load( std::memory_order_seq_cst ) ) {
-            message.str(""); message << "RING BUFFER OVERFLOW: ring buffer " << this->ringcount << " is already locked for writing";
-            this->camera.log_error( function, message.str() );
-            this->cleanup_memory();
-            return ERROR;
-          }
-
-          (*this->ringlock.at( this->ringcount )).store(true, std::memory_order_seq_cst);   // mark this ring buffer as locked while reading data into it
-          error = this->read_frame( Camera::FRAME_IMAGE, ptr_image, this->ringcount );      // read image frame buffer to host, no write
-          (*this->ringlock.at( this->ringcount )).store(false, std::memory_order_seq_cst);  // clear the ring buffer lock flag
-
-          // close FITS object on error
-          //
-          if ( error != NO_ERROR ) {
-            logwrite( function, "ERROR reading frame buffer: closing FITS file" );
-            this->camera_info.writekeys_before = (this->camera.writekeys_when=="before"?true:false);
-            if (this->__fits_file) this->__fits_file->complete();
-            if ( this->camera_info.iscds ) {
-              if (this->__file_cds) this->__file_cds->complete();
-            }
-            this->cleanup_memory();
-            return error;
-          }
-
-          message.str(""); message << "NSLICE:";
-          if ( this->camera_info.sampmode == SAMPMODE_SINGLE ) message << slice; else message << slice+1;
-          this->camera.async.enqueue( message.str() );
-          logwrite( function, message.str() );
-
-#ifdef LOGLEVEL_DEBUG
-          message.str(""); message << "[DEBUG] sampmode=" << this->camera_info.sampmode << " slice=" << slice << " cubedepth=" << this->camera_info.cubedepth;
-          logwrite( function, message.str() );
-#endif
-          switch( this->camera_info.sampmode ) {
-            case SAMPMODE_UTR:
-              if ( (slice+1) < this->camera_info.cubedepth ) {
-                logwrite( function, "[SAMPMODE_UTR] ----- waiting for exposure delay -----" );
-                this->last_frame_timer = this->frame.buftimestamp[this->frame.index];
-                error=wait_for_exposure();
-                if ( error != NO_ERROR ) { logwrite( function, "ERROR" ); return error; }
-              }
-              break;
-            case SAMPMODE_CDS:
-            case SAMPMODE_MCDS:
-              if ( (slice+1) == this->camera_info.cubedepth/2 ) {
-                logwrite( function, "[SAMPMODE_M/CDS] ----- waiting for exposure delay -----" );
-                this->last_frame_timer = this->frame.buftimestamp[this->frame.index];
-                error=wait_for_exposure();
-                if ( error != NO_ERROR ) { logwrite( function, "ERROR" ); return error; }
-              }
-              break;
-            default:
-              logwrite( function, "----- no exposure delay -----" );
-              break;
-          }
-        }  // end Loop over the number of slices in this datacube
-        }
-
-        // @todo check for cases not mex
-        //
-        if ( this->camera.writekeys_when=="before" ) this->copy_keydb();  // copy the ACF and userkeys database into camera_info
-
-        if ( ! this->camera.is_aborted() && camera.mex() ) {              // NB. all nirc2 sample modes set mex true
-#ifdef LOGLEVEL_DEBUG
-          message.str(""); message << "[DEBUG] spawning threads to deinterlace and write ringcount " << this->ringcount;
-          logwrite( function, message.str() );
-#endif
-          // Clear the deinterlaced flag for this ring buffer,
-          // then spawn two threads, one to deinterlace and another to write the FITS file.
-          // The fits writing thread will block until the deinterlacing thread signals completion.
-          //
-          this->ringbuf_deinterlaced.at( this->ringcount ) = false;
-          std::thread( std::ref( Archon::Interface::dothread_start_deinterlace ), this, this->ringcount ).detach();
-          std::thread( std::ref( Archon::Interface::dothread_writeframe ), this, this->ringcount ).detach();
-        }
-        else if ( ! this->camera.is_aborted() ) {
-          // After reading the Archon frame buffers, or
-          // after reading all of the multiple frame buffers for a data cube,
-          // deinterlace and then write the frame to FITS file.
-          //
-          switch ( this->camera_info.datatype ) {
-            case USHORT_IMG: {
-#ifdef LOGLEVEL_DEBUG
-              logwrite( function, "[DEBUG] this->camera_info.datatype = USHORT_IMG" );
-#endif
-              this->deinterlace( (uint16_t*)this->image_ring[this->ringcount],
-                                 (uint16_t*)this->work_ring[this->ringcount],
-                                 (uint16_t*)this->cds_ring[this->ringcount],
-                                 this->ringcount
-                               );
-              break;
-            }
-            case SHORT_IMG: {
-#ifdef LOGLEVEL_DEBUG
-              logwrite( function, "[DEBUG] this->camera_info.datatype = SHORT_IMG" );
-#endif
-              this->deinterlace( (int16_t *)this->image_ring[this->ringcount], (int16_t *)this->work_ring[this->ringcount], (int16_t*)this->cds_ring[this->ringcount], this->ringcount );
-              break;
-            }
-            case FLOAT_IMG: {
-#ifdef LOGLEVEL_DEBUG
-              logwrite( function, "[DEBUG] this->camera_info.datatype = FLOAT_IMG" );
-#endif
-              this->deinterlace( (uint32_t *)this->image_data, (uint32_t *)this->work_ring[this->ringcount], (uint32_t*)this->cds_ring[this->ringcount], this->ringcount );
-              break;
-            }
-            default:
-              message.str(""); message << "unknown datatype " << this->camera_info.datatype;
-              this->camera.log_error( function, message.str() );
-              this->cleanup_memory();
-              return ERROR;
-              break;
-          }
-          error = this->write_frame( this->ringcount );                   // write image frame
-        }
-        else if ( this->camera.is_aborted() ) {
-          ++this->write_frame_count;
-          ++this->deinterlace_count;
-          logwrite( function, "skipping deinterlacing due to abort" );
-        }
-
-        // For non-sequence multiple exposures, including mexamps, close the fits file here
-        //
-        if ( !this->camera.mex() || this->camera.mexamps() ) {          // Error or not, close the file.
-#ifdef LOGLEVEL_DEBUG
-          logwrite( function, "[DEBUG] closing fits file (1)" );
-#endif
-          this->camera_info.exposure_aborted = this->camera.is_aborted();
-          this->camera_info.writekeys_before = (this->camera.writekeys_when=="before"?true:false);
-          if (this->__fits_file) this->__fits_file->complete();
-          this->camera.increment_imnum();                           // increment image_num when fitsnaming == "number"
-
-          // ASYNC status message on completion of each file
-          //
-          message.str(""); message << "FILE:" << this->camera_info.fits_name << " COMPLETE";
-          this->camera.async.enqueue( message.str() );
-          logwrite( function, message.str() );
-        }
-
-        this->inc_ringcount();
-
-#ifdef LOGLEVEL_DEBUG
-        message.str(""); message << "[DEBUG] exposures remaining in sequence: " << std::dec << nseq
-                                 << " incremented ringcount to " << this->ringcount;
-        logwrite( function, message.str() );
-#endif
-        if (error != NO_ERROR) break;                               // should be impossible but don't try additional sequences if there were errors
-
-        // prepare and broadcast the appropriate message tag
-        //
-        message.str("");
-        switch( this->camera_info.sampmode ) {
-          case Archon::SAMPMODE_SINGLE:
-          case Archon::SAMPMODE_CDS:
-          case Archon::SAMPMODE_MCDS:
-            message << "NCOADD:" << this->camera_info.ncoadd;
-            break;
-          case Archon::SAMPMODE_UTR:
-            message << "NRAMP:" << this->camera_info.ncoadd;
-            break;
-          case Archon::SAMPMODE_RXV:
-          case Archon::SAMPMODE_RXRV:
-            message << "NFRAME:" << this->camera_info.ncoadd;
-            break;
-        }
-        this->camera.async.enqueue( message.str() );
-
-      }  // end of sequence loop, while (nseq-- > 0)
-
-//    if ( this->camera.is_aborted() ) {
-//      error = this->abort_archon();
-//      if ( error != NO_ERROR ) {
-//        logwrite( function, "ERROR aborting exposure" );
-//        this->cleanup_memory();
-//        return( error );
-//      }
-//      logwrite(function, "Archon exposure aborted");
-//    }
-
-    }
-
-    // for multi-exposure (non-mexamps) multi-extension files, close the FITS file now that they've all been written
-    //
-    if ( this->camera.mex() && !this->camera.mexamps() ) {
-
-      // Wait for all of the extensions to have been written
-      //
-      logwrite( function, "waiting for all frames to be deinterlaced and written" );
-      int wfc = this->write_frame_count.load( std::memory_order_seq_cst );
-#ifdef LOGLEVEL_DEBUG
-      message.str(""); message << "[DEBUG] write_frame_count=" << wfc << " nseq=" << this->camera_info.nseq;
-      logwrite( function, message.str() );
-#endif
-      while ( wfc < this->camera_info.nseq ) {
-        wfc = this->write_frame_count.load( std::memory_order_seq_cst );
-//DDSH  if ( this->camera.is_aborted() ) {  // TODO check this
-//DDSH    write( function, "aborted, no longer waiting for frames" );
-//DDSH    break;
-//DDSH  }
-      }
-
-      // Make sure to notify the deinterlacing threads so that they stop in case of an abort
-      //
-      if ( this->camera.is_aborted() ) {
-        logwrite( function, "leaving early due to abort" );
-        this->deinter_cv.notify_all();
-      }
-      else {
-        logwrite( function, "all frames deinterlaced and written" );
-      }
-
-#ifdef LOGLEVEL_DEBUG
-      logwrite( function, "[DEBUG] closing fits file (2)" );
-#endif
-      this->camera_info.exposure_aborted = this->camera.is_aborted();
-
-      // *** THIS IS NORMAL CLOSE FOR NIRC2 ***
-      this->camera_info.writekeys_before = (this->camera.writekeys_when=="before"?true:false);
-      if (this->__fits_file) this->__fits_file->complete();
-      this->camera.increment_imnum();          // increment image_num when fitsnaming == "number"
-
-      // ASYNC status message on completion of each file
-      //
-      message.str(""); message << "RAWFILE:" << this->camera_info.fits_name << " " << ( error==NO_ERROR ? "COMPLETE" : "ERROR" );
-      this->camera.async.enqueue( message.str() );
-      error == NO_ERROR ? logwrite( function, message.str() ) : this->camera.log_error( function, message.str() );
-
-      if ( this->camera_info.iscds ) {
-        message.str(""); message << "FILE:" << this->cds_info.fits_name << " " << ( error==NO_ERROR ? "COMPLETE" : "ERROR" );
-        this->camera.async.enqueue( message.str() );
-        error == NO_ERROR ? logwrite( function, message.str() ) : this->camera.log_error( function, message.str() );
-      }
-    }
-
-    this->cleanup_memory();
-    debug( "DO_EXPOSE_EXIT" );
-    return (error);
   }
   /***** Archon::Interface::do_expose *****************************************/
+
+
+  /***** Archon::Interface::initialize_processing_buffers *********************/
+  long Interface::initialize_processing_buffers() {
+    try {
+      buffers_16  = std::make_unique<ProcessingBuffers<uint16_t>>(camera_info.section_size, cds_info.section_size);
+      buffers_16s = std::make_unique<ProcessingBuffers<int16_t>>(camera_info.section_size, cds_info.section_size);
+      buffers_32  = std::make_unique<ProcessingBuffers<uint32_t>>(camera_info.section_size, cds_info.section_size);
+    }
+    catch (const std::exception &e) {
+      logwrite("Archon::Interface::initialize_processing_buffers",
+               "ERROR initializing memory: "+std::string(e.what()));
+      return ERROR;
+    }
+    return NO_ERROR;
+  }
+  /***** Archon::Interface::initialize_processing_buffers *********************/
 
 
   /***** Archon::Interface::frame_acquisition_loop ****************************/
@@ -4469,12 +3964,26 @@ namespace Archon {
     const std::string function("Archon::Interface::frame_acquisition_loop");
     std::stringstream message;
     long error=NO_ERROR;
+    logwrite(function, "start");
+
+    // Before initiating the exposure, there is a kludge needed for SAMPMODE_SINGLE.
+    // This mode is the same as SAMPMODE_RXV with 2 frames, except that NIRC2 only
+    // wants 1. So we let the user tell us 1 frame but then we have to tell Archon
+    // 2 frames, and then discard the first one so that no one knows.
+    //
+    std::string nseqstr;
+    if ( this->camera_info.sampmode == SAMPMODE_SINGLE ) {
+      nseqstr=std::to_string(2);
+    }
+    else {
+      nseqstr=std::to_string(nseq);
+    }
 
     //
     // *** initiate the exposure here ***
     //
-    error = this->prep_parameter(this->exposeparam, std::to_string(nseq));
-    if (error == NO_ERROR) error = this->load_parameter(this->exposeparam, std::to_string(nseq));
+    error = this->prep_parameter(this->exposeparam, nseqstr);
+    if (error == NO_ERROR) error = this->load_parameter(this->exposeparam, nseqstr);
     if ( error != NO_ERROR ) {
       logwrite( function, "ERROR could not initiate exposure" );
       return;
@@ -4522,6 +4031,9 @@ namespace Archon {
       logwrite(function, message.str());
     }
 
+    int framespushed=0;
+
+    logwrite(function, "[DEBUG] exposures in sequence: "+std::to_string(nseq));
     while (nseq-- > 0) {
 
       this->camera_info.ncoadd = this->camera_info.nseq - nseq;
@@ -4584,15 +4096,16 @@ namespace Archon {
         logwrite( function, message.str() );
 
         uint32_t buffersz = this->image_data_bytes * this->camera_info.cubedepth;
-        auto image = std::make_shared<ImageBuffer>();
-        image->seq = this->camera_info.nseq - nseq;
-        image->rawpixels = std::shared_ptr<char[]>(new char[buffersz]);
-        image->cubedepth = slicecounter;
+        auto framebuf = std::make_shared<ImageBuffer>();
+        framebuf->seq = this->camera_info.nseq - nseq;
+//      framebuf->rawpixels = std::shared_ptr<char[]>(new char[buffersz]);
+        framebuf->rawpixels = std::shared_ptr<char[]>(static_cast<char*>(std::aligned_alloc(32, buffersz)), std::free);
+        framebuf->cubedepth = slicecounter;
 
         error = this->wait_for_readout();                             // Wait for the readout into Archon frame buffer,
 
         if ( this->camera_info.sampmode == SAMPMODE_SINGLE && slice == 0 ) {
-          logwrite( function, "[SAMPMODE_SINGLE] ----- waiting for exposure delay -----" );
+//        logwrite( function, "[SAMPMODE_SINGLE] ----- waiting for exposure delay -----" );
           this->last_frame_timer = this->frame.buftimestamp[this->frame.index];
           error=wait_for_exposure();
           if ( error != NO_ERROR ) { logwrite( function, "ERROR" ); return; }
@@ -4634,33 +4147,28 @@ namespace Archon {
         message.str(""); message << "NSLICE=" << slice_ts << "// slice number";
         this->extkeys.addkey( message.str() );
 
-        error = this->read_frame(Camera::FRAME_IMAGE, image->rawpixels.get());
+        error = this->read_frame(Camera::FRAME_IMAGE, framebuf->rawpixels.get());
 
-        image->framenum  = this->frame.bufframen[this->frame.index];
-        image->timestamp = this->frame.buftimestamp[this->frame.index];
-        image->slice     = slice+1;
+        framebuf->framenum  = this->frame.bufframen[this->frame.index];
+        framebuf->timestamp = this->frame.buftimestamp[this->frame.index];
+        framebuf->slice     = slice+1;
 
         {
         std::lock_guard<std::mutex> lock(this->queue_mutex);
-        this->image_queue.push(image);
+        this->framebuf_queue.push(framebuf);
+        framespushed++;
         }
-        message.str(""); message << "[PUSH] pushed frame " << image->framenum << " into queue";
-        logwrite(function, message.str());
+        logwrite(function, "[DEBUG] pushed frame "+std::to_string(framebuf->framenum)+" into queue. total pushed="+std::to_string(framespushed));
         this->queue_cv.notify_one();
 
         message.str(""); message << "NSLICE:";
         if ( this->camera_info.sampmode == SAMPMODE_SINGLE ) message << slice; else message << slice+1;
         this->camera.async.enqueue( message.str() );
-        logwrite( function, message.str() );
 
-#ifdef LOGLEVEL_DEBUG
-        message.str(""); message << "[DEBUG] sampmode=" << this->camera_info.sampmode << " slice=" << slice << " cubedepth=" << this->camera_info.cubedepth;
-        logwrite( function, message.str() );
-#endif
         switch( this->camera_info.sampmode ) {
           case SAMPMODE_UTR:
             if ( (slice+1) < this->camera_info.cubedepth ) {
-              logwrite( function, "[SAMPMODE_UTR] ----- waiting for exposure delay -----" );
+//            logwrite( function, "[SAMPMODE_UTR] ----- waiting for exposure delay -----" );
               this->last_frame_timer = this->frame.buftimestamp[this->frame.index];
               error=wait_for_exposure();
               if ( error != NO_ERROR ) { logwrite( function, "ERROR" ); return; }
@@ -4669,104 +4177,247 @@ namespace Archon {
           case SAMPMODE_CDS:
           case SAMPMODE_MCDS:
             if ( (slice+1) == this->camera_info.cubedepth/2 ) {
-              logwrite( function, "[SAMPMODE_M/CDS] ----- waiting for exposure delay -----" );
+//            logwrite( function, "[SAMPMODE_M/CDS] ----- waiting for exposure delay -----" );
               this->last_frame_timer = this->frame.buftimestamp[this->frame.index];
               error=wait_for_exposure();
               if ( error != NO_ERROR ) { logwrite( function, "ERROR" ); return; }
             }
             break;
           default:
-            logwrite( function, "----- no exposure delay -----" );
+//          logwrite( function, "----- no exposure delay -----" );
             break;
         }
       } // end loop over slices in datacube
     } // end while nseq
+    logwrite(function, "complete");
   }
   /***** Archon::Interface::frame_acquisition_loop ****************************/
 
 
   /***** Archon::Interface::frame_processing_loop *****************************/
+  /**
+   * @brief  run as a thread
+   *
+   */
   void Interface::frame_processing_loop() {
     const std::string function("Archon::Interface::frame_processing_loop");
     std::stringstream message;
-    logwrite(function, "enter");
+    logwrite(function, "start");
 
-    while (true) {
-      std::shared_ptr<ImageBuffer> image;
+    // open FITS files
+    //
+    camera_info.writekeys_before = (camera.writekeys_when=="before"?true:false);
+    __fits_file = std::make_unique<FITS_file<uint16_t>>(camera_info.sampmode == SAMPMODE_SINGLE ? false : true);
+    if ( camera_info.iscds ) {
+      cds_info.writekeys_before = (camera.writekeys_when=="before"?true:false);
+      __file_cds = std::make_unique<FITS_file<int32_t>>(false);
+    }
+
+    // allocate memory where needed
+    //
+    if ( coaddbuf != nullptr ) { delete [] (int32_t*)coaddbuf; coaddbuf=nullptr; }
+    coaddbuf = (int32_t*) new int32_t [ cds_info.section_size ]{};
+
+    if ( mcdsbuf_0 != nullptr ) delete [] (int32_t*)mcdsbuf_0;
+    mcdsbuf_0 = (int32_t*) new int32_t [ cds_info.section_size ]{};
+
+    if ( mcdsbuf_1 != nullptr ) delete [] (int32_t*)mcdsbuf_1;
+    mcdsbuf_1 = (int32_t*) new int32_t [ cds_info.section_size ]{};
+
+    while (!camera.is_aborted()) {
+      std::shared_ptr<ImageBuffer> framebuf;
       {
-      std::unique_lock<std::mutex> lock(this->queue_mutex);
-      this->queue_cv.wait(lock, [&]{return !image_queue.empty() || this->stop_threads;});
+      std::unique_lock<std::mutex> lock(queue_mutex);
+      queue_cv.wait(lock, [&]{return !framebuf_queue.empty() || is_producer_finished || camera.is_aborted();});
+      if (camera.is_aborted()) break;
 
-      if (this->image_queue.empty() && this->stop_threads) break;
+      if (framebuf_queue.empty() && is_producer_finished) break;
 
-      image = this->image_queue.front();
-      this->image_queue.pop();
+      framebuf = framebuf_queue.front();
+      framebuf_queue.pop();
       }
-      message.str(""); message << "[POP] got image *** framenum=" << image->framenum << " seq=" << image->seq << " slice=" << image->slice;
+
+      message.str(""); message << "[DEBUG] pop framebuf->framenum=" << framebuf->framenum
+                               << " ->seq=" << framebuf->seq
+                               << " ->slice=" << framebuf->slice
+                               << " queue size=" << framebuf_queue.size();
       logwrite(function, message.str());
-      if (image->slice == image->cubedepth) {
-        process_image(image);
+
+      if (framebuf->slice == framebuf->cubedepth) {
+        process_frame(framebuf);
       }
     }
-    logwrite(function, "exit");
+
+    if (__fits_file) __fits_file->complete();
+    if (__file_cds) __file_cds->complete();
+
+    logwrite(function, "complete");
   }
   /***** Archon::Interface::frame_processing_loop *****************************/
 
 
-  /***** Archon::Interface::process_image *************************************/
-  void Interface::process_image(std::shared_ptr<ImageBuffer> &image) {
-    const std::string function("Archon::Interface::process_image");
+  /***** Archon::Interface::process_frame *************************************/
+  /**
+   * @brief  I'm given a single frame buffer from the queue
+   *
+   */
+  void Interface::process_frame(std::shared_ptr<ImageBuffer> &framebuf) {
+    const std::string function("Archon::Interface::process_frame");
     std::stringstream message;
+    long error;
 
+    logwrite(function, "start");
+
+    // call the appropriate template deinterlacer
+    //
     switch (this->camera_info.datatype) {
       case USHORT_IMG:
-        deinterlace_queue<uint16_t>(image);
+        deinterlace_queue<uint16_t>(framebuf, *buffers_16);
+        error=this->__fits_file->write_image( buffers_16->workbuf.get(),
+                                              get_timestamp(),
+                                              this->camera_info.extension.load(),
+                                              this->camera_info
+                                            );
         break;
       case SHORT_IMG:
-        deinterlace_queue<int16_t>(image);
+        deinterlace_queue<int16_t>(framebuf, *buffers_16s);
         break;
       case FLOAT_IMG:
-        deinterlace_queue<uint32_t>(image);
+        deinterlace_queue<uint32_t>(framebuf, *buffers_32);
         break;
       default:
         message.str(""); message << "unknown datatype " << this->camera_info.datatype;
         this->camera.log_error( function, message.str() );
         return;
     }
+
+    logwrite(function, "complete");
   }
-  /***** Archon::Interface::process_image *************************************/
+  /***** Archon::Interface::process_frame *************************************/
 
 
+  /***** Archon::Interface::deinterlace_queue *********************************/
   template<typename T>
-  void Interface::deinterlace_queue(std::shared_ptr<ImageBuffer> buffer) {
+  void Interface::deinterlace_queue(std::shared_ptr<ImageBuffer> framebuf, ProcessingBuffers<T> &buffers) {
+    const std::string function("Archon::Interface::deinterlace_queue");
 
-/***
-    if (mcdsbuf_0) memset(mcdsbuf_0, 0, cds_info.section_size * sizeof(int32_t));
-    if (mcdsbuf_1) memset(mcdsbuf_1, 0, cds_info.section_size * sizeof(int32_t));
+    logwrite(function, "start");
 
-    T* imbuf = reinterpret_cast<T*>(buffer->rawpixels.get());
-    T* workbuf = reinterpret_cast<T*>(buffer->workpixels.get());
-    T* cdsbuf = reinterpret_cast<T*>(buffer->cdspixels.get());
+    try {
+      if (mcdsbuf_0) memset(mcdsbuf_0, 0, cds_info.section_size * sizeof(int32_t));
+      if (mcdsbuf_1) memset(mcdsbuf_1, 0, cds_info.section_size * sizeof(int32_t));
 
-    DeInterlace<T> deinterlacer( imbuf,
-                                 workbuf, 
-                                 cdsbuf,
-                                 coaddbuf,
-                                 mcdsbuf_0,
-                                 mcdsbuf_1,
-                                 camera_info.iscds,
-                                 camera_info.nmcds,
-                                 camera_info.detector_pixels[0],  // cols
-                                 camera_info.detector_pixels[1],  // rows
-                                 camera_info.readout_type,
-                                 camera_info.imheight,            // frame_rows
-                                 camera_info.imwidth,             // frame_cols
-                                 camera_info.cubedepth            // depth
-                               );
+      T* imbuf   = reinterpret_cast<T*>(framebuf->rawpixels.get());
+      T* workbuf = buffers.workbuf.get();
+      T* cdsbuf  = buffers.cdsbuf.get();
 
-    deinterlacer.do_deinterlace();
-***/
+      DeInterlace<T> deinterlacer( imbuf,
+                                   workbuf, 
+                                   cdsbuf,
+                                   coaddbuf,
+                                   mcdsbuf_0,
+                                   mcdsbuf_1,
+                                   camera_info.iscds,
+                                   camera_info.nmcds,
+                                   camera_info.detector_pixels[0],  // cols
+                                   camera_info.detector_pixels[1],  // rows
+                                   camera_info.readout_type,
+                                   camera_info.imheight,            // frame_rows
+                                   camera_info.imwidth,             // frame_cols
+                                   camera_info.cubedepth            // depth
+                                 );
+
+      deinterlacer.do_deinterlace();
+    }
+    catch (const std::exception &e) {
+      logwrite(function, "ERROR: "+std::string(e.what()));
+      return;
+    }
+
+    ++deinterlace_count;
+    if (camera_info.iscds) runcds();
+    logwrite(function, "complete");
   }
+  /***** Archon::Interface::deinterlace_queue *********************************/
+
+
+  /***** Archon::Interface::runcds ********************************************/
+  void Interface::runcds() {
+    const std::string function("Archon::Interface::runcds");
+    std::stringstream message;
+    logwrite(function, "start");
+
+    // Create a Mat image for the final MCDS coadd
+    // Using smart pointers to automatically clean up.
+    //
+    std::unique_ptr<cv::Mat> coadd( new cv::Mat( cv::Mat::zeros( this->cds_info.imheight, this->cds_info.imwidth, CV_32S ) ) );
+
+    std::unique_ptr<cv::Mat> diff( new cv::Mat( cv::Mat::zeros( this->cds_info.imheight, this->cds_info.imwidth, CV_32S ) ) );
+
+    std::unique_ptr<cv::Mat> mcds_0(nullptr);
+    std::unique_ptr<cv::Mat> mcds_1(nullptr);
+
+    // MCDS subtraction and co-adding
+    //
+    if ( deinterlace_count < camera_info.nseq ) {
+
+      message.str(""); message << "deinterlace_count=" << deinterlace_count;
+      logwrite( function, message.str() );
+
+      if (this->cds_info.nmcds > 0 ) {
+        logwrite( function, "[DEBUG] performing MCDS subtraction" );
+        // Perform the CDS subtraction, sum of signal frames - sum of baseline frames, average,
+        // then coadd the result. To do that, create Mat arrays from each of the MCDS buffers.
+        //
+        try {
+          mcds_0.reset( new cv::Mat( this->cds_info.imheight, this->cds_info.imwidth, CV_32S, this->mcdsbuf_0 ) );
+          mcds_1.reset( new cv::Mat( this->cds_info.imheight, this->cds_info.imwidth, CV_32S, this->mcdsbuf_1 ) );
+
+          *diff   = *mcds_1 - *mcds_0;           // perform the subtraction, signal-baseline
+          *diff  /= ( this->cds_info.nmcds/2 );  // average
+          *coadd += *diff;                       // coadd here
+        }
+        catch (const std::exception &ex) {
+          message.str(""); message << "ERROR subtracting signal-baseline: " << ex.what();
+          logwrite( function, message.str() );
+          return;
+        }
+        catch (...) {
+          logwrite( function, "ERROR subtracting signal-baseline: other" );
+          return;
+        }
+      }
+    }
+    else {
+      if (camera_info.nmcds==0) {
+        logwrite( function, "[DEBUG] dothread_runcds (a) calling __file_cds->write_image" );
+        this->__file_cds->write_image( this->coaddbuf,
+                                       get_timestamp(),
+                                       0,
+                                       this->cds_info
+                                     );
+      }
+      else {
+        logwrite( function, "[DEBUG] copying MCDS coadd image to FITS buffer" );
+        // Copy assembled image into the FITS buffer, this->coaddbuf
+        //
+        unsigned long index=0;
+        for ( int row=0; row<this->cds_info.imheight; row++ ) {
+          for ( int col=0; col<this->cds_info.imwidth; col++ ) {
+            *( this->coaddbuf + index++ ) = static_cast<int32_t>(coadd->at<int32_t>(row, col));
+          }
+        }
+        logwrite( function, "[DEBUG] dothread_runcds (b) calling __file_cds->write_image" );
+        this->__file_cds->write_image( this->coaddbuf,
+                                       get_timestamp(),
+                                       0,
+                                       this->cds_info
+                                     );
+      }
+    }
+    logwrite(function, "complete");
+  }
+  /***** Archon::Interface::runcds ********************************************/
 
 
   /**************** Archon::Interface::wait_for_exposure **********************/
@@ -4958,7 +4609,7 @@ namespace Archon {
     // Poll frame status until current frame is not the last frame and the buffer is ready to read.
     // The last frame was recorded before the readout was triggered in get_frame().
     //
-    while ( done == false && not this->camera.is_aborted() ) {
+    while ( done == false && !this->camera.is_aborted() ) {
 
       error = this->get_frame_status();
 
@@ -5015,12 +4666,12 @@ namespace Archon {
         this->camera.async.enqueue( message.str() );
       }
 #ifdef LOGLEVEL_DEBUG
-      message << " [DEBUG] ";
-      message << " index=" << this->frame.index << " next_index=" << this->frame.next_index << " | ";
-      for ( int i=0; i < Archon::nbufs; i++ ) { message << " " << this->frame.buflines[ i ]; }
+//    message << " [DEBUG] ";
+//    message << " index=" << this->frame.index << " next_index=" << this->frame.next_index << " | ";
+//    for ( int i=0; i < Archon::nbufs; i++ ) { message << " " << this->frame.buflines[ i ]; }
 #endif
 
-      std::this_thread::sleep_for( std::chrono::microseconds( 100 ) );  // reduces polling frequency
+      std::this_thread::sleep_for( std::chrono::microseconds( 10 ) );  // reduces polling frequency
     } // end while (done == false && not this->camera.is_aborted)
 
     // After exiting while loop, one update to ensure accurate ASYNC message
@@ -5044,12 +4695,12 @@ namespace Archon {
     }
 
 #ifdef LOGLEVEL_DEBUG
-    message.str(""); 
-    message << "[DEBUG] lastframe=" << this->lastframe 
-            << " currentframe=" << currentframe 
-            << " bufcomplete=" << this->frame.bufcomplete[this->frame.index]
-            << " timestamp=" << this->frame.buftimestamp[this->frame.index];
-    logwrite(function, message.str());
+//  message.str(""); 
+//  message << "[DEBUG] lastframe=" << this->lastframe 
+//          << " currentframe=" << currentframe 
+//          << " bufcomplete=" << this->frame.bufcomplete[this->frame.index]
+//          << " timestamp=" << this->frame.buftimestamp[this->frame.index];
+//  logwrite(function, message.str());
 #endif
     this->lastframe = currentframe;
 

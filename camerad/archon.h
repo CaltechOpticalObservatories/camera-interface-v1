@@ -212,7 +212,7 @@ namespace Archon {
 
         cv::Mat image;
 
-        image = cv::Mat( 256, 256, CV_16U, this->imbuf );
+        image = cv::Mat( 256, 256, CV_16U, this->imbuf ).clone();
 
         return;
       }
@@ -239,14 +239,14 @@ namespace Archon {
 
         // These Mat objects are the input frames
         //
-        cv::Mat raw    = cv::Mat( bufrows,   this->cols, CV_16U, this->imbuf   );
-        cv::Mat signal = cv::Mat( bufrows/2, this->cols, CV_16U, cv::Scalar(0) );
-        cv::Mat reset  = cv::Mat( bufrows/2, this->cols, CV_16U, cv::Scalar(0) );
+        cv::Mat raw    = cv::Mat( bufrows,   this->cols, CV_16U, this->imbuf   ).clone();
+        cv::Mat signal ( bufrows/2, this->cols, CV_16U );
+        cv::Mat reset  ( bufrows/2, this->cols, CV_16U );
 
         // These Mat objects hold the deinterlaced frames
         //
-        cv::Mat deinter_reset  = cv::Mat( this->frame_rows, this->frame_cols, CV_16U, cv::Scalar(0) );
-        cv::Mat deinter_signal = cv::Mat( this->frame_rows, this->frame_cols, CV_16U, cv::Scalar(0) );
+        cv::Mat deinter_reset  ( this->frame_rows, this->frame_cols, CV_16U );
+        cv::Mat deinter_signal ( this->frame_rows, this->frame_cols, CV_16U );
 
         // Copy pairs of rows from the raw to the reset and signal frame Mat objects
         //
@@ -325,7 +325,7 @@ namespace Archon {
 #endif
         // Create openCV image to hold entire imbuf (all cubes)
         //
-        cv::Mat image = cv::Mat( (this->rows * this->depth), this->cols, CV_16U, this->imbuf );
+        cv::Mat image = cv::Mat( (this->rows * this->depth), this->cols, CV_16U, this->imbuf ).clone();
 
         // Create an empty openCV image for performing the deinterlacing work.
         // Note that this "work" Mat image is a single frame!
@@ -333,9 +333,12 @@ namespace Archon {
         // it gets back here. So if you wait until this->nirc2() returns, this work image
         // may not be what you want. Consider it a temporary workspace only.
         //
-        cv::Mat work  = cv::Mat( this->frame_rows, this->frame_cols, CV_16U, cv::Scalar(0) );
+        //cv::Mat work  = cv::Mat( this->frame_rows, this->frame_cols, CV_16U, cv::Scalar(0) );
+        cv::Mat work( this->frame_rows, this->frame_cols, CV_16U );
 
         int workindex=0;
+        message.str(""); message << "workindex="<<workindex << " prior to calling nirc2(workindex, image, work)";
+        logwrite( "Archon::DeInterlace::nirc2", message.str() );
         this->nirc2( workindex, image, work );  // this is where the actual deinterlacing takes place
 
         debug( "NIRC2_EXIT" );
@@ -380,7 +383,8 @@ namespace Archon {
         std::string function = "Archon::DeInterlace::nirc2";
 #ifdef LOGLEVEL_DEBUG
         message.str(""); message << "[DEBUG] this->rows=" << this->rows << " this->cols=" << this->cols
-                                 << " this->frame_rows=" << this->frame_rows << " this->frame_cols=" << this->frame_cols;
+                                 << " this->frame_rows=" << this->frame_rows << " this->frame_cols=" << this->frame_cols
+                                 << " workindex=" << workindex;
         logwrite( "Archon::DeInterlace::nirc2", message.str() );
 #endif
 
@@ -510,26 +514,14 @@ namespace Archon {
           cv::flip( Q3c, Q3f, -1 );  // flip vertically and vertically
           cv::flip( Q4c, Q4f,  0 );  // flip horizontally
 
-#ifdef LOGLEVEL_DEBUG
-//        message.str(""); message << "[DEBUG] after: Q1f.rows=" << Q1f.rows << " Q2c.rows=" << Q2c.rows << " Q3f.rows="<< Q3f.rows<<" Q4f.rows="<<Q4f.rows;
-//        logwrite( "Archon::DeInterlace::nirc2", message.str() );
-//        logwrite( "Archon::DeInterlace::nirc2", "[DEBUG] copying quadrants to work frame" );
-//        message.str(""); message << "[DEBUG] work.rows=" << work.rows << " work.cols=" << work.cols;
-//        logwrite( "Archon::DeInterlace::nirc2", message.str() );
-#endif
-
           {
           cv::Mat uppers;
           cv::Mat lowers;
+          cv::Mat temp;
           cv::hconcat( Q2c, Q1f, uppers );      // concatenate the two upper quadrants together, horizontally
           cv::hconcat( Q4f, Q3f, lowers );      // concatenate the two lower quadrants together, horizontally
-          cv::vconcat( lowers, uppers, work );  // concatenate the uppers and lowers together, vertically
-#ifdef LOGLEVEL_DEBUG
-//        message.str(""); message << "[DEBUG] uppers.rows=" << uppers.rows
-//                                 << " lowers.rows=" << lowers.rows
-//                                 << " work.rows=" << work.rows;
-//        logwrite( "Archon::DeInterlace::nirc2", message.str() );
-#endif
+          cv::vconcat( lowers, uppers, temp );  // concatenate the uppers and lowers together, vertically
+          temp.copyTo(work);
           }
 
           // Subtract the image from 65535 because for NIRC2 the counts decrease
@@ -541,6 +533,8 @@ namespace Archon {
           //
 #ifdef LOGLEVEL_DEBUG
           message.str(""); message << "[DEBUG] copying " << this->frame_rows << " from work to fits buffer";
+          logwrite( "Archon::DeInterlace::nirc2", message.str() );
+          message.str(""); message << "[DEBUG] workbuf=" << std::hex << static_cast<void*>(this->workbuf) << " workindex=" << workindex;
           logwrite( "Archon::DeInterlace::nirc2", message.str() );
 #endif
           for ( int row=0; row<this->frame_rows; row++ ) {
@@ -557,15 +551,15 @@ namespace Archon {
 #endif
 
           // For CDS mode, copy the work buffer to the appropriate frame buffer
-	  //
+          //
           if ( this->iscds && this->nmcds==0 && slicen==0 ) work.copyTo( this->resetframe );  // this is the reset frame
           if ( this->iscds && this->nmcds==0 && slicen==1 ) work.copyTo( this->readframe  );  // this is the read frame
 
           // For MCDS mode, copy the work buffer to the appropriate frame buffer
-	  //
+          //
           if ( this->nmcds > 0 ) {
             // For the first half of num MCDS point to buffer0, second half point to buffer1
-	    //
+            //
             int32_t* ptr = ( (slicen < this->nmcds/2) ? this->mcdsbuf_0 : this->mcdsbuf_1 );
 #ifdef LOGLEVEL_DEBUG
 //          message.str(""); message << "[DEBUG] " << ( (slicen < this->nmcds/2) ? "first" : "second" ) << " half of MCDS";
@@ -591,7 +585,7 @@ namespace Archon {
                 *( ptr + index++ ) = (int32_t)(coadd.at<int32_t>(row,col));
               }
             }
-	  }
+          }
 
         } // end of loop over cubes
         }
@@ -615,13 +609,13 @@ namespace Archon {
         if ( !this->iscds ) return;
 
         // For CDS there will be two frames available here, the readframe and the resetframe.
-	// Subtract the reset from the read frame (first add an offset to the readframe,
-	// so that it can't be negative). Then add that result to the coadd buffer.
+        // Subtract the reset from the read frame (first add an offset to the readframe,
+        // so that it can't be negative). Then add that result to the coadd buffer.
 
         if ( this->cdsbuf == NULL || this->coaddbuf == NULL ) {
-	  logwrite( "Archon::DeInterlace::nirc2", "ERROR: no memory allocated for cds buffers" );
-	  return;
-	}
+          logwrite( "Archon::DeInterlace::nirc2", "ERROR: no memory allocated for cds buffers" );
+          return;
+        }
 
         // Perform the CDS subtraction, read-reset into a 32b type Mat array,
         // which will take care of any cases where reset > read.
@@ -786,9 +780,6 @@ namespace Archon {
       ~DeInterlace() {
         this->resetframe.release();
         this->readframe.release();
-#ifdef LOGLEVEL_DEBUG
-        logwrite( "Archon::DeInterlace::~DeInterlace", "[DEBUG] deconstructed" );
-#endif
         debug( "DEINTERLACE_CLASS_DESTRUCTED" );
       }
 
@@ -822,6 +813,11 @@ namespace Archon {
         std::string function = "Archon::DeInterlace::do_deinterlace";
         std::stringstream message;
 
+        message.str(""); message << "[DEBUG] workbuf=" << std::hex << static_cast<void*>(this->workbuf)
+                                 << " cdsbuf=" << std::hex << static_cast<void*>(this->cdsbuf)
+                                 << " imbuf=" << std::hex << static_cast<void*>(this->imbuf);
+        logwrite( "Archon::DeInterlace::do_deinterlace", message.str() );
+
         switch( this->readout_type ) {
           case Archon::READOUT_NONE:
             this->none();
@@ -853,6 +849,7 @@ namespace Archon {
   };
   /***** Archon::DeInterlace **************************************************/
 
+
   struct ImageBuffer {
     int seq;
     int slice;
@@ -861,6 +858,35 @@ namespace Archon {
     uint64_t timestamp;
     size_t bufsize;
     std::shared_ptr<char[]> rawpixels;
+  };
+
+
+  template<typename T>
+  struct ProcessingBuffers {
+    std::shared_ptr<T[]> workbuf;
+    std::shared_ptr<T[]> cdsbuf;
+
+    ProcessingBuffers(size_t work_section_size, size_t cds_section_size) {
+      size_t work_section_bytes = work_section_size * sizeof(T);
+      size_t work_alloc_bytes   = (work_section_bytes+31) & ~size_t(31);  // round up to multiple of 32
+      size_t cds_section_bytes  = cds_section_size * sizeof(T);
+      size_t cds_alloc_bytes    = (cds_section_bytes+31) & ~size_t(31);   // round up to multiple of 32
+
+      std::stringstream message;
+      message << "[DEBUG] work_section_size=" << work_section_size << " work_section_bytes=" << work_section_bytes << " work_alloc_bytes=" << work_alloc_bytes;
+      logwrite("Archon::ProcessingBuffers",message.str());
+      message.str(""); message << "[DEBUG] cds_section_size=" << cds_section_size << " cds_section_bytes=" << cds_section_bytes << " cds_alloc_bytes=" << cds_alloc_bytes;
+      logwrite("Archon::ProcessingBuffers",message.str());
+
+      workbuf = std::shared_ptr<T[]>(static_cast<T*>(std::aligned_alloc(32, work_alloc_bytes)), std::free);
+      cdsbuf  = std::shared_ptr<T[]>(static_cast<T*>(std::aligned_alloc(32, cds_alloc_bytes)),  std::free);
+
+      if (!workbuf||!cdsbuf) throw std::bad_alloc();
+
+      // Zero initialize
+      std::memset(workbuf.get(), 0, work_alloc_bytes);
+      std::memset(cdsbuf.get(), 0, cds_alloc_bytes);
+    }
   };
 
   /***** Archon::Interface ****************************************************/
@@ -877,18 +903,22 @@ namespace Archon {
       struct timespec cal_systime;
       uint64_t cal_archontime;
 
-      std::queue<std::shared_ptr<ImageBuffer>> image_queue;
+      std::unique_ptr<ProcessingBuffers<uint16_t>> buffers_16;
+      std::unique_ptr<ProcessingBuffers<uint32_t>> buffers_32;
+      std::unique_ptr<ProcessingBuffers<int16_t>>  buffers_16s;
+
+      std::queue<std::shared_ptr<ImageBuffer>> framebuf_queue;
       std::mutex queue_mutex;
       std::condition_variable queue_cv;
 
-      std::atomic<bool> stop_threads;
+      std::atomic<bool> is_producer_finished;
 
-      std::shared_ptr<ImageBuffer> cds_frame_pending;
-
+      long initialize_processing_buffers();
       void frame_acquisition_loop(int nseq);
       void frame_processing_loop();
-      void process_image(std::shared_ptr<ImageBuffer> &image);
-      template<typename T> void deinterlace_queue(std::shared_ptr<ImageBuffer> buffer);
+      void process_frame(std::shared_ptr<ImageBuffer> &framebuf);
+      template<typename T> void deinterlace_queue(std::shared_ptr<ImageBuffer> framebuf, ProcessingBuffers<T> &buffers);
+      void runcds();
 
       // Add any pre-exposures onto the requested number of sequences,
       // using 1 if not supplied.
