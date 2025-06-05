@@ -38,11 +38,31 @@ namespace Common {
       FitsKeys() {}
       ~FitsKeys() {}
 
+      /// Custom copy constructor
+      FitsKeys(const FitsKeys &other) {
+        std::lock_guard<std::mutex> lock(other.keydb_mutex);
+        keydb = other.keydb;
+      }
+
+      /// Custom copy assignment operator
+      FitsKeys &operator=(const FitsKeys &other) {
+        if (this != &other) {
+          std::lock(keydb_mutex, other.keydb_mutex);
+          std::lock_guard<std::mutex> lock1(keydb_mutex, std::adopt_lock);
+          std::lock_guard<std::mutex> lock2(other.keydb_mutex, std::adopt_lock);
+          keydb = other.keydb;
+        }
+        return *this;
+      }
+
       std::string get_keytype(std::string keyvalue);         /// return type of keyword based on value
       long listkeys();                                       /// list FITS keys in the internal database
       long addkey(std::string arg);                          /// add FITS key to the internal database
       long delkey(std::string arg);                          /// delete FITS key from the internal database
-      void erasedb() { this->keydb.clear(); };               /// erase the entire contents of the internal database
+      void erasedb() {                                       /// erase the entire contents of the internal database
+        std::lock_guard<std::mutex> lock(keydb_mutex);
+        this->keydb.clear();
+      };
 
       /***** Common::FitsKeys::addkey *****************************************/
       /**
@@ -113,6 +133,7 @@ namespace Common {
 
         // insert new entry into the database
         //
+        std::lock_guard<std::mutex> lock(keydb_mutex);
         this->keydb[key].keyword    = key;
         this->keydb[key].keytype    = type;
         this->keydb[key].keyvalue   = val.str();
@@ -139,12 +160,14 @@ namespace Common {
       typedef std::map<std::string, user_key_t> fits_key_t;  /// STL map for the actual keyword database
 
       fits_key_t keydb;                                      /// keyword database
+      mutable std::mutex keydb_mutex;
 
       // Find all entries in the keyword database which start with the search_for string,
       // return a vector of iterators.
       //
       std::vector< fits_key_t::const_iterator > FindKeys( std::string search_for ) {
         std::vector< fits_key_t::const_iterator > vec;
+        std::lock_guard<std::mutex> lock(keydb_mutex);
         for ( auto it  = this->keydb.lower_bound( search_for );
                    it != std::end( this->keydb ) && it->first.compare( 0, search_for.size(), search_for ) == 0;
                  ++it ) {
@@ -174,6 +197,7 @@ namespace Common {
 #ifdef LOGLEVEL_DEBUG
           message.str(""); message << "[DEBUG] erasing " << vec->first; logwrite( function, message.str() );
 #endif
+          std::lock_guard<std::mutex> lock(keydb_mutex);
           this->keydb.erase( vec );
         }
         return;
