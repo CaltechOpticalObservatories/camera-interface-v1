@@ -398,28 +398,26 @@ std::mutex generate_tmpfile_mtx;
    * This function is overloaded
    *
    */
-  std::string timestamp_from( std::string tmzone_in, struct timespec &time_in ) {
-    std::stringstream current_time;  // String to contain the time
-    time_t t;                        // Container for system time
+  std::string timestamp_from( const std::string &tmzone_in, struct timespec &time_in ) {
+    time_t t = time_in.tv_sec;       // Container for system time
     struct tm time;                  // time container
 
     // Convert the input time to local or GMT
     //
-    t = time_in.tv_sec;
     if ( tmzone_in == "local" ) { if ( localtime_r( &t, &time ) == NULL ) return( "9999-99-99T99:99:99.999" ); }
     else                        { if ( gmtime_r( &t, &time ) == NULL )    return( "9999-99-99T99:99:99.999" ); }
 
-    current_time.setf(std::ios_base::right);
-    current_time << std::setfill('0') << std::setprecision(0)
-                 << std::setw(4) << time.tm_year + 1900   << "-"
-                 << std::setw(2) << time.tm_mon + 1 << "-"
-                 << std::setw(2) << time.tm_mday    << "T"
-                 << std::setw(2) << time.tm_hour  << ":"
-                 << std::setw(2) << time.tm_min << ":"
-                 << std::setw(2) << time.tm_sec << "." 
-                 << std::setw(3) << std::fixed << std::round( time_in.tv_nsec/1000000. );
+    static thread_local char buffer[24];
+    snprintf(buffer, sizeof(buffer), "%04d-%02d-%02dT%02d:%02d:%02d.%03d",
+                                     time.tm_year+1900,
+                                     time.tm_mon+1,
+                                     time.tm_mday,
+                                     time.tm_hour,
+                                     time.tm_min,
+                                     time.tm_sec,
+                                     static_cast<int>((time_in.tv_nsec+500000L)/1000000L));
 
-    return(current_time.str());
+    return std::string(buffer);
   }
   /***** timestamp_from *******************************************************/
 

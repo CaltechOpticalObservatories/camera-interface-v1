@@ -59,7 +59,7 @@ long get_time( int &year, int &mon, int &mday, int &hour, int &min, int &sec, in
 long get_time( std::string tmzone_in, int &year, int &mon, int &mday, int &hour, int &min, int &sec, int &usec );
 
 std::string timestamp_from( struct timespec &time_n );  /// return time from input timespec struct in formatted string "YYYY-MM-DDTHH:MM:SS.sss"
-std::string timestamp_from( std::string tmzone_in, struct timespec &time_n );  /// return time from input timespec struct in formatted string "YYYY-MM-DDTHH:MM:SS.sss"
+std::string timestamp_from( const std::string &tmzone_in, struct timespec &time_n );  /// return time from input timespec struct in formatted string "YYYY-MM-DDTHH:MM:SS.sss"
 
 inline std::string get_timestamp(std::string tz) {  /// return current time in formatted string "YYYY-MM-DDTHH:MM:SS.sss"
   struct timespec timenow;
