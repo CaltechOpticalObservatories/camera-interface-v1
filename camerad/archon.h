@@ -210,9 +210,9 @@ namespace Archon {
           this->imbuf[pix] = static_cast<T>(pix % 65535);
         }
 
-        cv::Mat image;
-
-        image = cv::Mat( 256, 256, CV_16U, this->imbuf ).clone();
+//      cv::Mat image;
+//      image = cv::Mat( 256, 256, CV_16U, this->imbuf ).clone();
+        cv::Mat image ( 256, 256, CV_16U, this->imbuf );
 
         return;
       }
@@ -239,7 +239,8 @@ namespace Archon {
 
         // These Mat objects are the input frames
         //
-        cv::Mat raw    = cv::Mat( bufrows,   this->cols, CV_16U, this->imbuf   ).clone();
+//      cv::Mat raw    = cv::Mat( bufrows,   this->cols, CV_16U, this->imbuf   ).clone();
+        cv::Mat raw ( bufrows,   this->cols, CV_16U, this->imbuf   );
         cv::Mat signal ( bufrows/2, this->cols, CV_16U );
         cv::Mat reset  ( bufrows/2, this->cols, CV_16U );
 
@@ -325,7 +326,8 @@ namespace Archon {
 #endif
         // Create openCV image to hold entire imbuf (all cubes)
         //
-        cv::Mat image = cv::Mat( (this->rows * this->depth), this->cols, CV_16U, this->imbuf ).clone();
+//      cv::Mat image = cv::Mat( (this->rows * this->depth), this->cols, CV_16U, this->imbuf ).clone();
+        cv::Mat image ( (this->rows * this->depth), this->cols, CV_16U, this->imbuf );
 
         // Create an empty openCV image for performing the deinterlacing work.
         // Note that this "work" Mat image is a single frame!
@@ -856,6 +858,8 @@ namespace Archon {
     int cubedepth;
     int framenum;
     uint64_t timestamp;
+    uint64_t dts;
+    bool is_halfway;
     size_t bufsize;
     std::shared_ptr<char[]> rawpixels;
   };

@@ -3964,7 +3964,6 @@ namespace Archon {
     const std::string function("Archon::Interface::frame_acquisition_loop");
     std::stringstream message;
     long error=NO_ERROR;
-    logwrite(function, "start");
 
     // Before initiating the exposure, there is a kludge needed for SAMPMODE_SINGLE.
     // This mode is the same as SAMPMODE_RXV with 2 frames, except that NIRC2 only
@@ -3988,7 +3987,6 @@ namespace Archon {
       logwrite( function, "ERROR could not initiate exposure" );
       return;
     }
-    debug( "EXPOSURE_INITIATED" );
     logwrite(function, "exposure started");
 
     // get system time and Archon's timer after exposure starts
@@ -4034,33 +4032,11 @@ namespace Archon {
     int framespushed=0;
 
     logwrite(function, "[DEBUG] exposures in sequence: "+std::to_string(nseq));
+
     while (nseq-- > 0) {
 
       this->camera_info.ncoadd = this->camera_info.nseq - nseq;
       this->cds_info.ncoadd    = this->camera_info.nseq - nseq;
-
-      // prepare and store the appropriate header key for this particular "coadd" (they're not all coadds)
-      //
-      message.str("");
-      switch( this->camera_info.sampmode ) {
-        case SAMPMODE_SINGLE:
-        case SAMPMODE_CDS:
-        case SAMPMODE_MCDS:
-          message << "NCOADD=" << this->camera_info.ncoadd << "// coadd number";
-          break;
-        case SAMPMODE_UTR:
-          message << "NRAMP=" << this->camera_info.ncoadd << "// ramp number";
-          break;
-        case SAMPMODE_RXV:
-        case SAMPMODE_RXRV:
-          message << "NFRAME=" << this->camera_info.ncoadd << "// frame number";
-          break;
-      }
-      this->extkeys.addkey( message.str() );
-
-      // Erase the extensions keys database
-      //
-      this->extkeys.erasedb();
 
       // Read each frame into the image buffer pointed to by ptr_image.
       // For data cubes this will loop over cubedepth and all frames go into the same buffer.
@@ -4095,97 +4071,72 @@ namespace Archon {
         }
         logwrite( function, message.str() );
 
-        uint32_t buffersz = this->image_data_bytes * this->camera_info.cubedepth;
+        uint32_t bufferbytes = (this->image_data_bytes * this->camera_info.cubedepth + 31 ) & ~size_t(31);
         auto framebuf = std::make_shared<ImageBuffer>();
         framebuf->seq = this->camera_info.nseq - nseq;
-//      framebuf->rawpixels = std::shared_ptr<char[]>(new char[buffersz]);
-        framebuf->rawpixels = std::shared_ptr<char[]>(static_cast<char*>(std::aligned_alloc(32, buffersz)), std::free);
+        framebuf->rawpixels = std::shared_ptr<char[]>(static_cast<char*>(std::aligned_alloc(32, bufferbytes)), std::free);
         framebuf->cubedepth = slicecounter;
 
         error = this->wait_for_readout();                             // Wait for the readout into Archon frame buffer,
 
-        if ( this->camera_info.sampmode == SAMPMODE_SINGLE && slice == 0 ) {
-//        logwrite( function, "[SAMPMODE_SINGLE] ----- waiting for exposure delay -----" );
-          this->last_frame_timer = this->frame.buftimestamp[this->frame.index];
-          error=wait_for_exposure();
-          if ( error != NO_ERROR ) { logwrite( function, "ERROR" ); return; }
-          continue;
-        }
-
         this->camera_info.stop_time = get_timestamp();                // current system time formatted as YYYY-MM-DDTHH:MM:SS.sss
-        this->cds_info.stop_time = get_timestamp();                   // current system time formatted as YYYY-MM-DDTHH:MM:SS.sss
-
-        if ( slice==0 ) ts0 = this->frame.buftimestamp[this->frame.index];  // retain the BUFnTIMESTAMP of the first frame
-        dts = (this->frame.buftimestamp[this->frame.index]-ts0);      // delta time stamp is change in BUFnTIMESTAMP since the first frame
-
-        if ( this->camera_info.sampmode == SAMPMODE_SINGLE ) dts=0;   // no delta timestamp for single
-
-        // At the halfway point, use this dts to add a header keyword for TRUITIME
-        //
-        if ( ( slicecounter%2 == 0 ) && ( slice == slicecounter/2 ) ) {
-          double truitime = static_cast<double>(dts)/100000000.0;
-          std::stringstream truitimestr;
-          truitimestr << truitime;
-          this->cds_info.systemkeys.addkey( "TRUITIME", truitime, "True integration time in seconds (calculated)", 3 );  // new FITS engine will pick this up
-          this->camera_info.systemkeys.addkey( "TRUITIME", truitime, "True integration time in seconds (calculated)", 3 );  // new FITS engine will pick this up
-        }
-
-        // Add Archon TIMESTAMP for this frame buffer to the extkeys database.
-        // This keyword database is erased with each exposure and will be written
-        // only for multi-extension files, which means that camera_info.ismex must be true.
-        //
-        int slice_ts = ( this->camera_info.sampmode==SAMPMODE_SINGLE ? slice : slice+1 );
-        message.str(""); message << "TS" << slice_ts << "=" << std::dec << std::fixed << std::setprecision(0)
-                                 << this->frame.buftimestamp[this->frame.index]
-                                 << "// Archon timestamp for slice " << slice_ts << " in 10ns";
-        this->extkeys.addkey( message.str() );
-
-        message.str(""); message << "DTS" << slice_ts << "=" << std::dec << dts
-                                 << "// Archon delta TS slice " << slice_ts << " in 10ns";
-        this->extkeys.addkey( message.str() );
-
-        message.str(""); message << "NSLICE=" << slice_ts << "// slice number";
-        this->extkeys.addkey( message.str() );
+        this->cds_info.stop_time = this->camera_info.stop_time;       // current system time formatted as YYYY-MM-DDTHH:MM:SS.sss
 
         error = this->read_frame(Camera::FRAME_IMAGE, framebuf->rawpixels.get());
+
+        if ( slice==0 ) ts0 = this->frame.buftimestamp[this->frame.index];  // retain the BUFnTIMESTAMP of the first frame
 
         framebuf->framenum  = this->frame.bufframen[this->frame.index];
         framebuf->timestamp = this->frame.buftimestamp[this->frame.index];
         framebuf->slice     = slice+1;
+        // delta time stamp is change in BUFnTIMESTAMP since the first frame
+        framebuf->dts       = (camera_info.sampmode==SAMPMODE_SINGLE ? 0 : (this->frame.buftimestamp[this->frame.index]-ts0));
+
+        if ( ( slicecounter%2 == 0 ) && ( slice == slicecounter/2 ) ) {
+          framebuf->is_halfway=true;
+          logwrite(function, "[DEBUG] frame="+std::to_string(framebuf->framenum)+" is halfway");
+        }
+        else {
+          framebuf->is_halfway=false;
+        }
 
         {
         std::lock_guard<std::mutex> lock(this->queue_mutex);
         this->framebuf_queue.push(framebuf);
         framespushed++;
         }
-        logwrite(function, "[DEBUG] pushed frame "+std::to_string(framebuf->framenum)+" into queue. total pushed="+std::to_string(framespushed));
         this->queue_cv.notify_one();
+
+        logwrite(function, "[DEBUG] pushed frame "+std::to_string(framebuf->framenum)+" into queue. total pushed="+std::to_string(framespushed));
 
         message.str(""); message << "NSLICE:";
         if ( this->camera_info.sampmode == SAMPMODE_SINGLE ) message << slice; else message << slice+1;
         this->camera.async.enqueue( message.str() );
 
-        switch( this->camera_info.sampmode ) {
-          case SAMPMODE_UTR:
-            if ( (slice+1) < this->camera_info.cubedepth ) {
-//            logwrite( function, "[SAMPMODE_UTR] ----- waiting for exposure delay -----" );
-              this->last_frame_timer = this->frame.buftimestamp[this->frame.index];
-              error=wait_for_exposure();
-              if ( error != NO_ERROR ) { logwrite( function, "ERROR" ); return; }
+        bool needs_exposure_delay=false;
+
+        if ( camera_info.sampmode == SAMPMODE_CDS||camera_info.sampmode==SAMPMODE_MCDS ) {
+          needs_exposure_delay = ((slice+1)==camera_info.cubedepth/2);
+        }
+        else
+        if ( camera_info.sampmode == SAMPMODE_UTR ) {
+          needs_exposure_delay = ((slice+1) < camera_info.cubedepth);
+        }
+        else
+        if ( camera_info.sampmode == SAMPMODE_SINGLE ) {
+          needs_exposure_delay = (slice==0);
+        }
+
+        if ( needs_exposure_delay ) {
+          last_frame_timer = frame.buftimestamp[frame.index];
+          if (camera_info.exposure_delay > 5000) {
+            error=wait_for_exposure();
+            if (error!=NO_ERROR) {
+              logwrite(function, "ERROR");
+              return;
             }
-            break;
-          case SAMPMODE_CDS:
-          case SAMPMODE_MCDS:
-            if ( (slice+1) == this->camera_info.cubedepth/2 ) {
-//            logwrite( function, "[SAMPMODE_M/CDS] ----- waiting for exposure delay -----" );
-              this->last_frame_timer = this->frame.buftimestamp[this->frame.index];
-              error=wait_for_exposure();
-              if ( error != NO_ERROR ) { logwrite( function, "ERROR" ); return; }
-            }
-            break;
-          default:
-//          logwrite( function, "----- no exposure delay -----" );
-            break;
+          }
+          if (camera_info.sampmode==SAMPMODE_SINGLE) continue;
         }
       } // end loop over slices in datacube
     } // end while nseq
@@ -4224,6 +4175,26 @@ namespace Archon {
     if ( mcdsbuf_1 != nullptr ) delete [] (int32_t*)mcdsbuf_1;
     mcdsbuf_1 = (int32_t*) new int32_t [ cds_info.section_size ]{};
 
+    // prepare and store the appropriate header key for this particular "coadd" (they're not all coadds)
+    //
+    message.str("");
+    switch( this->camera_info.sampmode ) {
+      case SAMPMODE_SINGLE:
+      case SAMPMODE_CDS:
+      case SAMPMODE_MCDS:
+        message << "NCOADD=" << this->camera_info.ncoadd << "// coadd number";
+        break;
+      case SAMPMODE_UTR:
+        message << "NRAMP=" << this->camera_info.ncoadd << "// ramp number";
+        break;
+      case SAMPMODE_RXV:
+      case SAMPMODE_RXRV:
+        message << "NFRAME=" << this->camera_info.ncoadd << "// frame number";
+        break;
+    }
+    this->extkeys.erasedb();
+    this->extkeys.addkey( message.str() );
+
     while (!camera.is_aborted()) {
       std::shared_ptr<ImageBuffer> framebuf;
       {
@@ -4242,6 +4213,33 @@ namespace Archon {
                                << " ->slice=" << framebuf->slice
                                << " queue size=" << framebuf_queue.size();
       logwrite(function, message.str());
+
+      // At the halfway point, use this dts to add a header keyword for TRUITIME
+      //
+      if (framebuf->is_halfway) {
+        double truitime = static_cast<double>(framebuf->dts)/100000000.0;
+        this->cds_info.systemkeys.addkey( "TRUITIME", truitime, "True integration time in seconds (calculated)", 3 );  // new FITS engine will pick this up
+        this->camera_info.systemkeys.addkey( "TRUITIME", truitime, "True integration time in seconds (calculated)", 3 );  // new FITS engine will pick this up
+        message.str(""); message << "[DEBUG] frame=" << framebuf->framenum << " slice=" << framebuf->slice << " dts=" << framebuf->dts << " TRUITIME=" << truitime;
+        logwrite(function,message.str());
+      }
+
+      // Add Archon TIMESTAMP for this frame buffer to the extkeys database.
+      // This keyword database is erased with each exposure and will be written
+      // only for multi-extension files, which means that camera_info.ismex must be true.
+      //
+      int slice_ts = ( this->camera_info.sampmode==SAMPMODE_SINGLE ? framebuf->slice-1 : framebuf->slice );
+      message.str(""); message << "TS" << slice_ts << "=" << std::dec << std::fixed << std::setprecision(0)
+                               << this->frame.buftimestamp[this->frame.index]
+                               << "// Archon timestamp for slice " << slice_ts << " in 10ns";
+      this->extkeys.addkey( message.str() );
+
+      message.str(""); message << "DTS" << slice_ts << "=" << std::dec << framebuf->dts
+                               << "// Archon delta TS slice " << slice_ts << " in 10ns";
+      this->extkeys.addkey( message.str() );
+
+      message.str(""); message << "NSLICE=" << slice_ts << "// slice number";
+      this->extkeys.addkey( message.str() );
 
       if (framebuf->slice == framebuf->cubedepth) {
         process_frame(framebuf);
@@ -4440,7 +4438,6 @@ namespace Archon {
    *
    */
   long Interface::wait_for_exposure() {
-    debug( "WAIT_FOR_EXPOSURE_ENTRY" );
     const std::string function("Archon::Interface::wait_for_exposure");
     std::stringstream message;
     long error = NO_ERROR;
@@ -4560,7 +4557,6 @@ namespace Archon {
       logwrite(function, "exposure aborted");
     }
 
-    debug( "WAIT_FOR_EXPOSURE_EXIT" );
     return( error );
   }
   /**************** Archon::Interface::wait_for_exposure **********************/
@@ -4577,7 +4573,6 @@ namespace Archon {
    *
    */
   long Interface::wait_for_readout() {
-    debug( "WAIT_FOR_READOUT_ENTRY frame="+std::to_string(this->lastframe+1) );
     const std::string function("Archon::Interface::wait_for_readout");
     std::stringstream message;
     long error = NO_ERROR;
@@ -4710,7 +4705,6 @@ namespace Archon {
       message.str("");
       message << "received currentframe: " << currentframe;
       logwrite(function, message.str());
-      debug( "WAIT_FOR_READOUT_EXIT frame="+std::to_string(currentframe) );
       return NO_ERROR;
     }
     // If the wait was stopped, log a message and return NO_ERROR
@@ -4947,7 +4941,6 @@ namespace Archon {
     message.str(""); message << "exposure time is " << retstring;
     logwrite(function, message.str());
 
-    debug( "EXPTIME "+retstring );
     return(ret);
   }
   /***** Archon::Interface::exptime *******************************************/
