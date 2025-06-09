@@ -1,0 +1,2 @@
+#cfitsio *sometimes* includes a CMake config file. This is the worst of all possible worlds.
+#On systems where it doesn't, it will fall back to this find module

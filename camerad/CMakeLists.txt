@@ -4,11 +4,9 @@
 
 cmake_minimum_required(VERSION 3.12)
 
-set(CAMERA_DIR ${PROJECT_BASE_DIR}/camerad)
+include_directories(${CMAKE_SOURCE_DIR}/utils)
+include_directories(${CMAKE_SOURCE_DIR}/common)
 
-include_directories(${PROJECT_BASE_DIR}/utils)
-include_directories(${PROJECT_BASE_DIR}/common)
-link_directories(${PROJECT_BASE_DIR}/lib)
 
 # ----------------------------------------------------------------------------
 # Setup for appropriate hardware interface...
@@ -19,6 +17,8 @@ link_directories(${PROJECT_BASE_DIR}/lib)
 #   INTERFACE_INCLUDES  list of include paths for target interface
 #   interface           target for interfacing to appropriate hardware
 # ----------------------------------------------------------------------------
+
+
 
 # ----------------------------------------------------------------------------
 # AstroCam ARC-64/66 PCI/e interfaces
@@ -58,21 +58,18 @@ if (${INTERFACE_TYPE} STREQUAL "AstroCam")
     find_library(CARC_DEVICE "CArcDevice3.6" NAMES "libCArcDevice3.6.so" PATHS ${ARCAPI_DIR}/Release)
     find_library(CARC_FITS "CArcFitsFile3.6" NAMES "libCArcFitsFile3.6.so" PATHS ${ARCAPI_DIR}/Release)
 
+    add_library(interface STATIC ${INTERFACE_SOURCE})
+
+    
     # ----------------------------------------------------------------------------
     # STA Archon interfaces
     # ----------------------------------------------------------------------------
 
 elseif (${INTERFACE_TYPE} STREQUAL "Archon")
     message(STATUS "compiling for STA Archon")
-    set(INTERFACE_TARGET archon)
     add_definitions(-Wall -ansi -O1 -Wno-variadic-macros -std=c++17 -ggdb)
     add_definitions(-DSTA_ARCHON)
-    list(APPEND INTERFACE_SOURCE
-            "${CAMERA_DIR}/archon.cpp"
-    )
-    list(APPEND INTERFACE_INCLUDES
-            "${ARCHON_INCLUDE}"
-    )
+    list(APPEND INTERFACE_SOURCE "archon.cpp")
     add_library(interface STATIC "${INTERFACE_SOURCE}")
     if (${DETECTOR_TYPE} STREQUAL "Hxrg")
         message(STATUS "compiling for HXRG detector")
@@ -95,17 +92,17 @@ if (NOT DEFINED INSTR)
 else ()
     if (${INSTR} STREQUAL "nirc2")
         message(STATUS "building for nirc2 instrument")
-        list(APPEND INTERFACE_SOURCE "${CAMERA_DIR}/nirc2.cpp")
+        list(APPEND INTERFACE_SOURCE "nirc2.cpp")
     elseif (${INSTR} STREQUAL "generic")
         message(STATUS "building for generic instrument")
-        list(APPEND INTERFACE_SOURCE "${CAMERA_DIR}/generic.cpp")
+        list(APPEND INTERFACE_SOURCE "generic.cpp")
     elseif (${INSTR} STREQUAL "undefined")
         message(STATUS "no INSTR defined. using generic but other options are:")
         message(STATUS "cmake -DINSTR=nirc2,generic ..")
-        list(APPEND INTERFACE_SOURCE "${CAMERA_DIR}/generic.cpp")
+        list(APPEND INTERFACE_SOURCE "generic.cpp")
     else ()
         message(STATUS "unknown instrument " ${INSTR} ": using generic")
-        list(APPEND INTERFACE_SOURCE "${CAMERA_DIR}/generic.cpp")
+        list(APPEND INTERFACE_SOURCE "generic.cpp")
     endif ()
 endif ()
 
@@ -115,27 +112,18 @@ endif ()
 
 # Now add the defined interface target:
 #
-add_library(${INTERFACE_TARGET} ${INTERFACE_SOURCE})
-target_include_directories(${INTERFACE_TARGET} PUBLIC ${INTERFACE_INCLUDES})
+target_link_libraries(interface PUBLIC cfitsio CCfits)
 
 
-add_library(camera STATIC
-        ${CAMERA_DIR}/camera.cpp
-)
 
-# ----------------------------------------------------------------------------
-# External libraries, such as FITS, etc.
-# ----------------------------------------------------------------------------
+#Note from danw: I'm afraid camera.h technically includes CCfits, and so a public
+#dependency on those is needed
+add_library(camera camera.cpp)
+target_link_libraries(camera PUBLIC cfitsio CCfits)
 
-find_library(CCFITS_LIB CCfits NAMES libCCfits PATHS /usr/local/lib)
-find_library(CFITS_LIB cfitsio NAMES libcfitsio PATHS /usr/local/lib)
 
 find_package(Threads)
-
-add_executable(camerad
-        ${CAMERA_DIR}/camerad.cpp
-        ${INTERFACE_INCLUDES}
-)
+add_executable(camerad camerad.cpp  ${INTERFACE_INCLUDES})
 
 # ----------------------------------------------------------------------------
 # Everyone gets this:
@@ -147,15 +135,14 @@ target_link_libraries(camerad
         logentry
         common
         utilities
-        ${INTERFACE_TARGET}
+	interface
         ${CMAKE_THREAD_LIBS_INIT}
-        ${CCFITS_LIB}
-        ${CFITS_LIB}
+	cfitsio
+	CCfits
 )
 
-target_link_libraries(camerad ${CARC_BASE})
-target_link_libraries(camerad ${CARC_DEVICE})
-target_link_libraries(camerad ${CARC_FITS})
+target_link_libraries(camerad ${CARC_BASE} ${CARC_DEVICE} ${CARC_FITS})
+
 
 # ----------------------------------------------------------------------------
 # cURL is not used here, so it's not strictly required, but cfitsio can
@@ -163,7 +150,7 @@ target_link_libraries(camerad ${CARC_FITS})
 # If it's installed on the system then link it, but don't make it mandatory.
 # ----------------------------------------------------------------------------
 #
-include(FindCURL)
+find_package(CURL)
 
 if (CURL_FOUND STREQUAL "FALSE")
     message(STATUS "cURL was not found but may be needed by some systems if built into cfitsio.\n   If you experience undefined curl references during linking \n   then please your cURL installation.")

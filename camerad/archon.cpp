@@ -104,6 +104,17 @@ namespace Archon {
   }
   /**************** Archon::Interface::interface ******************************/
 
+
+  /***Note from danw: I couldn't get this to link without adding a dummy method here no idea why
+   **/
+
+  long Interface::power(std::string state_in, std::string& retstring)
+   {
+     return do_power(state_in, retstring);
+   }
+
+  
+  
   /***** Archon::Interface::do_power ******************************************/
   /**
    * @brief      set/get the power state
@@ -876,7 +887,7 @@ namespace Archon {
    *
    */
   long Interface::archon_cmd(std::string cmd) { // use this form when the calling
-    std::string reply;                          // function doesn't need to look at the reply
+   std::string reply;                          // function doesn't need to look at the reply
     return( archon_cmd(cmd, reply) );
   }
   long Interface::archon_cmd(std::string cmd, std::string &reply) {
