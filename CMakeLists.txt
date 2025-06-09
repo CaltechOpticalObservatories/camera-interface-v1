@@ -41,16 +41,27 @@ endif()
 
 project(camera)
 
+#NOTE: by default the existing camera-interface build system puts binaries in the source tree
+#regardless of where the build is configured. This is not "expected" cmake behaviour.
+#This option enables out of source builds by not doing that. But it defaults to the old behaviour
+#so as not to break any existing build instances
+option(ENABLE_OOS_BUILD "Enable true out of source build" OFF) 
+
+
 set(CMAKE_GXX_STANDARD 17)
 set(CMAKE_GXX_STANDARD_REQUIRED ON)
 set(CMAKE_GXX_EXTENSIONS OFF)
 
 # Run "cmake .." from the project's build/ directory!
 #
-set(PROJECT_BASE_DIR $ENV{PWD}/../)
+set(PROJECT_BASE_DIR ${CMAKE_SOURCE_DIR})
 
-set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BASE_DIR}/bin)
-set(LIBRARY_OUTPUT_PATH ${PROJECT_BASE_DIR}/lib)
+
+#if we're not doing an OOS build we want binaries in the source tree
+if(NOT ${ENABLE_OOS_BUILD})
+  set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BASE_DIR}/bin)
+  set(LIBRARY_OUTPUT_PATH ${PROJECT_BASE_DIR}/lib)
+endif()
 
 
 if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
