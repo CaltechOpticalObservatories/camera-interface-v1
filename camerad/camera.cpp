@@ -560,10 +560,10 @@ namespace Camera {
     }
 
 #ifdef LOGLEVEL_DEBUG
-    message.str(""); message << "[DEBUG] fits_naming=" << this->fits_naming 
-                             << " controllerid=" << controllerid
-                             << " will write to file: " << fn.str();
-    logwrite(function, message.str());
+//  message.str(""); message << "[DEBUG] fits_naming=" << this->fits_naming 
+//                           << " controllerid=" << controllerid
+//                           << " will write to file: " << fn.str();
+//  logwrite(function, message.str());
 #endif
 
     name_out = fn.str();

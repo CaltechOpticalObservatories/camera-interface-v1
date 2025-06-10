@@ -3448,6 +3448,7 @@ namespace Archon {
     this->last_frame_timer = this->start_timer;                             // initialize timer, used as reference for wait_for_exposure
     this->camera.set_fitstime(this->camera_info.start_time);                // sets camera.fitstime (YYYYMMDDHHMMSS) used for filename
     error=this->camera.get_fitsname( "_unp", this->camera_info.fits_name);  // assemble the FITS filename with added "raw"tag
+    logwrite(function, "camera_info.fitsname="+this->camera_info.fits_name);
     if ( error != NO_ERROR ) {
       logwrite( function, "ERROR validating FITS filename "+this->camera_info.fits_name );
       return;
@@ -3463,6 +3464,7 @@ namespace Archon {
       this->cds_info.systemkeys.keydb  = this->systemkeys.keydb;    // copy the systemkeys database object into cds_info
       this->cds_info.start_time = this->camera_info.start_time;     // start time is the same
       error=this->camera.get_fitsname( this->cds_info.fits_name);   // assemble the FITS filename
+      logwrite(function, "cds_info.fitsname="+this->cds_info.fits_name);
       if ( error != NO_ERROR ) {
         logwrite( function, "ERROR validating FITS filename "+this->cds_info.fits_name );
         return;
@@ -3489,16 +3491,29 @@ namespace Archon {
       // For single-frame reads, cubedepth=1 so this happens only once.
       //
       uint64_t ts0=0, dts=0;
-      int slicecounter;
-      switch ( this->camera_info.sampmode ) {
+      int slicecounter = this->camera_info.cubedepth;
+      std::string messagetag;      // this will be broadcast at end of seq
+      switch (this->camera_info.sampmode) {
         case SAMPMODE_SINGLE:
           slicecounter = 2;
+          messagetag = "NCOADD:" + std::to_string(this->camera_info.ncoadd);
           break;
         case SAMPMODE_RXRV:
           slicecounter = 1;
+          messagetag = "NFRAME:" + std::to_string(this->camera_info.ncoadd);
+          break;
+        case SAMPMODE_RXV:
+          messagetag = "NFRAME:" + std::to_string(this->camera_info.ncoadd);
+          break;
+        case SAMPMODE_UTR:
+          messagetag = "NRAMP:" + std::to_string(this->camera_info.ncoadd);
+          break;
+        case SAMPMODE_CDS:
+        case SAMPMODE_MCDS:
+          messagetag = "NCOADD:" + std::to_string(this->camera_info.ncoadd);
           break;
         default:
-          slicecounter = this->camera_info.cubedepth;
+          messagetag = "UNKNOWN";
           break;
       }
 
@@ -3530,7 +3545,18 @@ namespace Archon {
         this->cds_info.stop_time = this->camera_info.stop_time;       // current system time formatted as YYYY-MM-DDTHH:MM:SS.sss
 
         error = this->read_frame(Camera::FRAME_IMAGE, framebuf->rawpixels.get());
-//      make_simulated_data(framebuf->rawpixels.get(), ((slice%2)+1));
+
+// uint16_t* pixel_buffer = reinterpret_cast<uint16_t*>(framebuf->rawpixels.get());
+// auto total_pixels=camera_info.detector_pixels[0] * camera_info.detector_pixels[1];
+// for (int i = 0; i < total_pixels; i++) pixel_buffer[i] = 0xDEAD;
+// 
+//make_simulated_data(framebuf->rawpixels.get(), ((slice%2)+1));
+
+uint16_t* pixel_buffer = reinterpret_cast<uint16_t*>(framebuf->rawpixels.get());
+std::stringstream pixelvals;
+pixelvals.str(""); pixelvals << "[PIXELVALS] push seq=" << framebuf->seq << " slice=" << slice+1 << " pix=";
+for (int i=0; i<10; i++) pixelvals << " " << pixel_buffer[i];
+logwrite(function, pixelvals.str());
 
         if ( slice==0 ) ts0 = this->frame.buftimestamp[this->frame.index];  // retain the BUFnTIMESTAMP of the first frame
 
@@ -3580,6 +3606,10 @@ namespace Archon {
           if (camera_info.sampmode==SAMPMODE_SINGLE) continue;
         }
       } // end loop over slices in datacube
+
+      // end of a sequence, broadcast the message tag
+      this->camera.async.enqueue( messagetag);
+
     } // end while nseq
     logwrite(function, "complete");
   }
@@ -3668,6 +3698,12 @@ namespace Archon {
                                << " queue size=" << framebuf_queue.size();
       logwrite(function, message.str());
 
+uint16_t* pixel_buffer = reinterpret_cast<uint16_t*>(framebuf->rawpixels.get());
+std::stringstream pixelvals;
+pixelvals.str(""); pixelvals << "[PIXELVALS] pop seq=" << framebuf->seq << " slice=" << framebuf->slice << " pix=";
+for (int i=0; i<10; i++) pixelvals << " " << pixel_buffer[i];
+logwrite(function, pixelvals.str());
+
       // At the halfway point, use this dts to add a header keyword for TRUITIME
       //
       if (framebuf->is_halfway) {
@@ -3692,16 +3728,28 @@ namespace Archon {
                                << "// Archon delta TS slice " << slice_ts << " in 10ns";
       this->extkeys.addkey( message.str() );
 
-      message.str(""); message << "NSLICE=" << slice_ts << "// slice number";
-      this->extkeys.addkey( message.str() );
+      const std::string slicestr(std::to_string(slice_ts));
+
+      this->extkeys.addkey( "NSLICE=" + slicestr + "// slice number" );
+
+      this->camera.async.enqueue( "NSLICE:" + slicestr );
 
       if (framebuf->slice == framebuf->cubedepth) {
         process_frame(framebuf);
       }
     }
 
-    if (__fits_file) __fits_file->complete();
-    if (__file_cds) __file_cds->complete();
+    if (__fits_file) {
+      __fits_file->complete();
+      this->camera.async.enqueue("FILE:" + this->camera_info.fits_name + " COMPLETE");
+    }
+    if (__file_cds) {
+      __file_cds->complete();
+      this->camera.async.enqueue("FILE:" + this->cds_info.fits_name + " COMPLETE");
+    }
+
+    // increment image_num when fitsnaming == "number"
+    this->camera.increment_imnum();
 
     logwrite(function, "complete");
   }
@@ -3763,6 +3811,14 @@ namespace Archon {
       T* workbuf = buffers.workbuf.get();
       T* cdsbuf  = buffers.cdsbuf.get();
 
+std::stringstream pixelvals;
+pixelvals.str(""); pixelvals << "[PIXELVALS] before deinterlace seq=" << framebuf->seq << " slice=" << framebuf->slice << " imbuf=";
+for (int i=0; i<10; i++) pixelvals << " " << imbuf[i];
+logwrite(function, pixelvals.str());
+pixelvals.str(""); pixelvals << "[PIXELVALS] before deinterlace seq=" << framebuf->seq << " slice=" << framebuf->slice << " cdsbuf=";
+for (int i=0; i<10; i++) pixelvals << " " << cdsbuf[i];
+logwrite(function, pixelvals.str());
+
       DeInterlace<T> deinterlacer( imbuf,
                                    workbuf, 
                                    cdsbuf,
@@ -3780,6 +3836,12 @@ namespace Archon {
                                  );
 
       deinterlacer.do_deinterlace();
+pixelvals.str(""); pixelvals << "[PIXELVALS] after deinterlace seq=" << framebuf->seq << " slice=" << framebuf->slice << " imbuf=";
+for (int i=0; i<10; i++) pixelvals << " " << imbuf[i];
+logwrite(function, pixelvals.str());
+pixelvals.str(""); pixelvals << "[PIXELVALS] after deinterlace seq=" << framebuf->seq << " slice=" << framebuf->slice << " cdsbuf=";
+for (int i=0; i<10; i++) pixelvals << " " << cdsbuf[i];
+logwrite(function, pixelvals.str());
     }
     catch (const std::exception &e) {
       logwrite(function, "ERROR: "+std::string(e.what()));
