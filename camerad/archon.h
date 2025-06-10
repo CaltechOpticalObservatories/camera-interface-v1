@@ -23,6 +23,7 @@
 #include <cctype>
 #include <string>
 #include <fstream>
+#include <inttypes.h>
 
 // #include <Python.h>
 
@@ -99,8 +100,6 @@ namespace Archon {
   const int READOUT_NIRC2      = 1;
   const int READOUT_NIRC2VIDEO = 2;
   const int READOUT_TEST       = 3;
-
-  const int IMAGE_RING_BUFFER_SIZE = 5;
 
   const int CDS_OFFS =   0;  /// offset to add to read frame for cds images before subtraction
 
@@ -231,10 +230,9 @@ namespace Archon {
       void nirc2_video() {
         int bufrows = this->rows * this->depth;
 #ifdef LOGLEVEL_DEBUG
-        std::stringstream message;
-        message.str(""); message << "[DEBUG] bufrows=" << bufrows << " this->rows=" << this->rows 
-                                 << " this->cols=" << this->cols;
-        logwrite( "Archon::DeInterlace::nirc2", message.str() );
+        char message[256];
+        SNPRINTF(message, "[DEBUG] bufrows=%d this->rows=%d this->cols=%d", bufrows, this->rows, this->cols);
+        logwrite( "Archon::DeInterlace::nirc2", std::string(message) );
 #endif
 
         // These Mat objects are the input frames
@@ -260,9 +258,9 @@ namespace Archon {
 
 #ifdef LOGLEVEL_DEBUG
         logwrite( "Archon::DeInterlace::nirc2", "[DEBUG] extracted reset/read pairs from video frame" );
-        message.str(""); message << "[DEBUG] deinter_reset.rows=" << deinter_reset.rows << " deinter_reset.cols=" << deinter_reset.cols
-	                         << " deinter_signal.rows=" << deinter_signal.rows << " deinter_signal.cols=" << deinter_signal.cols;
-        logwrite( "Archon::DeInterlace::nirc2", message.str() );
+        SNPRINTF(message, "[DEBUG] deinter_reset.rows=%d deinter_reset.cols=%d deinter_signal.rows=%d deinter_signal.cols=%d",
+                 deinter_reset.rows, deinter_reset.cols, deinter_signal.rows, deinter_signal.cols);
+        logwrite( "Archon::DeInterlace::nirc2", std::string(message) );
 #endif
 
         // Now that the video frame has been split into separate buffers (for reset and signal frames)
@@ -316,13 +314,11 @@ namespace Archon {
        *
        */
       void nirc2() {
-        debug( "NIRC2_ENTRY" );
+        char message[256];
 #ifdef LOGLEVEL_DEBUG
-        std::stringstream message;
-        message.str(""); message << "[DEBUG] this->rows=" << this->rows 
-                                 << " this->cols=" << this->cols
-                                 << " this->frame_rows=" << this->frame_rows << " this->frame_cols=" << this->frame_cols;
-        logwrite( "Archon::DeInterlace::nirc2", message.str() );
+        SNPRINTF(message, "[DEBUG] this->rows=%d this->cols=%d this->frame_rows=%d this->frame_cols=%d",
+                 this->rows, this->cols, this->frame_rows, this->frame_cols);
+        logwrite( "Archon::DeInterlace::nirc2", std::string(message) );
 #endif
         // Create openCV image to hold entire imbuf (all cubes)
         //
@@ -339,11 +335,10 @@ namespace Archon {
         cv::Mat work( this->frame_rows, this->frame_cols, CV_16U );
 
         int workindex=0;
-        message.str(""); message << "workindex="<<workindex << " prior to calling nirc2(workindex, image, work)";
-        logwrite( "Archon::DeInterlace::nirc2", message.str() );
+        SNPRINTF(message, "workindex=%d prior to calling nirc2(workindex, image, work)", workindex);
+        logwrite( "Archon::DeInterlace::nirc2", std::string(message) );
         this->nirc2( workindex, image, work );  // this is where the actual deinterlacing takes place
 
-        debug( "NIRC2_EXIT" );
         return;
       }
       /***** Archon::DeInterlace::nirc2 ***************************************/
@@ -382,7 +377,7 @@ namespace Archon {
        */
       void nirc2( int &workindex, cv::Mat &image, cv::Mat &work ) {
         std::stringstream message;
-        std::string function = "Archon::DeInterlace::nirc2";
+        const std::string function("Archon::DeInterlace::nirc2");
 #ifdef LOGLEVEL_DEBUG
         message.str(""); message << "[DEBUG] this->rows=" << this->rows << " this->cols=" << this->cols
                                  << " this->frame_rows=" << this->frame_rows << " this->frame_cols=" << this->frame_cols
@@ -718,7 +713,7 @@ namespace Archon {
        *
        */
       void none( ) {
-        std::string function = "Archon::DeInterlace::none";
+        const std::string function("Archon::DeInterlace::none");
         std::stringstream message;
 
         int bufrows = this->rows * this->depth;
@@ -774,7 +769,6 @@ namespace Archon {
         this->frame_rows = _height;
         this->frame_cols = _width;
         this->depth = _depth;
-        debug( "DEINTERLACE_CLASS_CONSTRUCTED" );
       }
       /***** Archon::DeInterlace::DeInterlace *********************************/
 
@@ -782,7 +776,6 @@ namespace Archon {
       ~DeInterlace() {
         this->resetframe.release();
         this->readframe.release();
-        debug( "DEINTERLACE_CLASS_DESTRUCTED" );
       }
 
 
@@ -811,14 +804,15 @@ namespace Archon {
        *
        */
       void do_deinterlace() {
-        debug( "DO_DEINTERLACE_ENTRY" );
-        std::string function = "Archon::DeInterlace::do_deinterlace";
-        std::stringstream message;
-
-        message.str(""); message << "[DEBUG] workbuf=" << std::hex << static_cast<void*>(this->workbuf)
-                                 << " cdsbuf=" << std::hex << static_cast<void*>(this->cdsbuf)
-                                 << " imbuf=" << std::hex << static_cast<void*>(this->imbuf);
-        logwrite( "Archon::DeInterlace::do_deinterlace", message.str() );
+/***
+ *      const std::string function("Archon::DeInterlace::do_deinterlace");
+ *      stringstream message;
+ *
+ *      message.str(""); message << "[DEBUG] workbuf=" << std::hex << static_cast<void*>(this->workbuf)
+ *                               << " cdsbuf=" << std::hex << static_cast<void*>(this->cdsbuf)
+ *                               << " imbuf=" << std::hex << static_cast<void*>(this->imbuf);
+ *      logwrite( "Archon::DeInterlace::do_deinterlace", message.str() );
+ ***/
 
         switch( this->readout_type ) {
           case Archon::READOUT_NONE:
@@ -838,11 +832,10 @@ namespace Archon {
             this->test();
             break;
           default:
-            message.str(""); message << "ERROR: unknown readout type: " << this->readout_type;
-            logwrite( function, message.str() );
+            logwrite( "Archon::DeInterlace::do_deinterlace",
+                      "ERROR unknown readout type: " +std::to_string(this->readout_type) );
         }
 
-        debug( "DO_DEINTERLACE_EXIT" );
         return;
       }
       /***** Archon::DeInterlace::do_deinterlace ******************************/
@@ -876,11 +869,13 @@ namespace Archon {
       size_t cds_section_bytes  = cds_section_size * sizeof(T);
       size_t cds_alloc_bytes    = (cds_section_bytes+31) & ~size_t(31);   // round up to multiple of 32
 
-      std::stringstream message;
-      message << "[DEBUG] work_section_size=" << work_section_size << " work_section_bytes=" << work_section_bytes << " work_alloc_bytes=" << work_alloc_bytes;
-      logwrite("Archon::ProcessingBuffers",message.str());
-      message.str(""); message << "[DEBUG] cds_section_size=" << cds_section_size << " cds_section_bytes=" << cds_section_bytes << " cds_alloc_bytes=" << cds_alloc_bytes;
-      logwrite("Archon::ProcessingBuffers",message.str());
+/***
+ *    std::stringstream message;
+ *    message << "[DEBUG] work_section_size=" << work_section_size << " work_section_bytes=" << work_section_bytes << " work_alloc_bytes=" << work_alloc_bytes;
+ *    logwrite("Archon::ProcessingBuffers",message.str());
+ *    message.str(""); message << "[DEBUG] cds_section_size=" << cds_section_size << " cds_section_bytes=" << cds_section_bytes << " cds_alloc_bytes=" << cds_alloc_bytes;
+ *    logwrite("Archon::ProcessingBuffers",message.str());
+ ***/
 
       workbuf = std::shared_ptr<T[]>(static_cast<T*>(std::aligned_alloc(32, work_alloc_bytes)), std::free);
       cdsbuf  = std::shared_ptr<T[]>(static_cast<T*>(std::aligned_alloc(32, cds_alloc_bytes)),  std::free);
@@ -916,6 +911,8 @@ namespace Archon {
       std::condition_variable queue_cv;
 
       std::atomic<bool> is_producer_finished;
+      std::atomic<bool> is_producer_error;
+      std::atomic<bool> is_consumer_error;
 
       long initialize_processing_buffers();
       void frame_acquisition_loop(int nseq);
@@ -923,6 +920,7 @@ namespace Archon {
       void process_frame(std::shared_ptr<ImageBuffer> &framebuf);
       template<typename T> void deinterlace_queue(std::shared_ptr<ImageBuffer> framebuf, ProcessingBuffers<T> &buffers);
       void runcds();
+      void make_simulated_data(char* buffer, uint16_t extra);
 
       // Add any pre-exposures onto the requested number of sequences,
       // using 1 if not supplied.
@@ -974,16 +972,6 @@ namespace Archon {
 
       std::mutex deinter_mtx;                 /// deinterlacing mutex
       std::condition_variable deinter_cv;     /// deinterlacing condition variable
-      std::vector<bool> ringbuf_deinterlaced; /// set if this ring buffer been deinterlaced
-
-      /**
-       * @var     ringlock
-       * @brief   vector of flags which indicate if the ring buffer is locked for writing
-       * @details The ring buffer is flagged as locked while read_frame() is reading the Archon
-       *          frame buffer into it.  Note that you can't have a vector of atomics but you
-       *          can have a vector of unique_ptrs that point to atomic.
-       */
-      std::vector<std::unique_ptr<std::atomic<bool>>> ringlock;
 
       int  msgref;                           //!< Archon message reference identifier, matches reply to command
       int  taplines;
@@ -1002,11 +990,6 @@ namespace Archon {
       float heater_target_max;               //!< maximum heater target temperature
 
       char *image_data;                      //!< image data buffer //TODO @todo obsolete?
-      int ringcount;
-      std::vector<char*> image_ring;
-      std::vector<void*> work_ring;
-      std::vector<void*> cds_ring;
-      std::vector<uint32_t> ringdata_allocated;
 
       int32_t* coaddbuf;                     /// final coadd buffer written to FITS
       int32_t* mcdsbuf_0;                    /// first group of MCDS coadds (baseline)
@@ -1035,8 +1018,6 @@ namespace Archon {
       int shutenable_enable;                 //!< the value which enables shutter enable
       int shutenable_disable;                //!< the value which disables shutter enable
 
-      void inc_ringcount() { if (++this->ringcount == IMAGE_RING_BUFFER_SIZE) this->ringcount=0; }
-
       // Functions
       //
       long abort();                          ///  abort an exposure
@@ -1047,7 +1028,6 @@ namespace Archon {
       long prepare_ring_buffer();            //!< prepare image_data, allocating memory as needed
       long connect_controller(std::string devices_in);  //!< open connection to archon controller
       long disconnect_controller();          //!< disconnect from archon controller
-      long cleanup_memory();                 //!< free allocated memory
       long load_timing(std::string acffile); //!< load specified ACF then LOADTIMING
       long load_timing(std::string acffile, std::string &retstring);
       long load_firmware(std::string acffile); //!< load specified acf then APPLYALL
@@ -1068,13 +1048,7 @@ namespace Archon {
       long get_timer(unsigned long int *timer);
       long fetch(uint64_t bufaddr, uint32_t bufblocks);
       long read_frame_cache(char* buffer, int slice);
-      long read_frame();                     //!< read Archon frame buffer into host memory
-      long read_frame(Camera::frame_type_t frame_type); /// read Archon frame buffer into host memory
       long read_frame( Camera::frame_type_t frame_type, char* ptr );
-      long read_frame( Camera::frame_type_t frame_type, char* &ptr );
-      long read_frame( Camera::frame_type_t frame_type, char* &ptr, int ringcount_in );
-      long write_frame();                    //!< write (a previously read) Archon frame buffer to disk
-      long write_frame(int ringcount_in);    //!< write (a previously read) Archon frame buffer to disk
       long write_config_key( const char *key, const char *newvalue, bool &changed );
       long write_config_key( const char *key, int newvalue, bool &changed );
       long write_parameter( const char *paramname, const char *newvalue, bool &changed );
@@ -1121,26 +1095,7 @@ namespace Archon {
       long readout( std::string readout_in, std::string &readout_out );
       long test(std::string args, std::string &retstring);
 
-      static void dothread_runmcdsproc( Interface *self );
-      static void dothread_runcds( Interface *self );                             /// this is run in a thread to open a fits file for flat (non-mex) files only
       static void dothread_openfits( Interface *self );                             /// this is run in a thread to open a fits file for flat (non-mex) files only
-      static void dothread_writeframe( Interface *self, int ringcount_in );         /// this is run in a thread to write a frame after it is deinterlaced
-      static void dothread_start_deinterlace( Interface *self, int ringcount_in );  /// calls the appropriate deinterlacer based on camera_info.datatype
-
-      long alloc_workbuf();
-      template <class T> void* alloc_workbuf(T* buf);
-      template <class T> void free_workbuf(T* buf);
-
-      long alloc_workring();
-      template <class T> void  alloc_workring( T* buf );
-      template <class T> void  free_workring( T* buf );
-
-      long alloc_cdsring();
-      template <class T> void  alloc_cdsring( T* buf );
-      template <class T> void  free_cdsring( T* buf );
-
-      template <class T> T* deinterlace( T* imbuf, T* workbuf, T* cdsbuf, int ringcount_in );
-      template <class T> static void dothread_deinterlace( Interface *self, DeInterlace<T> &deinterlace, int ringcount );
 
       /**
        * @var     struct geometry_t geometry[]

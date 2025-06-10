@@ -666,14 +666,6 @@ void doit(Network::TcpSocket sock) {
                     if (ret==NO_ERROR) server.print_frame_status();
                     }
     else
-    if (cmd.compare("readframe")==0) {
-                    ret = server.read_frame();
-                    }
-    else
-    if (cmd.compare("writeframe")==0) {
-                    ret = server.write_frame();
-                    }
-    else
     if (cmd.compare("cds")==0) {
                     ret = server.cds(args, retstring);
                     if (!retstring.empty()) { sock.Write(retstring); sock.Write(" "); }

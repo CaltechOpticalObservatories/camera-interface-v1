@@ -81,6 +81,7 @@ namespace Camera {
         this->disconnect_controller();
 //      this->cleanup_memory();
         logwrite(function, "server exiting");
+        close_log();
         exit(EXIT_SUCCESS);
       }
       /***** Camera::Server::exit_cleanly *************************************/

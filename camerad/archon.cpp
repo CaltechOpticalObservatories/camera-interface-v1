@@ -23,30 +23,9 @@ namespace Archon {
     this->frame.index = 0;
     this->frame.next_index = 0;
     this->taplines = 0;
-    this->ringcount = 0;
-    this->ringbuf_deinterlaced.reserve( Archon::IMAGE_RING_BUFFER_SIZE );
-    this->image_ring.reserve( Archon::IMAGE_RING_BUFFER_SIZE );
-    this->work_ring.reserve( Archon::IMAGE_RING_BUFFER_SIZE );
-    this->cds_ring.reserve( Archon::IMAGE_RING_BUFFER_SIZE );
-    for ( int i=0; i<Archon::IMAGE_RING_BUFFER_SIZE; i++ ) {
-      this->image_ring.push_back(nullptr);
-      this->work_ring.push_back(nullptr);
-      this->cds_ring.push_back(nullptr);
-      this->ringdata_allocated.push_back(0);
-      this->ringbuf_deinterlaced.push_back(false);
-    }
-
-    this->ringlock.resize( Archon::IMAGE_RING_BUFFER_SIZE );  // pre-size the ringlock container
 
     this->deinterlace_count.store( 0, std::memory_order_seq_cst );
     this->write_frame_count.store( 0, std::memory_order_seq_cst );
-
-    // Can't have a vector of atomics but can have a vector of unique_ptr.
-    // Initialize those pointers here.
-    //
-    for ( auto &p : this->ringlock ) {
-        p = std::make_unique<std::atomic<bool>>(false);
-    }
 
     this->coaddbuf = nullptr;
     this->mcdsbuf_0 = nullptr;
@@ -111,66 +90,19 @@ namespace Archon {
 
     if (this->image_data != nullptr) { delete [] this->image_data; this->image_data=nullptr; }
 
-    for ( int i=0; i<Archon::IMAGE_RING_BUFFER_SIZE; i++ ) {
-      if ( this->image_ring.at(i) != nullptr ) {
-        delete [] this->image_ring.at(i);
-        this->image_ring.at(i) = nullptr;
-      }
+    if ( this->coaddbuf != nullptr ) {
+      delete [] (int32_t*)this->coaddbuf;
+      this->coaddbuf=nullptr;
+    }
+    if ( this->mcdsbuf_0 != nullptr ) {
+      delete [] (int32_t*)this->mcdsbuf_0;
+      this->mcdsbuf_0=nullptr;
+    }
+    if ( this->mcdsbuf_1 != nullptr ) {
+      delete [] (int32_t*)this->mcdsbuf_1;
+      this->mcdsbuf_1=nullptr;
     }
 
-    {
-    void* ptr=nullptr;
-    switch ( this->camera_info.datatype ) {
-      case USHORT_IMG: {
-        this->free_workring( (uint16_t *)ptr );
-        break;
-      }
-      case SHORT_IMG: {
-        this->free_workring( (int16_t *)ptr );
-        break;
-      }
-      case FLOAT_IMG: {
-        this->free_workring( (uint32_t *)ptr );
-        break;
-      }
-      case 0:   // not set
-        break;
-      default:
-        std::stringstream message;
-        message << "cannot free work_ring for unknown datatype: " << this->camera_info.datatype;
-        this->camera.log_error( "Interface::~Interface", message.str() );
-        break;
-    }
-    }
-
-    {
-    void* ptr=nullptr;
-    switch ( this->cds_info.datatype ) {
-      case USHORT_IMG: {
-        this->free_cdsring( (uint16_t *)ptr );
-        break;
-      }
-      case SHORT_IMG: {
-        this->free_cdsring( (int16_t *)ptr );
-        break;
-      }
-      case FLOAT_IMG: {
-        this->free_cdsring( (uint32_t *)ptr );
-        break;
-      }
-      case LONG_IMG: {
-        this->free_cdsring( (int32_t *)ptr );
-        break;
-      }
-      case 0:   // not set
-        break;
-      default:
-        std::stringstream message;
-        message << "cannot free cds_ring for unknown datatype: " << this->cds_info.datatype;
-        this->camera.log_error( "Interface::~Interface", message.str() );
-        break;
-    }
-    }
   }
   /***** Archon::Interface::~Interface ****************************************/
 
@@ -570,70 +502,6 @@ namespace Archon {
   /**************** Archon::Interface::configure_controller *******************/
 
 
-  /**************** Archon::Interface::prepare_ring_buffer ********************/
-  /**
-   * @brief    prepare image_data buffer, allocating memory as needed
-   * @details  This is called once per exposure, by do_expose()
-   * @return   NO_ERROR if successful or ERROR on error
-   *
-   */
-  long Interface::prepare_ring_buffer() {
-    const std::string function("Archon::Interface::prepare_ring_buffer");
-    std::stringstream message;
-
-    // This is the amount of memory to allocate for each fits write.
-    // If this is multi-extension (mex) then this is memory per extension.
-    // If this is a 3D data cube then this includes the total cube depth.
-    //
-    uint32_t expected_allocation = this->image_data_bytes * this->camera_info.cubedepth;
-
-    try {
-      for ( int i=0; i<Archon::IMAGE_RING_BUFFER_SIZE; i++ ) {
-        // If there is already a correctly-sized buffer allocated,
-        // then don't do anything except initialize that space to zero.
-        //
-        if ( ( this->image_ring.at(i) != nullptr )  &&
-             ( expected_allocation != 0 )        &&
-             ( this->ringdata_allocated.at(i) == expected_allocation ) ) {
-          memset( this->image_ring.at(i), 0, expected_allocation );
-          message.str(""); message << "initialized " << expected_allocation << " bytes of ring buffer " << i << " memory at " << (void*)this->image_ring.at(i);
-          logwrite(function, message.str());
-        }
-
-        // If memory needs to be re-allocated, delete the old buffer
-        //
-        else {
-          if ( this->image_ring.at(i) != nullptr ) {
-            message.str(""); message << "deleting ring buffer " << i;
-            logwrite( function, message.str() );
-            delete [] this->image_ring.at(i);
-            this->image_ring.at(i)=nullptr;
-          }
-          // Allocate new memory
-          //
-          if (expected_allocation != 0) {
-            this->image_ring.at(i) = new char[expected_allocation]{};
-            this->ringdata_allocated.at(i)=expected_allocation;
-            message.str(""); message << "allocated " << expected_allocation << " bytes for ring buffer " << i << " at " << (void*)this->image_ring.at(i);
-            logwrite(function, message.str());
-          }
-          else {
-            this->camera.log_error( function, "cannot allocate zero-length image memory" );
-            return(ERROR);
-          }
-        }
-      }
-    }
-    catch ( std::out_of_range & ) {
-      this->camera.log_error( function, "out of range addressing image_ring" );
-      return(ERROR);
-    }
-
-    return(NO_ERROR);
-  }
-  /**************** Archon::Interface::prepare_ring_buffer ********************/
-
-
   /**************** Archon::Interface::connect_controller *********************/
   /**
    * @fn     connect_controller
@@ -803,102 +671,6 @@ namespace Archon {
   /***** Archon::Interface::disconnect_controller *****************************/
 
 
-  /***** Archon::Interface::cleanup_memory ************************************/
-  /**
-   * @brief      close connection to Archon and free allocated memory
-   * @return     ERROR or NO_ERROR
-   *
-   */
-  long Interface::cleanup_memory() {
-    const std::string function("Archon::Interface::cleanup_memory");
-    std::stringstream message;
-    long error = NO_ERROR;
-
-    // Free the memory
-    //
-    if ( this->image_data != nullptr ) {
-      logwrite( function, "releasing allocated device memory" );
-      delete [] this->image_data;
-      this->image_data=nullptr;
-    }
-
-    // Free the image_ring buffers
-    //
-    message.str(""); message << "freed image ring buffer";
-    for ( int i=0; i<Archon::IMAGE_RING_BUFFER_SIZE; i++ ) {
-      if ( this->image_ring.at(i) != nullptr ) {
-        delete [] this->image_ring.at(i);
-        message << " " << std::dec << i << ":" << std::hex << (void*)this->image_ring.at(i);
-        this->image_ring.at(i) = nullptr;
-      }
-    }
-    logwrite( function, message.str() );
-
-    // Free the work_ring buffers.
-    // This takes a template function to typecast the pointer because it's defined as void.
-    //
-    {
-    void* ptr=nullptr;
-    switch ( this->camera_info.datatype ) {
-      case USHORT_IMG: {
-        this->free_workring( (uint16_t *)ptr );
-        break;
-      }
-      case SHORT_IMG: {
-        this->free_workring( (int16_t *)ptr );
-        break;
-      }
-      case FLOAT_IMG: {
-        this->free_workring( (uint32_t *)ptr );
-        break;
-      }
-      case 0:   // not set
-        break;
-      default:
-        message.str(""); message << "cannot free work_ring for unknown datatype: " << this->camera_info.datatype;
-        this->camera.log_error(function, message.str());
-        error = ERROR;
-        break;
-    }
-    }
-
-    // Free the cds ring buffers.
-    // This takes a template function to typecast the pointer because it's defined as void.
-    //
-    {
-    void* ptr=nullptr;
-    switch ( this->cds_info.datatype ) {
-      case USHORT_IMG: {
-        this->free_cdsring( (uint16_t *)ptr );
-        break;
-      }
-      case SHORT_IMG: {
-        this->free_cdsring( (int16_t *)ptr );
-        break;
-      }
-      case FLOAT_IMG: {
-        this->free_cdsring( (uint32_t *)ptr );
-        break;
-      }
-      case LONG_IMG: {
-        this->free_cdsring( (int32_t *)ptr );
-        break;
-      }
-      case 0:   // not set
-        break;
-      default:
-        message.str(""); message << "cannot free cds_ring for unknown datatype: " << this->cds_info.datatype;
-        this->camera.log_error(function, message.str());
-        error = ERROR;
-        break;
-    }
-    }
-
-    return(error);
-  }
-  /***** Archon::Interface::cleanup_memory ************************************/
-
-
   /**************** Archon::Interface::native *********************************/
   /**
    * @fn     native
@@ -985,36 +757,28 @@ namespace Archon {
 
     // build command: ">xxCOMMAND\n" where xx=hex msgref and COMMAND=command
     //
+    char buf[256];
     this->msgref = (this->msgref + 1) % 256;       // increment msgref for each new command sent
-    std::stringstream ssprefix;
-    ssprefix << ">"
-             << std::setfill('0')
-             << std::setw(2)
-             << std::hex
-             << this->msgref;
-    std::string prefix=ssprefix.str();
-
-    std::transform( prefix.begin(), prefix.end(), prefix.begin(), ::toupper );    // make uppercase
-
-    std::stringstream  sscmd;         // sscmd = stringstream, building command
-    sscmd << prefix << cmd << "\n";
-    std::string scmd = sscmd.str();   // scmd = string, command to send
+    int len=std::snprintf(buf, sizeof(buf), ">%02X%s\n", this->msgref, cmd.c_str());
+    std::string scmd(buf, len);
 
     // build the command checksum: msgref used to check that reply matches command
     //
     SNPRINTF(check, "<%02X", this->msgref);
 
-    // log the command as long as it's not a STATUS, TIMER, WCONFIG or FRAME command
-    //
-    if ( (cmd.compare(0,7,"WCONFIG") != 0) &&
-         (cmd.compare(0,5,"TIMER") != 0)   &&
-         (cmd.compare(0,6,"STATUS") != 0)  &&
-         (cmd.compare(0,5,"FRAME") != 0) ) {
-      // erase newline for logging purposes
-      std::string fcmd = scmd; try { fcmd.erase(fcmd.find("\n"), 1); } catch(...) { }
-      message.str(""); message << "sending command: " << fcmd;
-      logwrite(function, message.str());
-    }
+/***
+ *  // log the command as long as it's not a STATUS, TIMER, WCONFIG or FRAME command
+ *  //
+ *  if ( (cmd.compare(0,7,"WCONFIG") != 0) &&
+ *       (cmd.compare(0,5,"TIMER") != 0)   &&
+ *       (cmd.compare(0,6,"STATUS") != 0)  &&
+ *       (cmd.compare(0,5,"FRAME") != 0) ) {
+ *    // erase newline for logging purposes
+ *    std::string fcmd = scmd; try { fcmd.erase(fcmd.find("\n"), 1); } catch(...) { }
+ *    message.str(""); message << "sending command: " << fcmd;
+ *    logwrite(function, message.str());
+ *  }
+ ***/
 
     // send the command
     //
@@ -1031,11 +795,11 @@ namespace Archon {
     // The read_frame() function will have to clear this flag when it is
     // done reading the data.
     //
-    if ( (cmd.compare(0,5,"FETCH")==0) && (cmd.compare(0,8,"FETCHLOG")!=0) ) return NO_ERROR;
+    if (cmd.size() >= 5 && memcmp(cmd.data(), "FETCH", 5)==0 &&
+       (cmd.size() < 8 || memcmp(cmd.data(), "FETCHLOG", 8) != 0)) return NO_ERROR;
 
     // For all other commands, receive the reply
     //
-//  char    buffer[8192];                       // temporary buffer for holding Archon replies
     char* buffer = new char[8192]{};            // temporary buffer for holding Archon replies
     reply.clear();                              // zero reply buffer
     do {
@@ -1069,30 +833,35 @@ namespace Archon {
     //
     // Error processing command (no other information is provided by Archon)
     //
-    if (reply.compare(0, 1, "?")==0) {               // "?" means Archon experienced an error processing command
+    // "?" means Archon experienced an error processing command
+    if (!reply.empty() && reply[0]=='?') {
       error = ERROR;
       message.str(""); message << "Archon controller returned error processing command: " << cmd;
       this->camera.log_error( function, message.str() );
     }
     else
-    if (reply.compare(0, 3, check)!=0) {             // First 3 bytes of reply must equal checksum else reply doesn't belong to command
+    // First 3 bytes of reply must equal checksum else reply doesn't belong to command
+    if (reply.size()<3 || std::memcmp(reply.data(), check, 3) != 0) {
       error = ERROR;
       std::string hdr = reply;
       try { scmd.erase(scmd.find("\n"), 1); } catch(...) { }
       message.str(""); message << "command-reply mismatch for command: " + scmd + ": expected " + check + " but received " + reply ;
       this->camera.log_error( function, message.str() );
     }
-    else {                                           // command and reply are a matched pair
+    else {
+    // command and reply are a matched pair
       error = NO_ERROR;
 
-      // log the command as long as it's not a STATUS, TIMER, WCONFIG or FRAME command
-      if ( (cmd.compare(0,7,"WCONFIG") != 0) &&
-           (cmd.compare(0,5,"TIMER") != 0)   &&
-           (cmd.compare(0,6,"STATUS") != 0)  &&
-           (cmd.compare(0,5,"FRAME") != 0) ) {
-        message.str(""); message << "command 0x" << std::setfill('0') << std::setw(2) << std::uppercase << std::hex << this->msgref << " success";
-        logwrite(function, message.str());
-      }
+/***
+ *    // log the command as long as it's not a STATUS, TIMER, WCONFIG or FRAME command
+ *    if ( (cmd.compare(0,7,"WCONFIG") != 0) &&
+ *         (cmd.compare(0,5,"TIMER") != 0)   &&
+ *         (cmd.compare(0,6,"STATUS") != 0)  &&
+ *         (cmd.compare(0,5,"FRAME") != 0) ) {
+ *      message.str(""); message << "command 0x" << std::setfill('0') << std::setw(2) << std::uppercase << std::hex << this->msgref << " success";
+ *      logwrite(function, message.str());
+ *    }
+ ***/
 
       reply.erase(0, 3);                             // strip off the msgref from the reply
     }
@@ -2380,105 +2149,100 @@ namespace Archon {
     std::stringstream message;
     int   newestframe, newestbuf;
     long  error=NO_ERROR;
-//logwrite( function, "[TIMESTAMP] start" );
 
     // send FRAME command to get frame buffer status
     //
     if ( (error = this->archon_cmd(FRAME, reply)) ) {
-      if ( error == ERROR ) logwrite( function, "ERROR: sending FRAME command" );  // don't log here if BUSY
-      return(error);
+      if ( error == ERROR ) logwrite( function, "ERROR sending FRAME command" );  // don't log here if BUSY
+      return error;
     }
 
-    // First Tokenize breaks the single, continuous string into vector of individual strings,
-    // from "TIMER=xxxx RBUF=xxxx " to:
-    //   tokens[0] : TIMER=xxxx
-    //   tokens[1] : RBUF=xxxx
-    //   tokens[2] : etc.
+    // use direct pointer indexing for speed
     //
-    std::vector<std::string> tokens;
-    Tokenize(reply, tokens, " ");
+    const char* reply_ptr = reply.c_str();
+    const char* reply_end = reply_ptr + reply.length();
 
-    for (size_t i=0; i<tokens.size(); i++) {
+    // reply is a continuous string of key=value pairs "TIMER=xxxx RBUF=xxxx " ... etc.
+    // Find the key by reading chars up to the equal sign.
+    //
+    while (reply_ptr < reply_end) {
 
-      // Second Tokenize separates the paramater from the value
-      //
-      std::vector<std::string> subtokens;
-//    subtokens.clear();
-      Tokenize(tokens[i], subtokens, "=");
+      // skip whitespace
+      while (reply_ptr < reply_end && *reply_ptr==' ') reply_ptr++;
+      if (reply_ptr > reply_end) break;
 
-      // Each entry in the FRAME message must have two tokens, one for each side of the "=" equal sign
-      // (in other words there must be two subtokens per token)
-      //
-      if (subtokens.size() != 2) {
-        message.str("");
-        message << "expected 2 but received invalid number of tokens (" << subtokens.size() << ") in FRAME message:";
-        for (size_t j=0; i<subtokens.size(); i++) message << " " << subtokens.at(j);
-        this->camera.log_error( function, message.str() );
-        return(ERROR);  // We could continue; but if one is bad then we could miss seeing a larger problem
+      // find key
+      const char* key_start = reply_ptr;
+      while (reply_ptr < reply_end && *reply_ptr != '=' && *reply_ptr != ' ') reply_ptr++;
+      if (reply_ptr >= reply_end || *reply_ptr != '=') break;
+
+      size_t key_len = reply_ptr - key_start;
+      reply_ptr++;  // skip "="
+
+      // find value
+      const char* value_start = reply_ptr;
+      while (reply_ptr < reply_end && *reply_ptr != ' ') reply_ptr++;
+      size_t valuelen = reply_ptr - value_start;
+
+      // TIMER=XXXX pattern
+      if (key_len==5 && key_start[0]=='T' && std::strncmp(key_start, "TIMER", 5)==0) {
+        this->frame.timer.assign(value_start, valuelen);
       }
-
-      int bufnum=0;
-      int value=0;
-      uint64_t lvalue=0;
-
-      try {
-        if (subtokens.at(0)=="TIMER") this->frame.timer = subtokens.at(1);  // timer is a string
-        else {                                                        // everything else is going to be a number
-          if (subtokens.at(0).compare(0, 3, "BUF")==0) {               // for all "BUFnSOMETHING=VALUE" we want the bufnum "n"
-            bufnum = std::stoi( subtokens.at(0).substr(3, 1) );        // extract the "n" here which is 1-based (1,2,3)
-          }
-          if (subtokens.at(0).substr(4)=="BASE" ) {                    // for "BUFnBASE=xxx" the value is uint64
-            lvalue  = std::stol( subtokens.at(1) );                    // this value will get assigned to the corresponding parameter
-          }
-          else
-          if (subtokens.at(0).find("TIMESTAMP")!=std::string::npos) {  // for any "xxxTIMESTAMPxxx" the value is uint64
-            std::stringstream v;
-            v << std::hex << subtokens.at(1);
-            v >> lvalue;                                            // this value will get assigned to the corresponding parameter
-          }
-          else                                                      // everything else is an int
-            value  = std::stoi( subtokens.at(1) );                     // this value will get assigned to the corresponding parameter
+      else
+      if (key_len==4) {
+        // RBUF=XXXX pattern
+        if (key_start[0]=='R' && std::strncmp(key_start, "RBUF", 4)==0) {
+          this->frame.rbuf = std::atoi(value_start);
         }
-        if (subtokens.at(0)=="RBUF")  this->frame.rbuf  = value;
-        if (subtokens.at(0)=="WBUF")  this->frame.wbuf  = value;
-      }
-      catch (std::invalid_argument &) {
-        this->camera.log_error( function, "unable to convert buffer or value from FRAME message to integer" );
-        return(ERROR);
-      }
-      catch (std::out_of_range &) {
-        this->camera.log_error( function, "buffer or value from FRAME message outside integer range" );
-        return(ERROR);
-      }
-
-      // The next group are BUFnSOMETHING=VALUE
-      // Extract the "n" which must be a number from 1 to Archon::nbufs
-      // After getting the buffer number we assign the corresponding value.
-      //
-      if (subtokens.at(0).compare(0, 3, "BUF")==0) {
-        if (bufnum < 1 || bufnum > Archon::nbufs) {
-          message.str(""); message << "buffer number " << bufnum << " from FRAME message outside range {1:" << Archon::nbufs << "}";
-          this->camera.log_error( function, message.str() );
-          return(ERROR);
+        else
+        // WBUF=XXXX pattern
+        if (key_start[0]=='W' && std::strncmp(key_start, "WBUF", 4)==0) {
+          this->frame.wbuf = std::atoi(value_start);
         }
-        bufnum--;   // subtract 1 because it is 1-based in the message but need 0-based for the indexing
-        if (subtokens.at(0).substr(4) == "SAMPLE")      this->frame.bufsample[bufnum]      =  value;
-        if (subtokens.at(0).substr(4) == "COMPLETE")    this->frame.bufcomplete[bufnum]    =  value;
-        if (subtokens.at(0).substr(4) == "MODE")        this->frame.bufmode[bufnum]        =  value;
-        if (subtokens.at(0).substr(4) == "BASE")        this->frame.bufbase[bufnum]        = lvalue;
-        if (subtokens.at(0).substr(4) == "FRAME")       this->frame.bufframen[bufnum]      =  value;
-        if (subtokens.at(0).substr(4) == "WIDTH")       this->frame.bufwidth[bufnum]       =  value;
-        if (subtokens.at(0).substr(4) == "HEIGHT")      this->frame.bufheight[bufnum]      =  value;
-        if (subtokens.at(0).substr(4) == "PIXELS")      this->frame.bufpixels[bufnum]      =  value;
-        if (subtokens.at(0).substr(4) == "LINES")       this->frame.buflines[bufnum]       =  value;
-        if (subtokens.at(0).substr(4) == "RAWBLOCKS")   this->frame.bufrawblocks[bufnum]   =  value;
-        if (subtokens.at(0).substr(4) == "RAWLINES")    this->frame.bufrawlines[bufnum]    =  value;
-        if (subtokens.at(0).substr(4) == "RAWOFFSET")   this->frame.bufrawoffset[bufnum]   =  value;
-        if (subtokens.at(0).substr(4) == "TIMESTAMP")   this->frame.buftimestamp[bufnum]   = lvalue;
-        if (subtokens.at(0).substr(4) == "RETIMESTAMP") this->frame.bufretimestamp[bufnum] = lvalue;
-        if (subtokens.at(0).substr(4) == "FETIMESTAMP") this->frame.buffetimestamp[bufnum] = lvalue;
       }
-    }
+      else
+      // BUFnXXXX=XXXX pattern...
+      if (key_len>3 && key_start[0]=='B' && key_start[1]=='U' && key_start[2]=='F') {
+        int bufnum = key_start[3]-'1';  // convert to 0-based
+
+        // match suffix
+        const char* suffix = key_start+4;
+        size_t suffix_len = key_len-4;
+
+        switch (suffix_len) {
+          case 4:  // BUFnBASE, MODE
+            if (std::strncmp(suffix, "BASE", 4)==0) this->frame.bufbase[bufnum] = std::strtoul(value_start, nullptr, 10);
+            else
+            if (std::strncmp(suffix, "MODE", 4)==0) this->frame.bufmode[bufnum] = std::atoi(value_start);
+            break;
+          case 5:  // BUFnFRAME, WIDTH, LINES
+            if (std::strncmp(suffix, "FRAME", 5)==0) this->frame.bufframen[bufnum] = std::atoi(value_start);
+            else
+            if (std::strncmp(suffix, "WIDTH", 5)==0) this->frame.bufwidth[bufnum] = std::atoi(value_start);
+            else
+            if (std::strncmp(suffix, "LINES", 5)==0) this->frame.buflines[bufnum] = std::atoi(value_start);
+            break;
+          case 6:  // BUFnSAMPLE, PIXELS, HEIGHT
+            if (std::strncmp(suffix, "SAMPLE", 6)==0) this->frame.bufsample[bufnum] = std::atoi(value_start);
+            else
+            if (std::strncmp(suffix, "PIXELS", 6)==0) this->frame.bufpixels[bufnum] = std::atoi(value_start);
+            else
+            if (std::strncmp(suffix, "HEIGHT", 6)==0) this->frame.bufheight[bufnum] = std::atoi(value_start);
+            break;
+          case 8:  // BUFnCOMPLETE
+            if (std::strncmp(suffix, "COMPLETE", 8)==0) this->frame.bufcomplete[bufnum] = std::atoi(value_start);
+            break;
+          case 9:  // BUFnTIMESTAMP
+            if (std::strncmp(suffix, "TIMESTAMP", 9)==0) this->frame.buftimestamp[bufnum] = std::strtoull(value_start, nullptr, 16);
+            break;
+          case 11: // BUFnRETIMESTAMP, FETIMESTAMP
+            if (std::strncmp(suffix, "RETIMESTAMP", 11)==0) this->frame.bufretimestamp[bufnum] = std::strtoull(value_start, nullptr, 16);
+            else
+            if (std::strncmp(suffix, "FETIMESTAMP", 11)==0) this->frame.buffetimestamp[bufnum] = std::strtoull(value_start, nullptr, 16);
+            break;
+        } // end switch(suffix_len)
+      } // end if BUFnXXXX pattern
+    } // end looping through reply
 
     newestbuf   = this->frame.index;
 
@@ -2488,7 +2252,7 @@ namespace Archon {
     else {
       message.str(""); message << "newest buf " << this->frame.index << " from FRAME message exceeds number of buffers " << this->frame.bufframen.size();
       this->camera.log_error( function, message.str() );
-      return(ERROR);
+      return ERROR;
     }
 
     // loop through the number of buffers
@@ -2535,8 +2299,7 @@ namespace Archon {
       this->frame.next_index = 0;
     }
 
-//logwrite( function, "[TIMESTAMP] stop" );
-    return(error);
+    return error;
   }
   /**************** Archon::Interface::get_frame_status ***********************/
 
@@ -2685,7 +2448,6 @@ namespace Archon {
    *
    */
   long Interface::fetch(uint64_t bufaddr, uint32_t bufblocks) {
-    debug( "FETCH_ENTRY frame="+std::to_string(this->lastframe) );
     const std::string function("Archon::Interface::fetch");
     std::stringstream message;
     uint32_t maxblocks = (uint32_t)(1.5E9 / this->camera_info.activebufs / 1024 );
@@ -2695,23 +2457,17 @@ namespace Archon {
     if ( bufaddr > maxaddr ) {
       message.str(""); message << "fetch Archon buffer requested address 0x" << std::hex << bufaddr << " exceeds 0x" << maxaddr;
       this->camera.log_error( function, message.str() );
-      return(ERROR);
+      return ERROR;
     }
     if ( bufblocks > maxblocks ) {
       message.str(""); message << "fetch Archon buffer requested blocks 0x" << std::hex << bufblocks << " exceeds 0x" << maxblocks;
       this->camera.log_error( function, message.str() );
-      return(ERROR);
+      return ERROR;
     }
 
-    std::stringstream sscmd;
-    sscmd << "FETCH"
-          << std::setfill('0') << std::setw(8) << std::hex
-          << bufaddr
-          << std::setfill('0') << std::setw(8) << std::hex
-          << bufblocks;
-    std::string scmd = sscmd.str();
-
-    std::transform( scmd.begin(), scmd.end(), scmd.begin(), ::toupper );  // make uppercase
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "FETCH%08" PRIX64 "%08" PRIX32, bufaddr, bufblocks);
+    std::string scmd(buf);
 
     // Sending archon_cmd( FETCH ) will set the archon busy flag and not clear it.
     // If there's an error then archon_cmd() probably cleared it but it's OK to
@@ -2724,152 +2480,9 @@ namespace Archon {
       return ERROR;
     }
 
-    message.str(""); message << "reading " << (this->camera_info.frame_type==Camera::FRAME_RAW?"raw":"image") << " with " << scmd;
-    logwrite(function, message.str());
-    debug( "FETCH_EXIT frame="+std::to_string(this->lastframe) );
     return NO_ERROR;
   }
   /**************** Archon::Interface::fetch **********************************/
-
-
-  long Interface::read_frame_cache(char* buffer, int slice) {
-    const std::string function("Archon::Interface::read_frame_cache");
-    logwrite(function, "[NEW] slice="+std::to_string(slice));
-    return NO_ERROR;
-  }
-
-
-  /**************** Archon::Interface::read_frame *****************************/
-  /**
-   * @fn     read_frame
-   * @brief  read latest Archon frame buffer
-   * @param  none
-   * @return ERROR or NO_ERROR
-   *
-   * This is function is overloaded.
-   *
-   * This version, with no parameter, is the one that is called by the server.
-   * The decision is made here if the frame to be read is a RAW or an IMAGE 
-   * frame based on this->camera_info.current_observing_mode, then the 
-   * overloaded version of read_frame(frame_type) is called with the appropriate 
-   * frame type of IMAGE or RAW.
-   *
-   * This function WILL call write_frame(...) to write data after reading it.
-   *
-   */
-  long Interface::read_frame() {
-    const std::string function("Archon::Interface::read_frame");
-    std::stringstream message;
-    long error = NO_ERROR;
-
-    if ( ! this->modeselected ) {
-      this->camera.log_error( function, "no mode selected" );
-      return ERROR;
-    }
-
-    int rawenable = this->modemap[this->camera_info.current_observing_mode].rawenable;
-
-    if (rawenable == -1) {
-      this->camera.log_error( function, "RAWENABLE is undefined" );
-      return ERROR;
-    }
-
-    // RAW-only
-    //
-    if (this->camera_info.current_observing_mode == "RAW") {              // "RAW" is the only reserved mode name
-
-      // the RAWENABLE parameter must be set in the ACF file, in order to read RAW data
-      //
-      if (rawenable==0) {
-        this->camera.log_error( function, "observing mode is RAW but RAWENABLE=0 -- change mode or set RAWENABLE?" );
-        return ERROR;
-      }
-      else {
-        error = this->read_frame(Camera::FRAME_RAW);                              // read raw frame
-        if ( error != NO_ERROR ) { logwrite( function, "ERROR: reading raw frame" ); return error; }
-        error = this->write_frame();                                              // write raw frame
-        if ( error != NO_ERROR ) { logwrite( function, "ERROR: writing raw frame" ); return error; }
-      }
-    }
-
-    // IMAGE, or IMAGE+RAW
-    // mex was already set = true in the expose function
-    //
-    else {
-      error = this->read_frame(Camera::FRAME_IMAGE);                              // read image frame
-      if ( error != NO_ERROR ) { logwrite( function, "ERROR: reading image frame" ); return error; }
-      error = this->write_frame();                                                // write image frame
-      if ( error != NO_ERROR ) { logwrite( function, "ERROR: writing image frame" ); return error; }
-
-      // If mode is not RAW but RAWENABLE=1, then we will first read an image
-      // frame (just done above) and then a raw frame (below). To do that we
-      // must switch to raw mode then read the raw frame. Afterwards, switch back
-      // to the original mode, for any subsequent exposures..
-      //
-      if (rawenable == 1) {
-#ifdef LOGLEVEL_DEBUG
-        logwrite(function, "[DEBUG] rawenable is set -- IMAGE+RAW file will be saved");
-        logwrite(function, "[DEBUG] switching to mode=RAW");
-#endif
-        std::string orig_mode = this->camera_info.current_observing_mode; // save the original mode so we can come back to it
-        error = this->set_camera_mode("raw");                             // switch to raw mode
-        if ( error != NO_ERROR ) { logwrite( function, "ERROR: switching to raw mode" ); return error; }
-
-#ifdef LOGLEVEL_DEBUG
-        message.str(""); message << "error=" << error << "[DEBUG] calling read_frame(Camera::FRAME_RAW) if error=0"; logwrite(function, message.str());
-#endif
-        error = this->read_frame(Camera::FRAME_RAW);                      // read raw frame
-        if ( error != NO_ERROR ) { logwrite( function, "ERROR: reading raw frame" ); return error; }
-#ifdef LOGLEVEL_DEBUG
-        message.str(""); message << "error=" << error << "[DEBUG] calling write_frame() for raw data if error=0"; logwrite(function, message.str());
-#endif
-        error = this->write_frame();                                      // write raw frame
-        if ( error != NO_ERROR ) { logwrite( function, "ERROR: writing raw frame" ); return error; }
-#ifdef LOGLEVEL_DEBUG
-        message.str(""); message << "error=" << error << "[DEBUG] switching back to original mode if error=0"; logwrite(function, message.str());
-#endif
-        error = this->set_camera_mode(orig_mode);                         // switch back to the original mode
-        if ( error != NO_ERROR ) { logwrite( function, "ERROR: switching back to previous mode" ); return error; }
-      }
-    }
-
-    return error;
-  }
-  /**************** Archon::Interface::read_frame *****************************/
-
-
-  /**************** Archon::Interface::read_frame *****************************/
-  /**
-   * @brief      read latest Archon frame buffer
-   * @param[in]  frame_type
-   * @return     ERROR or NO_ERROR
-   *
-   * This is the overloaded read_frame function which accepts the frame_type argument.
-   * This is called only by this->read_frame() to perform the actual read of the
-   * selected frame type.
-   *
-   * No write takes place here!
-   *
-   */
-  long Interface::read_frame(Camera::frame_type_t frame_type) {
-    const std::string function("Archon::Interface::read_frame");
-    std::stringstream message;
-
-    try {
-      char *ptr=this->image_ring.at(this->ringcount);
-#ifdef LOGLEVEL_DEBUG
-      message.str(""); message << "[DEBUG] ringcount=" << std::dec << this->ringcount << " address of ptr=" << std::hex << (void*)ptr;
-      logwrite( function, message.str() );
-#endif
-      return this->read_frame(frame_type, ptr, this->ringcount);  //TODO not sure this is correct for all cases
-    }
-    catch ( std::out_of_range & ) {
-      message << "ringcount " << this->ringcount << " out of range addressing image_ring.size=" << this->image_ring.size();
-      this->camera.log_error( function, message.str() );
-      return(ERROR);
-    }
-  }
-  /**************** Archon::Interface::read_frame *****************************/
 
 
   /**************** Archon::Interface::read_frame *****************************/
@@ -2888,11 +2501,6 @@ namespace Archon {
    *
    */
   long Interface::read_frame( Camera::frame_type_t frame_type, char* ptr_in ) {
-    return NO_ERROR;
-  }
-
-  long Interface::read_frame( Camera::frame_type_t frame_type, char* &ptr_in, int ringcount_in ) {
-    debug( "READ_FRAME_ENTRY frame="+std::to_string(this->lastframe) );
     const std::string function("Archon::Interface::read_frame");
     std::stringstream message;
     int retval;
@@ -2906,37 +2514,6 @@ namespace Archon {
 
     this->camera_info.frame_type = frame_type;
 
-    // Check that image buffer is prepared
-    //
-    try {
-      if ( (this->image_ring.at(ringcount_in) == nullptr)        ||
-           (this->ringdata_allocated.at(ringcount_in) == 0) ||
-           (this->ringdata_allocated.at(ringcount_in) != this->image_data_bytes * this->camera_info.cubedepth) ) {
-        message.str(""); message << "image buffer not ready."
-                                 << " ringdata_allocated[" << ringcount_in << "]=" << this->ringdata_allocated.at(ringcount_in)
-                                 << " image_data_bytes=" << this->image_data_bytes
-                                 << " cubedepth=" << this->camera_info.cubedepth;
-        this->camera.log_error(function, message.str());
-        return(ERROR);
-      }
-
-#ifdef LOGLEVEL_DEBUG
-      message.str(""); message << "[DEBUG] frame_type=" << frame_type
-                               << " image_ring[" << ringcount_in << "]=" << std::hex << (void*)this->image_ring.at(ringcount_in)
-                               << " ringdata_allocated[" << ringcount_in << "]=" << std::dec << this->ringdata_allocated.at(ringcount_in)
-                               << " image_data_bytes=" << this->image_data_bytes
-                               << " cubedepth=" << this->camera_info.cubedepth;
-      logwrite( function, message.str() );
-#endif
-    }
-    catch ( std::out_of_range & ) {
-      message.str(""); message << "ringcount_in " << ringcount_in
-                               << " out of range addressing image_ring.size=" << this->image_ring.size()
-                               << " or ringdata_allocated.size=" << this->ringdata_allocated.size();
-      this->camera.log_error( function, message.str() );
-      return(ERROR);
-    }
-
     // Archon buffer number of the last frame read into memory
     //
     bufready = this->frame.index + 1;
@@ -2944,17 +2521,12 @@ namespace Archon {
     if (bufready < 1 || bufready > this->camera_info.activebufs) {
       message.str(""); message << "invalid Archon buffer " << bufready << " requested. Expected {1:" << this->camera_info.activebufs << "}";
       this->camera.log_error( function, message.str() );
-      return(ERROR);
+      return ERROR;
     }
-
-    message.str(""); message << "will read " << (frame_type == Camera::FRAME_RAW ? "raw" : "image")
-                             << " data from Archon controller buffer " << bufready << " frame " << this->frame.frame
-                             << " into buffer " << (void*)ptr_in;
-    logwrite(function, message.str());
 
     // Lock the frame buffer before reading it
     //
-    if ( this->lock_buffer(bufready) == ERROR) { logwrite( function, "ERROR locking frame buffer" ); return (ERROR); }
+    if ( this->lock_buffer(bufready) == ERROR) { logwrite( function, "ERROR locking frame buffer" ); return ERROR; }
 
     // Send the FETCH command to read the memory buffer from the Archon backplane.
     // Archon replies with one binary response per requested block. Each response
@@ -2985,18 +2557,13 @@ namespace Archon {
         break;
     }
 
-    message.str(""); message << "will read " << std::dec << this->camera_info.image_memory << " bytes "
-                             << "0x" << std::uppercase << std::hex << bufblocks << " blocks from bufaddr=0x" << bufaddr
-                             << " into buffer " << (void*)ptr_in;
-    logwrite(function, message.str());
-
     // send the FETCH command.
     // This will set the archon_busy flag, but not clear it (except on error).
     //
     error = this->fetch(bufaddr, bufblocks);
 
     if ( error != NO_ERROR ) {
-      logwrite( function, "ERROR: fetching Archon buffer" );
+      logwrite( function, "ERROR fetching Archon buffer" );
       return error;
     }
 
@@ -3069,11 +2636,6 @@ namespace Archon {
 
     } // end of loop: for (block=0; block<bufblocks; block++)
 
-#ifdef LOGLEVEL_DEBUG
-    message.str(""); message << "[DEBUG] ringcount_in=" << std::dec << ringcount_in << " after reading, ptr=" << std::hex << (void*)ptr_in;
-    logwrite( function, message.str() );
-#endif
-
     // Archon has sent its data so clear the archon busy flag to
     // allow other threads to access the Archon now.
     //
@@ -3092,112 +2654,9 @@ namespace Archon {
     //
     if (error == NO_ERROR) error = this->archon_cmd(UNLOCK);
 
-    // On success, write the value to the log and return
-    //
-    if (error == NO_ERROR) {
-      message.str(""); message << "successfully read " << std::dec << totalbytesread << (frame_type==Camera::FRAME_RAW?" raw":" image")
-                               << " bytes (0x" << std::uppercase << std::hex << bufblocks << " blocks) from Archon controller";
-      logwrite(function, message.str());
-    }
-    // Throw an error for any other errors
-    //
-    else {
-      logwrite( function, "ERROR reading Archon camera data to memory!" );
-    }
-    debug( "READ_FRAME_EXIT frame="+std::to_string(this->lastframe) );
     return error;
   }
   /**************** Archon::Interface::read_frame *****************************/
-
-
-  /**************** Archon::Interface::write_frame ****************************/
-  /**
-   * @fn     write_frame
-   * @brief  creates a FITS_file object to write the image_data buffer to disk
-   * @param  none
-   * @return ERROR or NO_ERROR
-   *
-   * A FITS_file object is created here to write the data. This object MUST remain
-   * valid while any (all) threads are writing data, so the write_data function
-   * will keep track of threads so that it doesn't terminate until all of its 
-   * threads terminate.
-   *
-   * The camera_info class was copied into fits_info when the exposure was started,  //TODO I've un-done this.
-   * so use fits_info from here on out.                                              //TODO Don't use fits_info right now.
-   *                                                                                 //TODO Only using camera_info
-   */
-  long Interface::write_frame( ) {
-    this->camera.log_error( "Archon::Interface::write_frame", "you shouldn't be using this!" );
-    return ERROR;
-  }
-  long Interface::write_frame( int ringcount_in ) {
-    debug( "WRITE_FRAME_ENTRY frame="+std::to_string(this->lastframe)+ " ring="+std::to_string(ringcount_in) );
-    const std::string function("Archon::Interface::write_frame");
-    std::stringstream message;
-    uint16_t   *cbuf16;                  //!< used to cast char buf into 16 bit int
-    long        error=NO_ERROR;
-
-    if ( ! this->modeselected ) {
-      this->camera.log_error( function, "no mode selected" );
-      return ERROR;
-    }
-
-    message.str(""); message << "writing " << this->camera_info.bitpix << "-bit data from memory to disk";
-    logwrite(function, message.str());
-
-    // The Archon sends four 8-bit numbers per pixel. To convert this into something usable,
-    // cast the image buffer into integers. Handled differently depending on bits per pixel.
-    //
-    // *** ONLY bitpix=16 IS USED FOR NIRC2 ***
-    //
-    switch (this->camera_info.bitpix) {
-
-      // convert four 8-bit values into 16 bit values
-      //
-      case 16: {
-        // *** ONLY USHORT IS USED FOR NIRC2 ***
-        if (this->camera_info.datatype == USHORT_IMG) {                    // raw
-          cbuf16   = (uint16_t *)this->work_ring.at(ringcount_in);         // cast to 16b unsigned int
-          error = this->__fits_file->write_image( cbuf16,
-                                                  get_timestamp(),
-                                                  this->camera_info.extension.load(),
-                                                  this->camera_info
-                                                );
-          if ( error != NO_ERROR ) { this->camera.log_error( function, "writing 16-bit unsigned image to disk" ); }
-        }
-        else {
-          message.str(""); message << "unsupported 16 bit datatype " << this->camera_info.datatype;
-          this->camera.log_error( function, message.str() );
-          error = ERROR;
-        }
-        break;
-      }
-
-      // shouldn't happen
-      //
-      default:
-        message.str(""); message << "unrecognized bits per pixel: " << this->camera_info.bitpix;
-        this->camera.log_error( function, message.str() );
-        error = ERROR;
-        break;
-    }
-
-    // Things to do after successful write
-    //
-    if ( error == NO_ERROR ) {
-      this->camera_info.extension.fetch_add(1);                     // atomically increment extension for multi-extension files
-      this->cds_info.extension.fetch_add(1);                        // atomically increment extension for multi-extension files
-      error == NO_ERROR ? logwrite( function, message.str() ) : this->camera.log_error( function, message.str() );
-      logwrite(function, "frame write complete");
-    }
-    else {
-      logwrite( function, "ERROR writing image" );
-    }
-
-    debug( "WRITE_FRAME_EXIT frame="+std::to_string(this->lastframe)+ " ring="+std::to_string(ringcount_in) );
-    return error;
-  }
-  /**************** Archon::Interface::write_frame ****************************/
 
 
   /**************** Archon::Interface::write_config_key ***********************/
@@ -3753,11 +3212,9 @@ namespace Archon {
    *
    */
   long Interface::do_expose(std::string nseq_in) {
-    debug( "DO_EXPOSE_ENTRY" );
     const std::string function("Archon::Interface::do_expose");
     std::stringstream message;
     long error = NO_ERROR;
-    std::string nseqstr;
 
     this->camera_info.cmd_start_time = get_timestamp();           // current system time formatted as YYYY-MM-DDTHH:MM:SS.sss
     this->camera.clear_abort();                                   // could be cleared by any earlier expose() wrapper
@@ -3868,11 +3325,6 @@ namespace Archon {
     }
     for (int i=0; i<3; i++) this->camera_info.naxes[i]=this->camera_info.axes[i];  // for Reed's FITS engine
 
-#ifdef LOGLEVEL_DEBUG
-    message.str(""); message << "[DEBUG] axes[0]=" << this->camera_info.axes[0] << " axes[1]=" << this->camera_info.axes[1];
-    logwrite( function, message.str() );
-#endif
-
     // Always initialize the extension number because someone could
     // set mex true and then send "expose" without a number.
     //
@@ -3895,31 +3347,27 @@ namespace Archon {
     //
     if ( this->camera_info.iscds ) {
       this->cds_info = this->camera_info;  // first, copy the camera_info object, then make changes to it
-#ifdef LOGLEVEL_DEBUG
-      message.str(""); message << "[DEBUG] cds_info.imheight=" << this->cds_info.imheight << " cds_info.imwidth=" << this->cds_info.imwidth;
-      logwrite( function, message.str() );
-#endif
       this->cds_info.ismex = false;        // not multi-extension
       this->cds_info.fitscubed = 1;        // and not cubes
       this->cds_info.cubedepth = 1;
       this->cds_info.axes[2] = 1;
       this->cds_info.section_size = this->cds_info.imheight * this->cds_info.imwidth;
+      if (this->cds_info.section_size==0) {
+        logwrite(function, "ERROR CDS image size=0");
+        return ERROR;
+      }
       if ( this->camera.coadd() ) {   // need long to handle coadding
         this->cds_info.datatype = LONG_IMG;
         this->cds_info.bitpix = 32;
       }
-//    std::thread( std::ref( Archon::Interface::dothread_runcds ), this ).detach();
-//    error = this->alloc_cdsring();
     }
-#ifdef LOGLEVEL_DEBUG
-    else { logwrite( function, "[DEBUG] iscds=false. alloc_cdsring() was not called!" ); }
-#endif
 
     if (initialize_processing_buffers()==ERROR) return ERROR;
 
     this->lastframe = this->frame.bufframen[this->frame.index];     // save the last frame number acquired (wait_for_readout will need this)
 
     is_producer_finished=false;
+    is_producer_error=false;
 
     std::thread producer(&Interface::frame_acquisition_loop, this, nseq);
     std::thread consumer(&Interface::frame_processing_loop, this);
@@ -3928,11 +3376,11 @@ namespace Archon {
     {
     std::lock_guard<std::mutex> lock(queue_mutex);
     is_producer_finished=true;
+    error |= is_producer_error;
     }
 
     logwrite(function, "waiting for frame processing to finish");
 
-    queue_cv.notify_all();
     consumer.join();
 
     logwrite(function, "exposure complete");
@@ -3962,7 +3410,7 @@ namespace Archon {
   /***** Archon::Interface::frame_acquisition_loop ****************************/
   void Interface::frame_acquisition_loop(int nseq) {
     const std::string function("Archon::Interface::frame_acquisition_loop");
-    std::stringstream message;
+    char message[256];
     long error=NO_ERROR;
 
     // Before initiating the exposure, there is a kludge needed for SAMPMODE_SINGLE.
@@ -4025,13 +3473,11 @@ namespace Archon {
     if (this->camera.writekeys_when=="before") this->copy_keydb();  // copy the ACF and userkeys database into camera_info
 
     if (nseq > 1) {
-      message.str(""); message << "starting sequence of " << nseq << " frames. lastframe=" << this->lastframe;
-      logwrite(function, message.str());
+      SNPRINTF(message, "starting sequence of %d frames. lastframe=%d", nseq, this->lastframe);
+      logwrite(function, std::string(message));
     }
 
     int framespushed=0;
-
-    logwrite(function, "[DEBUG] exposures in sequence: "+std::to_string(nseq));
 
     while (nseq-- > 0) {
 
@@ -4058,18 +3504,19 @@ namespace Archon {
 
       // Loop over the number of slices in this datacube
       //
+      const std::string firstframe("waitig for first frame (discarded)");
+      const std::string firstslice("waitig for slice 1 of 1");
       for ( int slice=0; !this->camera.is_aborted() && slice < slicecounter; slice++ ) {
-        message.str(""); message << "waiting for ";
         if ( this->camera_info.sampmode == SAMPMODE_SINGLE && slice==0 ) {
-          message << "first frame (discarded)";
+          logwrite( function, firstframe );
         }
         else if ( this->camera_info.sampmode == SAMPMODE_SINGLE && slice==1 ) {
-          message << "slice 1 of 1";
+          logwrite( function, firstslice );
         }
         else {
-          message << "slice " << std::dec << slice+1 << " of " << slicecounter;
+          SNPRINTF(message, "waiting for slice %d of %d", slice+1, slicecounter);
+          logwrite( function, std::string(message) );
         }
-        logwrite( function, message.str() );
 
         uint32_t bufferbytes = (this->image_data_bytes * this->camera_info.cubedepth + 31 ) & ~size_t(31);
         auto framebuf = std::make_shared<ImageBuffer>();
@@ -4077,12 +3524,13 @@ namespace Archon {
         framebuf->rawpixels = std::shared_ptr<char[]>(static_cast<char*>(std::aligned_alloc(32, bufferbytes)), std::free);
         framebuf->cubedepth = slicecounter;
 
-        error = this->wait_for_readout();                             // Wait for the readout into Archon frame buffer,
+        if (this->wait_for_readout()==ERROR) break;                   // Wait for the readout into Archon frame buffer,
 
         this->camera_info.stop_time = get_timestamp();                // current system time formatted as YYYY-MM-DDTHH:MM:SS.sss
         this->cds_info.stop_time = this->camera_info.stop_time;       // current system time formatted as YYYY-MM-DDTHH:MM:SS.sss
 
         error = this->read_frame(Camera::FRAME_IMAGE, framebuf->rawpixels.get());
+//      make_simulated_data(framebuf->rawpixels.get(), ((slice%2)+1));
 
         if ( slice==0 ) ts0 = this->frame.buftimestamp[this->frame.index];  // retain the BUFnTIMESTAMP of the first frame
 
@@ -4094,24 +3542,17 @@ namespace Archon {
 
         if ( ( slicecounter%2 == 0 ) && ( slice == slicecounter/2 ) ) {
           framebuf->is_halfway=true;
-          logwrite(function, "[DEBUG] frame="+std::to_string(framebuf->framenum)+" is halfway");
         }
         else {
           framebuf->is_halfway=false;
         }
 
+        // push the frame into the queue
         {
         std::lock_guard<std::mutex> lock(this->queue_mutex);
         this->framebuf_queue.push(framebuf);
-        framespushed++;
         }
-        this->queue_cv.notify_one();
-
-        logwrite(function, "[DEBUG] pushed frame "+std::to_string(framebuf->framenum)+" into queue. total pushed="+std::to_string(framespushed));
-
-        message.str(""); message << "NSLICE:";
-        if ( this->camera_info.sampmode == SAMPMODE_SINGLE ) message << slice; else message << slice+1;
-        this->camera.async.enqueue( message.str() );
+//logwrite(function, "[DEBUG] pushed frame "+std::to_string(framebuf->framenum)+" into queue. total pushed="+std::to_string(framespushed++));
 
         bool needs_exposure_delay=false;
 
@@ -4195,18 +3636,31 @@ namespace Archon {
     this->extkeys.erasedb();
     this->extkeys.addkey( message.str() );
 
-    while (!camera.is_aborted()) {
-      std::shared_ptr<ImageBuffer> framebuf;
-      {
-      std::unique_lock<std::mutex> lock(queue_mutex);
-      queue_cv.wait(lock, [&]{return !framebuf_queue.empty() || is_producer_finished || camera.is_aborted();});
-      if (camera.is_aborted()) break;
+    std::shared_ptr<ImageBuffer> framebuf;
 
-      if (framebuf_queue.empty() && is_producer_finished) break;
+    // pop a frame out of the queue
+    //
+    while (!camera.is_aborted()) {
+      {
+      std::unique_lock<std::mutex> lock(queue_mutex, std::try_to_lock);
+      // retry if I can't get the lock
+      while (!lock.owns_lock()) {
+        if (camera.is_aborted()) break;
+        std::this_thread::sleep_for(std::chrono::microseconds(10));
+        lock.try_lock();
+      }
+      if (!lock.owns_lock() || camera.is_aborted()) break;
+
+      if (framebuf_queue.empty()) {      // nothing in the queue
+       if (is_producer_finished) break;  // nothing else is coming
+       else continue;                    // or keep waiting
+      }
 
       framebuf = framebuf_queue.front();
       framebuf_queue.pop();
       }
+
+      if (!framebuf) continue;
 
       message.str(""); message << "[DEBUG] pop framebuf->framenum=" << framebuf->framenum
                                << " ->seq=" << framebuf->seq
@@ -4388,7 +3842,7 @@ namespace Archon {
     }
     else {
       if (camera_info.nmcds==0) {
-        logwrite( function, "[DEBUG] dothread_runcds (a) calling __file_cds->write_image" );
+        logwrite( function, "[DEBUG] (a) calling __file_cds->write_image" );
         this->__file_cds->write_image( this->coaddbuf,
                                        get_timestamp(),
                                        0,
@@ -4405,7 +3859,7 @@ namespace Archon {
             *( this->coaddbuf + index++ ) = static_cast<int32_t>(coadd->at<int32_t>(row, col));
           }
         }
-        logwrite( function, "[DEBUG] dothread_runcds (b) calling __file_cds->write_image" );
+        logwrite( function, "[DEBUG] (b) calling __file_cds->write_image" );
         this->__file_cds->write_image( this->coaddbuf,
                                        get_timestamp(),
                                        0,
@@ -4416,6 +3870,34 @@ namespace Archon {
     logwrite(function, "complete");
   }
   /***** Archon::Interface::runcds ********************************************/
+
+
+  void Interface::make_simulated_data(char* buffer, uint16_t extra) {
+    int total_pixels = camera_info.detector_pixels[0] * camera_info.detector_pixels[1];
+
+    // Cast the buffer to uint16_t* to fill with 16-bit values
+    uint16_t* pixel_buffer = reinterpret_cast<uint16_t*>(buffer);
+
+    static bool seeded=false;
+    if (!seeded) {
+      srand(time(nullptr));
+      seeded=true;
+    }
+
+    // Fill with sequential values 1, 2, 3, ..., 65535, 1, 2, 3, ...
+    uint16_t pixel_value = 1;
+    for (int i = 0; i < total_pixels; i++) {
+      pixel_buffer[i] = pixel_value;
+
+      // Increment and wrap at 65535 back to 1
+      int increment=(rand() % 10)+1;
+      pixel_value += increment;
+      if (pixel_value > 65535) {
+        pixel_value = 1 + (pixel_value-65536);
+        pixel_value = rand() % 32768;
+      }
+    }
+  }
 
 
   /**************** Archon::Interface::wait_for_exposure **********************/
@@ -4574,28 +4056,22 @@ namespace Archon {
    */
   long Interface::wait_for_readout() {
     const std::string function("Archon::Interface::wait_for_readout");
-    std::stringstream message;
     long error = NO_ERROR;
     int currentframe=this->lastframe;
     int busycount=0;
     bool done = false;
 
-    message.str("");
-    message << "waiting for new frame: lastframe=" << this->lastframe << " frame.index=" << this->frame.index;
-    logwrite(function, message.str());
+    char message[256];
+    SNPRINTF(message, "waiting for new frame: lastframe=%d frame.index=%d", this->lastframe, this->frame.index);
+    logwrite(function, std::string(message));
 
     // waittime is 10% over the specified readout time
     // and will be used to keep track of timeout errors
     //
-    double waittime;
-    try {
-      waittime = this->camera.readout_time.at(0) * 1.1;        // this is in msec
-    }
-    catch(std::out_of_range &) {
-      message.str(""); message << "readout time for Archon not found from config file";
-      this->camera.log_error( function, message.str() );
-      debug( "WAIT_FOR_READOUT_EXIT "+std::to_string(this->lastframe+1)+" ERROR" );
-      return(ERROR);
+    double waittime = this->camera.readout_time[0] * 1.1;      // this is in msec
+    if (waittime==0) {
+      logwrite(function, "ERROR readout time for Archon not found from config file");
+      return ERROR;
     }
 
     double clock_now     = get_clock_time();                   // get_clock_time returns seconds
@@ -4644,8 +4120,8 @@ namespace Archon {
       if (clock_now > clock_timeout) {
         done = true;
         error = ERROR;
-        message.str(""); message << "timeout waiting for new frame exceeded " << waittime << ". lastframe = " << this->lastframe;
-        this->camera.log_error( function, message.str() );
+        SNPRINTF(message, "ERROR timeout waiting for new frame exceeded %lf. lastframe=%d", waittime, this->lastframe);
+        logwrite( function, std::string(message) );
         break;
       }
       clock_now = get_clock_time();
@@ -4657,8 +4133,7 @@ namespace Archon {
       // while index is {0:2}).
       //
       if ( this->frame.next_index == this->frame.wbuf-1 ) {
-        message.str(""); message << "LINECOUNT:" << this->frame.buflines[ this->frame.next_index ];
-        this->camera.async.enqueue( message.str() );
+        this->camera.async.enqueue("LINECOUNT:"+std::to_string(this->frame.buflines[ this->frame.next_index]));
       }
 #ifdef LOGLEVEL_DEBUG
 //    message << " [DEBUG] ";
@@ -4668,24 +4143,23 @@ namespace Archon {
 
       std::this_thread::sleep_for( std::chrono::microseconds( 10 ) );  // reduces polling frequency
     } // end while (done == false && not this->camera.is_aborted)
-
-    // After exiting while loop, one update to ensure accurate ASYNC message
-    // reporting of LINECOUNT.
-    //
-    if ( error == NO_ERROR ) {
-      error = this->get_frame_status();
-      if ( error != NO_ERROR ) {
-        logwrite( function, "ERROR: unable to get frame status" );
-      debug( "WAIT_FOR_READOUT_EXIT ERROR" );
-        return error;
-      }
-      message.str(""); message << "LINECOUNT:" << this->frame.buflines[ this->frame.index ];
-      this->camera.async.enqueue( message.str() );
-    }
+/*** disable ASYNC message here:
+ *  // After exiting while loop, one update to ensure accurate ASYNC message
+ *  // reporting of LINECOUNT.
+ *  //
+ *  if ( error == NO_ERROR ) {
+ *    error = this->get_frame_status();
+ *    if ( error != NO_ERROR ) {
+ *      logwrite( function, "ERROR: unable to get frame status" );
+ *      return error;
+ *    }
+ *    message.str(""); message << "LINECOUNT:" << this->frame.buflines[ this->frame.index ];
+ *    this->camera.async.enqueue( message.str() );
+ *  }
+ ***/
 
     if ( error != NO_ERROR ) {
       this->camera.log_error( function, "waiting for readout" );
-      debug( "WAIT_FOR_READOUT_EXIT ERROR" );
       return error;
     }
 
@@ -4702,9 +4176,7 @@ namespace Archon {
     // On success, write the value to the log and return
     //
     if ( ! this->camera.is_aborted() ) {
-      message.str("");
-      message << "received currentframe: " << currentframe;
-      logwrite(function, message.str());
+      logwrite(function, "received currentframe: "+std::to_string(currentframe));
       return NO_ERROR;
     }
     // If the wait was stopped, log a message and return NO_ERROR
@@ -4712,7 +4184,6 @@ namespace Archon {
     else {
       logwrite(function, "wait for readout stopped by external signal");
       this->abort_archon();
-      debug( "WAIT_FOR_READOUT_EXIT" );
       return NO_ERROR;
     }
   }
@@ -6919,205 +6390,6 @@ namespace Archon {
     } // end if (testname == configmap)
 
     // ----------------------------------------------------
-    // bw <nseq>
-    // ----------------------------------------------------
-    // Bandwidth test
-    // This tests the exposure sequence bandwidth by running a sequence
-    // of exposures, including reading the frame buffer -- everything except
-    // for the fits file writing.
-    //
-    else
-    if (testname == "bw") {
-
-      if ( ! this->modeselected ) {
-        this->camera.log_error( function, "no mode selected" );
-        return ERROR;
-      }
-
-      std::string nseqstr;
-      int nseq;
-      bool ro=false;  // read only
-      bool rw=false;  // read and write
-
-      if (tokens.size() > 1) {
-        try { nseqstr = tokens.at(1); }
-        catch ( std::out_of_range & ) { this->camera.log_error( function, "nseqstr token out of range" ); return(ERROR); }
-      }
-      else {
-        this->camera.log_error( function, "usage: test bw <nseq> [ rw | ro ]");
-        return ERROR;
-      }
-
-      if (tokens.size() > 2) {
-        try { if (tokens.at(2) == "rw") rw=true; else rw=false;
-              if (tokens.at(2) == "ro") ro=true; else ro=false;
-        }
-        catch ( std::out_of_range & ) { this->camera.log_error( function, "rw tokens out of range" ); error=ERROR; }
-      }
-
-      try {
-        nseq = std::stoi( nseqstr );                                // test that nseqstr is an integer before trying to use it
-      }
-      catch (std::invalid_argument &) {
-        message.str(""); message << "unable to convert sequences: " << nseqstr << " to integer";
-        this->camera.log_error( function, message.str() );
-        return(ERROR);
-      }
-      catch (std::out_of_range &) {
-        message.str(""); message << "sequences " << nseqstr << " outside integer range";
-        this->camera.log_error( function, message.str() );
-        return(ERROR);
-      }
-
-      // abortparam is set by the configuration file
-      // check to make sure it was set, or else expose won't work
-      //
-      if (this->abortparam.empty()) {
-        message.str(""); message << "ABORT_PARAM not defined in configuration file " << this->config.filename;
-        this->camera.log_error( function, message.str() );
-        return(ERROR);
-      }
-
-      // exposeparam is set by the configuration file
-      // check to make sure it was set, or else expose won't work
-      //
-      if (this->exposeparam.empty()) {
-        message.str(""); message << "EXPOSE_PARAM not defined in configuration file " << this->config.filename;
-        this->camera.log_error( function, message.str() );
-        return(ERROR);
-      }
-      error = this->get_frame_status();  // TODO is this needed here?
-
-      if (error != NO_ERROR) {
-        logwrite( function, "ERROR: unable to get frame status" );
-        return(ERROR);
-      }
-      this->lastframe = this->frame.bufframen[this->frame.index];     // save the last frame number acquired (wait_for_readout will need this)
-
-      // initiate the exposure here
-      //
-      error = this->prep_parameter(this->exposeparam, nseqstr);
-      if (error == NO_ERROR) error = this->load_parameter(this->exposeparam, nseqstr);
-
-      // get system time and Archon's timer after exposure starts
-      // start_timer is used to determine when the exposure has ended, in wait_for_exposure()
-      //
-      if (error == NO_ERROR) {
-        this->camera_info.start_time = get_timestamp();               // current system time formatted as YYYY-MM-DDTHH:MM:SS.sss
-        error = this->get_timer(&this->start_timer);                  // Archon internal timer (one tick=10 nsec)
-        if ( error != NO_ERROR ) {
-          logwrite( function, "ERROR: couldn't get start time" );
-          return( error );
-        }
-        this->camera.set_fitstime(this->camera_info.start_time);      // sets camera.fitstime (YYYYMMDDHHMMSS) used for filename
-        // If read-write selected then need to do some FITS stuff
-        //
-        if ( rw ) {
-          this->camera_info.extension.store(0);                       // always initialize extension
-          error = this->camera.get_fitsname( this->camera_info.fits_name ); // assemble the FITS filename if rw selected
-          if ( error != NO_ERROR ) {
-            logwrite( function, "ERROR: couldn't validate fits filename" );
-            return( error );
-          }
-          this->add_filename_key();                                   // add filename to system keys database
-          Common::FitsKeys::fits_key_t::iterator keyit;               // add keys from the ACF file 
-          for (keyit  = this->modemap[this->camera_info.current_observing_mode].acfkeys.keydb.begin();
-               keyit != this->modemap[this->camera_info.current_observing_mode].acfkeys.keydb.end();
-               keyit++) {
-            this->camera_info.userkeys.keydb[keyit->second.keyword].keyword    = keyit->second.keyword;
-            this->camera_info.userkeys.keydb[keyit->second.keyword].keytype    = keyit->second.keytype;
-            this->camera_info.userkeys.keydb[keyit->second.keyword].keyvalue   = keyit->second.keyvalue;
-            this->camera_info.userkeys.keydb[keyit->second.keyword].keycomment = keyit->second.keycomment;
-          }
-
-          this->camera_info.ismex = this->camera.mex();
-
-          // open the file now for multi-extensions
-          //
-          if ( this->camera.mex() ) {
-            this->camera_info.writekeys_before = (this->camera.writekeys_when=="before"?true:false);
-            if ( error != NO_ERROR ) {
-              this->camera.log_error( function, "couldn't open fits file" );
-              return( error );
-            }
-          }
-        }
-      }
-
-      if (error == NO_ERROR) logwrite(function, "exposure started");
-
-      long frames_read = 0;
-
-      // Wait for Archon frame buffer to be ready, then read the latest ready frame buffer to the host.
-      // Loop over all expected frames.
-      //
-      while (nseq-- > 0) {
-
-        // If read-write selected,
-        // Open a new FITS file for each frame when not using multi-extensions
-        //
-        if ( rw && !this->camera.mex() ) {
-          this->camera_info.start_time = get_timestamp();               // current system time formatted as YYYY-MM-DDTHH:MM:SS.sss
-          if ( this->get_timer(&this->start_timer) != NO_ERROR ) {      // Archon internal timer (one tick=10 nsec)
-            logwrite( function, "ERROR: couldn't get start time" );
-            return( error );
-          }
-          this->camera.set_fitstime(this->camera_info.start_time);      // sets camera.fitstime (YYYYMMDDHHMMSS) used for filename
-          error=this->camera.get_fitsname(this->camera_info.fits_name); // Assemble the FITS filename
-          if ( error != NO_ERROR ) {
-            logwrite( function, "ERROR: couldn't validate fits filename" );
-            return( error );
-          }
-          this->add_filename_key();                                     // add filename to system keys database
-
-          this->camera_info.writekeys_before = (this->camera.writekeys_when=="before"?true:false);
-//        error = this->xfits_file.open_file( (this->camera.writekeys_when=="before"?true:false), this->camera_info );
-          if ( error != NO_ERROR ) {
-            this->camera.log_error( function, "couldn't open fits file" );
-            return( error );
-          }
-        }
-
-        if (this->camera_info.exposure_delay != 0) {                 // wait for the exposure delay to complete (if there is one)
-          error = this->wait_for_exposure();
-          if (error==ERROR) {
-            logwrite( function, "ERROR: exposure delay error" );
-            break;
-          }
-          else {
-            logwrite(function, "exposure delay complete");
-          }
-        }
-
-        if (error==NO_ERROR) error = this->wait_for_readout();                     // wait for the readout into frame buffer,
-        if (error==NO_ERROR && ro) error = this->read_frame(Camera::FRAME_IMAGE);  // read image frame directly with no write
-        if (error==NO_ERROR && rw) error = this->read_frame();                     // read (and write) image frame directly
-        if (error==NO_ERROR && rw && !this->camera.mex()) {
-//        this->xfits_file.close_file( (this->camera.writekeys_when=="after"?true:false), this->camera_info );
-          this->camera_info.writekeys_before = (this->camera.writekeys_when=="before"?true:false);
-          this->camera.increment_imnum();                                          // increment image_num when fitsnaming == "number"
-        }
-        if (error==NO_ERROR) frames_read++;
-      }
-      retstring = std::to_string( frames_read );
-
-      // for multi-extensions, close the FITS file now that they've all been written
-      // (or any time there is an error)
-      //
-      if ( rw && ( this->camera.mex() || (error==ERROR) ) ) {
-//      this->xfits_file.close_file( (this->camera.writekeys_when=="after"?true:false), this->camera_info );
-        this->camera_info.writekeys_before = (this->camera.writekeys_when=="before"?true:false);
-        this->camera.increment_imnum();                                            // increment image_num when fitsnaming == "number"
-      }
-
-      logwrite( function, (error==ERROR ? "ERROR" : "complete") );
-
-      message.str(""); message << "frames read = " << frames_read;
-      logwrite(function, message.str());
-
-    } // end if (testname==bw)
-
-    // ----------------------------------------------------
     // timer
     // ----------------------------------------------------
     // test Archon time against system time
@@ -7287,658 +6559,6 @@ namespace Archon {
   /***** Archon::Interface::abort_archon **************************************/
 
 
-  /***** Archon::Interface::alloc_workbuf *************************************/
-  /**
-   * @brief      allocate workspace memory for deinterlacing
-   * @return     ERROR or NO_ERROR
-   *
-   * @todo       I think this is obsolete now that I switched to a ring buffer 2/14/23
-   *
-   * This function calls an overloaded template class version with 
-   * a generic pointer cast to the correct type.
-   *
-   */
-  long Interface::alloc_workbuf() {
-    const std::string function("Archon::Interface::alloc_workbuf");
-    std::stringstream message;
-    long retval = NO_ERROR;
-    void* ptr=nullptr;
-
-    switch ( this->camera_info.datatype ) {
-      case USHORT_IMG: {
-        this->alloc_workring( (uint16_t *)ptr );
-        break;
-      }
-      case SHORT_IMG: {
-        this->alloc_workring( (int16_t *)ptr );
-        break;
-      }
-      case FLOAT_IMG: {
-        this->alloc_workring( (uint32_t *)ptr );
-        break;
-      }
-      default:
-        message.str(""); message << "unknown datatype: " << this->camera_info.datatype;
-        this->camera.log_error(function, message.str());
-        retval = ERROR;
-        break;
-    }
-
-    return( retval );
-  }
-  /***** Archon::Interface::alloc_workbuf *************************************/
-
-
-  /***** Archon::Interface::alloc_workbuf *************************************/
-  /**
-   * @brief      allocate workspace memory for deinterlacing
-   * @param[in]  buf, pointer to template type T
-   * @return     pointer to the allocated space
-   *
-   * @todo       I think this is obsolete now that I switched to a ring buffer 2/14/23
-   *
-   * The actual allocation occurs in here, based on the template class pointer type.
-   *
-   */
-  template <class T>
-  void* Interface::alloc_workbuf(T* buf) {
-    const std::string function("Archon::Interface::alloc_workbuf");
-    std::stringstream message;
-
-    // Maybe the size of the existing buffer is already just right
-    //
-    if ( this->camera_info.section_size == this->workbuf_size ) return( (void*)this->workbuf );
-
-    // But if it's not, then free whatever space is allocated, ...
-    //
-    if ( this->workbuf != nullptr ) this->free_workbuf(buf);
-
-    // ...and then allocate new space.
-    //
-    this->workbuf = (T*) new T [ this->camera_info.section_size ]{};
-    this->workbuf_size = this->camera_info.section_size;
-
-    message << "allocated " << this->workbuf_size << " pixels for deinterlacing buffer " << std::hex << (void*)this->workbuf;
-    logwrite(function, message.str());
-    return( (void*)this->workbuf );
-  }
-  /***** Archon::Interface::alloc_workbuf *************************************/
-
-
-  /***** Archon::Interface::alloc_workring ************************************/
-  /**
-   * @brief      allocate workspace memory for deinterlacing
-   * @return     ERROR or NO_ERROR
-   *
-   * This function calls an overloaded template class version with 
-   * a generic pointer cast to the correct type.
-   *
-   */
-  long Interface::alloc_workring() {
-    const std::string function("Archon::Interface::alloc_workring");
-    std::stringstream message;
-    long retval = NO_ERROR;
-    void* ptr=nullptr;
-
-    switch ( this->camera_info.datatype ) {
-      case USHORT_IMG: {
-        this->alloc_workring( (uint16_t *)ptr );
-        break;
-      }
-      case SHORT_IMG: {
-        this->alloc_workring( (int16_t *)ptr );
-        break;
-      }
-      case FLOAT_IMG: {
-        this->alloc_workring( (uint32_t *)ptr );
-        break;
-      }
-      case LONG_IMG: {
-        this->alloc_workring( (int32_t *)ptr );
-        break;
-      }
-      default:
-        message.str(""); message << "cannot allocate for unknown datatype: " << this->camera_info.datatype;
-        this->camera.log_error(function, message.str());
-        retval = ERROR;
-        break;
-    }
-
-    return( retval );
-  }
-  /***** Archon::Interface::alloc_workring ************************************/
-
-
-  /***** Archon::Interface::alloc_cdsring *************************************/
-  /**
-   * @brief      allocate workspace memory for cds ring buffer
-   * @return     ERROR or NO_ERROR
-   *
-   * This function calls an overloaded template class version with 
-   * a generic pointer cast to the correct type.
-   *
-   */
-  long Interface::alloc_cdsring() {
-    const std::string function("Archon::Interface::alloc_cdsring");
-    std::stringstream message;
-    long retval = NO_ERROR;
-    void* ptr=nullptr;
-
-//  if ( not this->camera_info.iscds ) return( NO_ERROR );
-
-    switch ( this->cds_info.datatype ) {
-      case USHORT_IMG: {
-        this->alloc_cdsring( (uint16_t *)ptr );
-        break;
-      }
-      case SHORT_IMG: {
-        this->alloc_cdsring( (int16_t *)ptr );
-        break;
-      }
-      case FLOAT_IMG: {
-        this->alloc_cdsring( (uint32_t *)ptr );
-        break;
-      }
-      case LONG_IMG: {
-        this->alloc_cdsring( (int32_t *)ptr );
-        break;
-      }
-      default:
-        message.str(""); message << "cannot allocate for unknown datatype: " << this->cds_info.datatype;
-        this->camera.log_error(function, message.str());
-        retval = ERROR;
-        break;
-    }
-
-    return( retval );
-  }
-  /***** Archon::Interface::alloc_cdsring *************************************/
-
-
-  /***** Archon::Interface::alloc_cdsring *************************************/
-  /**
-   * @brief      allocate workspace memory for a cds ring buffer
-   * @param[in]  buf, pointer to template type T
-   * @return     pointer to the allocated space
-   *
-   * The actual allocation occurs in here, based on the template class pointer type.
-   *
-   */
-  template <class T>
-  void Interface::alloc_cdsring( T* buf ) {
-    const std::string function("Archon::Interface::alloc_cdsring");
-    std::stringstream message;
-
-#ifdef LOGLEVEL_DEBUG
-    message.str(""); message << "[DEBUG] cds_info.section_size=" << this->cds_info.section_size << " cdsbuf_size=" << this->cdsbuf_size;
-    logwrite( function, message.str() );
-#endif
-
-    // Nothing to do if the cdsbuf is already the correct size.
-    //
-//  if ( this->cds_info.section_size == this->cdsbuf_size ) return;
-
-    // Otherwise create a new set of cds ring buffers
-    //
-    this->cdsbuf_size = this->cds_info.section_size;
-    message.str(""); message << "allocated " << std::dec << this->cdsbuf_size << " pixels for CDS ring buffer";
-    for ( int i=0; i<Archon::IMAGE_RING_BUFFER_SIZE; i++ ) {
-      if ( this->cds_ring.at(i) != nullptr ) { delete [] (T*)this->cds_ring.at(i); this->cds_ring.at(i)=nullptr; }
-      this->cds_ring.at(i) = (T*) new T [ this->cds_info.section_size ]{};
-      message << " " << std::dec << i << ":" << std::hex << (void*)this->cds_ring.at(i);
-    }
-    logwrite( function, message.str() );
-
-    if ( this->coaddbuf != nullptr ) { delete [] (int32_t*)this->coaddbuf; this->coaddbuf=nullptr; }
-    this->coaddbuf = (int32_t*) new int32_t [ this->cds_info.section_size ]{};
-
-    if ( this->mcdsbuf_0 != nullptr ) delete [] (int32_t*)this->mcdsbuf_0;
-    this->mcdsbuf_0 = (int32_t*) new int32_t [ this->cds_info.section_size ]{};
-
-    if ( this->mcdsbuf_1 != nullptr ) delete [] (int32_t*)this->mcdsbuf_1;
-    this->mcdsbuf_1 = (int32_t*) new int32_t [ this->cds_info.section_size ]{};
-
-#ifdef LOGLEVEL_DEBUG
-    message.str(""); message << "[DEBUG] allocated " << this->cds_info.section_size
-                             << " pixels for mcdsbuf_0 at " << std::hex << (void*)this->mcdsbuf_0
-                             << " and mcdsbuf_1 at " << std::hex << (void*)this->mcdsbuf_1;
-    logwrite( function, message.str() );
-#endif
-
-    return;
-  }
-  /***** Archon::Interface::alloc_cdsring *************************************/
-
-
-  /***** Archon::Interface::alloc_workring ************************************/
-  /**
-   * @brief      allocate workspace memory for deinterlacing
-   * @param[in]  buf, pointer to template type T
-   * @return     pointer to the allocated space
-   *
-   * The actual allocation occurs in here, based on the template class pointer type.
-   *
-   */
-  template <class T>
-  void Interface::alloc_workring( T* buf ) {
-    const std::string function("Archon::Interface::alloc_workring");
-    std::stringstream message;
-
-#ifdef LOGLEVEL_DEBUG
-    message.str(""); message << "[DEBUG] camera_info.section_size=" << this->camera_info.section_size;
-    logwrite( function, message.str() );
-#endif
-
-    // Nothing to do if the workbuf is already the correct size.
-    //
-//  if ( this->camera_info.section_size == this->workbuf_size ) return;
-
-    // Otherwise create a new set of work ring buffers
-    //
-    try {
-      message.str(""); message << "allocating " << std::dec << this->camera_info.section_size << " pixels for work ring buffers";
-      for ( int i=0; i<Archon::IMAGE_RING_BUFFER_SIZE; i++ ) {
-        if ( this->work_ring.at(i) != nullptr ) {
-          delete [] (T*)this->work_ring.at(i);
-          this->work_ring.at(i) = nullptr;
-        }
-        this->work_ring.at(i) = (T*) new T [ this->camera_info.section_size ]{};
-        this->workbuf_size = this->camera_info.section_size;
-        message << " " << std::dec << i << ":" << std::hex << (void*)this->work_ring.at(i);
-      }
-      logwrite( function, message.str() );
-    }
-    catch ( std::out_of_range & ) {
-      this->camera.log_error( function, "unable to address work ring buffer" );
-    }
-    return;
-  }
-  /***** Archon::Interface::alloc_workring ************************************/
-
-
-  /***** Archon::Interface::free_workring *************************************/
-  /**
-   * @brief      clean up work ring buffer memory
-   * @param[in]  buf, pointer to template type T
-   *
-   */
-  template <class T>
-  void Interface::free_workring( T* buf ) {
-    const std::string function("Archon::Interface::free_workring");
-    std::stringstream message;
-    message.str(""); message << "freed work ring buffer  ";
-    for ( int i=0; i<Archon::IMAGE_RING_BUFFER_SIZE; i++ ) {
-      if ( this->work_ring.at(i) != nullptr ) {
-        delete [] (T*)this->work_ring.at(i);
-        message << " " << std::dec << i << ":" << std::hex << (void*)this->work_ring.at(i);
-        this->work_ring.at(i) = nullptr;
-      }
-    }
-    logwrite( function, message.str() );
-    return;
-  }
-  /***** Archon::Interface::free_workring *************************************/
-
-
-  /***** Archon::Interface::free_cdsring **************************************/
-  /**
-   * @brief      clean up cds ring buffer memory
-   * @param[in]  buf, pointer to template type T
-   *
-   * This also frees the coadd buffer
-   *
-   */
-  template <class T>
-  void Interface::free_cdsring( T* buf ) {
-    const std::string function("Archon::Interface::free_cdsring");
-    std::stringstream message;
-    message << "freed cds ring buffer    ";
-    for ( int i=0; i<Archon::IMAGE_RING_BUFFER_SIZE; i++ ) {
-      if ( this->cds_ring.at(i) != nullptr ) {
-        delete [] (T*)this->cds_ring.at(i);
-        message << " " << std::dec << i << ":" << std::hex << (void*)this->cds_ring.at(i);
-        this->cds_ring.at(i) = nullptr;
-      }
-    }
-    logwrite( function, message.str() );
-    if ( this->coaddbuf != nullptr ) {
-      delete [] (int32_t*)this->coaddbuf;
-      this->coaddbuf=nullptr;
-    }
-    if ( this->mcdsbuf_0 != nullptr ) {
-      delete [] (int32_t*)this->mcdsbuf_0;
-      this->mcdsbuf_0=nullptr;
-    }
-    if ( this->mcdsbuf_1 != nullptr ) {
-      delete [] (int32_t*)this->mcdsbuf_1;
-      this->mcdsbuf_1=nullptr;
-    }
-    return;
-  }
-  /***** Archon::Interface::free_cdsring **************************************/
-
-
-  /***** Archon::Interface::free_workbuf **************************************/
-  /**
-   * @brief      free (delete) memory allocated by alloc_workbuf
-   * @param[in]  buf, pointer to template type T
-   *
-   * @todo       I think this is obsolete now that I switched to a ring buffer 2/14/23
-   *
-   * Must pass a pointer of the correct type because delete doesn't work on void.
-   *
-   */
-  template <class T>
-  void Interface::free_workbuf(T* buf) {
-    const std::string function("Archon::Interface::free_workbuf");
-    std::stringstream message;
-    if (this->workbuf != nullptr) {
-      delete [] (T*)this->workbuf;
-      this->workbuf = nullptr;
-      this->workbuf_size = 0;
-      message << "deleted old deinterlacing buffer " << std::hex << (void*)this->workbuf;
-      logwrite(function, message.str());
-    }
-  }
-  /***** Archon::Interface::free_workbuf **************************************/
-
-
-  /***** Archon::Interface::deinterlace ***************************************/
-  /**
-   * @brief      spawns the deinterlacing threads
-   * @param[in]  _imbuf      pointer to buffer which contains the original image
-   * @param[in]  _workbuf    pointer to buffer that contains the deinterlaced image
-   * @param[in]  _ringcount  the current ring buffer to deinterlace
-   * @return     T* pointer to workbuf
-   *
-   */
-  template <class T>
-  T* Interface::deinterlace( T* _imbuf, T* _workbuf, T* _cdsbuf, int _ringcount ) {
-    debug( "DEINTERLACE_ENTRY" );
-    const std::string function("Archon::Instrument::deinterlace");
-    std::stringstream message;
-
-#ifdef LOGLEVEL_DEBUG
-    message << "[DEBUG] cds_info.section_size=" << this->cds_info.section_size << " sizeof(int32_t)=" << sizeof(int32_t)
-            << " -> " << this->cds_info.section_size*sizeof(int32_t) << " bytes for "
-            << " mcdsbuf_0=" << std::hex << (void*)mcdsbuf_0
-            << " mcdsbuf_1=" << std::hex << (void*)mcdsbuf_1;
-    logwrite( function, message.str() );
-#endif
-
-    // Zero the buffers that will be used to sum the MCDS baseline (mcdsbuf_0) and
-    // signal (mcdsbuf_1) frames.
-    //
-    if ( this->mcdsbuf_0 != nullptr ) memset( this->mcdsbuf_0, 0, this->cds_info.section_size * sizeof(int32_t) );
-    if ( this->mcdsbuf_1 != nullptr ) memset( this->mcdsbuf_1, 0, this->cds_info.section_size * sizeof(int32_t) );
-
-#ifdef LOGLEVEL_DEBUG
-    logwrite( function, "[DEBUG] spawning deinterlacing thread" );
-    message.str(""); message << "[DEBUG] ringcount_in=" << _ringcount << " iscds=" << this->camera_info.iscds
-                             << " this->camera_info.detector_pixels[0]=" << this->camera_info.detector_pixels[0]
-                             << " this->camera_info.detector_pixels[1] * this->camera_info.axes[2]="
-                             << this->camera_info.detector_pixels[1] * this->camera_info.axes[2]
-                             << " readout_type=" << this->camera_info.readout_type;
-    logwrite( function, message.str() );
-#endif
-
-    std::thread([this,
-                 _ringcount,
-                 deinter=new DeInterlace<T>( (T*)_imbuf,
-                                             (T*)_workbuf,                          // pointer to buffer that contains the deinterlaced image
-                                             (T*)_cdsbuf,                           // pointer to buffer that contains the deinterlaced image
-                                             coaddbuf,                              // pointer to buffer to contain the coadded image
-                                             mcdsbuf_0,                             // pointer to buffer to contain the MCDS baseline sum (1st half)
-                                             mcdsbuf_1,                             // pointer to buffer to contain the MCDS signal sum (2nd half)
-                                             this->camera_info.iscds,
-                                             this->camera_info.nmcds,
-                                             this->camera_info.detector_pixels[0],  // cols
-                                             this->camera_info.detector_pixels[1],  // rows
-                                             this->camera_info.readout_type,        // selects type of deinterlacing
-                                             this->camera_info.imheight,            // frame_rows
-                                             this->camera_info.imwidth,             // frame_cols
-                                             this->camera_info.cubedepth            // depth
-                                           )]() {
-                                                  deinter->do_deinterlace();
-                                                  {
-                                                  std::unique_lock<std::mutex> lk(this->deinter_mtx);
-                                                  this->ringbuf_deinterlaced.at(_ringcount)=true;
-                                                  }
-                                                  this->deinter_cv.notify_all();
-                                                  delete deinter;
-                                                }
-               ).detach();
-
-    // Wait for the ring buffer to be deinterlaced
-#ifdef LOGLEVEL_DEBUG
-    message.str(""); message << "[DEBUG] waiting on deinterlace ringcount " << _ringcount;
-    logwrite( function, message.str() );
-#endif
-    {
-    std::unique_lock<std::mutex> lk( this->deinter_mtx );
-    while ( ! this->ringbuf_deinterlaced.at( _ringcount ) ) this->deinter_cv.wait( lk );
-    }
-#ifdef LOGLEVEL_DEBUG
-    message.str(""); message << "[DEBUG] done waiting on deinterlace ringcount " << _ringcount;
-    logwrite( function, message.str() );
-#endif
-
-    debug( "DEINTERLACE_EXIT" );
-    return( (T*)this->workbuf );
-  }
-  /***** Archon::Interface::deinterlace ***************************************/
-
-
-  /***** Archon::Interface::dothread_deinterlace ******************************/
-  /**
-   * @brief      this is run in a thread to do the deinterlacing
-   * @param[in]  self          pointer to this-> (Archon::Interface object)
-   * @param[in]  deinterlace   address of DeInterlace object
-   * @param[in]  bufrows       number of rows in raw image buffer
-   * @param[in]  ringcount_in  the current ring buffer to deinterlace
-   *
-   */
-  template <class T> void Interface::dothread_deinterlace( Interface *self, DeInterlace<T> &deinterlace, int ringcount_in ) {
-    debug( "DOTHREAD_DEINTERLACE_ENTRY ringcount="+std::to_string(ringcount_in) );
-    const std::string function("Archon::Interface::dothread_deinterlace");
-    std::stringstream message;
-
-#ifdef LOGLEVEL_DEBUG
-    message.str(""); message << "[DEBUG] ringcount_in=" << ringcount_in
-                             << " mex=" << ( self->camera.mex() ? "true" : "false" ); // << " info:" << deinterlace.info();
-    logwrite(function, message.str());
-#endif
-
-    // Create appropriately-sized cv::Mat arrays for the reset and read frames in the DeInterlace object.
-    // The deinterlace function will copy the appropriate frames into these objects.
-    //
-//  deinterlace.resetframe = cv::Mat( self->camera_info.imheight, self->camera_info.imwidth, CV_16U, cv::Scalar(0) );
-//  deinterlace.readframe  = cv::Mat( self->camera_info.imheight, self->camera_info.imwidth, CV_16U, cv::Scalar(0) );
-
-    // The DeInterlace object contains the actual de-interlacing functions
-    //
-    deinterlace.do_deinterlace();
-
-#ifdef LOGLEVEL_DEBUG
-    message.str(""); message << "[DEBUG] deinterlace for ring " << ringcount_in << " is done -- notify the FITS writer";
-    logwrite( function, message.str() );
-#endif
-    {
-    std::unique_lock<std::mutex> lk( self->deinter_mtx );
-    self->ringbuf_deinterlaced.at( ringcount_in )=true;
-    }
-    ++self->deinterlace_count;
-    self->deinter_cv.notify_all();
-
-    debug( "DOTHREAD_DEINTERLACE_EXIT ringcount="+std::to_string(ringcount_in) );
-    return;
-  }
-  /***** Archon::Interface::dothread_deinterlace ******************************/
-
-
-  /***** Archon::Interface::dothread_runmcdsproc ******************************/
-  /**
-   * @brief      
-   * @param[in]  self  pointer to Archon::Interface object
-   * @todo       TODO not sure this is needed anymore
-   *
-   */
-  void Interface::dothread_runmcdsproc( Interface *self ) {
-    const std::string function("Archon::Interface::dothread_runmcdsproc");
-    std::stringstream message;
-/***
-    CPyInstance hInstance;
-    CPyObject pName   = PyUnicode_FromString( "calcmcds.py" );
-    CPyObject pModule = PyImport_Import( pName );
-    CPyObject pFunc = PyObject_GetAttrString( pModule, "do_calc" );
-***/
-  }
-  /***** Archon::Interface::dothread_runmcdsproc ******************************/
-
-
-  /***** Archon::Interface::dothread_runcds ***********************************/
-  /**
-   * @brief      
-   * @param[in]  self  pointer to Archon::Interface object
-   * @todo       TODO not sure this is needed anymore
-   *
-   * This thread is spawned at the start of do_expose() if camera_info.iscds is true.
-   * It then waits for a deinter_cv signal, which is notified by dothread_deinterlace().
-   * dothread_deinterlace() is a thread spawned by deinterlace() which is called by
-   * do_expose() after reading a frame buffer (or in this case, after reading a data
-   * cube of frame buffers).
-   *
-   * Since this thread is spawned once for each exposure, the local cv::Mat coadd
-   * image created here remains throughout the entire exposure, so this is the total
-   * coadd for any and all frames collected for this exposure.
-   *
-   */
-  void Interface::dothread_runcds( Interface *self ) {
-    debug( "DOTHREAD_RUNCDS_ENTRY" );
-    const std::string function("Archon::Interface::dothread_runcds");
-    std::stringstream message;
-    int deinterlace_count = self->deinterlace_count.load( std::memory_order_seq_cst );
-
-//cv::namedWindow( "image", cv::WINDOW_AUTOSIZE );
-
-    // Create a Mat image for the final MCDS coadd
-    // Using smart pointers to automatically clean up.
-    //
-    std::unique_ptr<cv::Mat> coadd( new cv::Mat( cv::Mat::zeros( self->cds_info.imheight, self->cds_info.imwidth, CV_32S ) ) );
-
-    std::unique_ptr<cv::Mat> diff( new cv::Mat( cv::Mat::zeros( self->cds_info.imheight, self->cds_info.imwidth, CV_32S ) ) );
-
-    std::unique_ptr<cv::Mat> mcds_0(nullptr);
-    std::unique_ptr<cv::Mat> mcds_1(nullptr);
-
-    message << "waiting for CDS/MCDS frames: self->deinterlace_count.load()=" << deinterlace_count
-            << " self->camera_info.nseq=" << self->camera_info.nseq;
-    logwrite( function, message.str() );
-
-    // Each count here is either a pair of CDS frames,
-    // or a set of "nmcds" frames.
-    //
-    {
-    std::unique_lock<std::mutex> lk( self->deinter_mtx );
-    while ( ! self->camera.is_aborted() && ( deinterlace_count < self->camera_info.nseq ) ) {
-      self->deinter_cv.wait( lk );
-      deinterlace_count = self->deinterlace_count.load( std::memory_order_seq_cst );
-      debug( "CDS_SUBTRACTION_START frame="+std::to_string(self->frame.bufframen[self->frame.index])+
-             " deinterlace_count="+std::to_string(deinterlace_count) );
-//    if ( self->camera.is_aborted() ) { self->deinterlace_count.store(self->camera_info.nseq); }
-      message.str(""); message << "deinterlace_count=" << deinterlace_count;
-      logwrite( function, message.str() );
-      if ( self->cds_info.nmcds > 0 ) {
-#ifdef LOGLEVEL_DEBUG
-        logwrite( function, "[DEBUG] performing MCDS subtraction" );
-#endif
-        // Perform the CDS subtraction, sum of signal frames - sum of baseline frames, average,
-	// then coadd the result. To do that, create Mat arrays from each of the MCDS buffers.
-        //
-        try {
-          mcds_0.reset( new cv::Mat( self->cds_info.imheight, self->cds_info.imwidth, CV_32S, self->mcdsbuf_0 ) );
-          mcds_1.reset( new cv::Mat( self->cds_info.imheight, self->cds_info.imwidth, CV_32S, self->mcdsbuf_1 ) );
-
-          *diff   = *mcds_1 - *mcds_0;           // perform the subtraction, signal-baseline
-          *diff  /= ( self->cds_info.nmcds/2 );  // average
-          *coadd += *diff;                       // coadd here
-        }
-        catch ( const cv::Exception& ex ) {
-          message.str(""); message << "ERROR OpenCV exception subtracting signal-baseline: " << ex.what();
-          logwrite( function, message.str() );
-//cv::destroyAllWindows();
-      debug( "DOTHREAD_RUNCDS_EXIT frame="+std::to_string(self->frame.bufframen[self->frame.index])+
-             " deinterlace_count="+std::to_string(deinterlace_count) );
-          return;
-        }
-        catch ( const std::exception& ex ) {
-          message.str(""); message << "ERROR std exception subtracting signal-baseline: " << ex.what();
-          logwrite( function, message.str() );
-//cv::destroyAllWindows();
-      debug( "DOTHREAD_RUNCDS_EXIT frame="+std::to_string(self->frame.bufframen[self->frame.index])+
-             " deinterlace_count="+std::to_string(deinterlace_count) );
-          return;
-        }
-        catch ( ... ) {
-          logwrite( function, "unknown exception subtracting signal-baseline" );
-//cv::destroyAllWindows();
-      debug( "DOTHREAD_RUNCDS_EXIT frame="+std::to_string(self->frame.bufframen[self->frame.index])+
-             " deinterlace_count="+std::to_string(deinterlace_count) );
-          return;
-        }
-      }
-      debug( "CDS_SUBTRACTION_END frame="+std::to_string(self->frame.bufframen[self->frame.index])+
-             " deinterlace_count="+std::to_string(deinterlace_count) );
-    }
-    }
-
-    // Now that all frames have been completed, it's time to write the co-added image
-    //
-    long error=NO_ERROR;
-    if ( ! self->camera.is_aborted() && self->camera_info.nmcds == 0 ) {
-      logwrite( function, "[DEBUG] dothread_runcds (a) calling __file_cds->write_image" );
-      self->__file_cds->write_image( self->coaddbuf,
-                                     get_timestamp(),
-                                     0,
-                                     self->cds_info
-                                   );
-    }
-    else if ( ! self->camera.is_aborted() ) {
-#ifdef LOGLEVEL_DEBUG
-        logwrite( function, "[DEBUG] copying MCDS coadd image to FITS buffer" );
-#endif
-      // Copy assembled image into the FITS buffer, this->coaddbuf
-      //
-      unsigned long index=0;
-      for ( int row=0; row<self->cds_info.imheight; row++ ) {
-        for ( int col=0; col<self->cds_info.imwidth; col++ ) {
-          *( self->coaddbuf + index++ ) = static_cast<int32_t>(coadd->at<int32_t>(row, col));
-        }
-      }
-      debug( "CDS_FILE_WRITE_START frame="+std::to_string(self->frame.bufframen[self->frame.index])+
-             " deinterlace_count="+std::to_string(deinterlace_count) );
-      logwrite( function, "[DEBUG] dothread_runcds (b) calling __file_cds->write_image" );
-      self->__file_cds->write_image( self->coaddbuf,
-                                     get_timestamp(),
-                                     0,
-                                     self->cds_info
-                                   );
-      debug( "CDS_FILE_WRITE_END frame="+std::to_string(self->frame.bufframen[self->frame.index])+
-             " deinterlace_count="+std::to_string(deinterlace_count) );
-    }
-    if ( error != NO_ERROR ) logwrite( function, "ERROR writing coadd image to disk" );
-    if ( self->camera.is_aborted() ) logwrite( function, "closing aborted coadd image" );
-    self->cds_info.exposure_aborted = self->camera.is_aborted();
-
-//cv::destroyAllWindows();
-    logwrite( function, "exiting CDS thread" );
-      debug( "DOTHREAD_RUNCDS_EXIT frame="+std::to_string(self->frame.bufframen[self->frame.index])+
-             " deinterlace_count="+std::to_string(deinterlace_count) );
-    return;
-  }
-  /***** Archon::Interface::dothread_runcds ***********************************/
-
-
   /***** Archon::Interface::dothread_openfits *********************************/
   /**
    * @brief      this is run in a thread to open a fits file for flat (non-mex) files only
@@ -7946,7 +6566,6 @@ namespace Archon {
    *
    */
   void Interface::dothread_openfits( Interface *self ) {
-    debug( "DOTHREAD_OPENFITS_ENTRY" );
     const std::string function("Archon::Interface::dothread_openfits");
     std::stringstream message;
     long error = NO_ERROR;
@@ -7960,7 +6579,6 @@ namespace Archon {
     if ( error != NO_ERROR ) {
       logwrite( function, "ERROR: couldn't validate fits filename" );
       self->openfits_error.store( true, std::memory_order_seq_cst );
-      debug( "DOTHREAD_OPENFITS_EXIT" );
       return;
     }
     self->add_filename_key();                                          // add filename to system keys database
@@ -7976,133 +6594,11 @@ namespace Archon {
     if ( error != NO_ERROR ) {
       self->camera.log_error( function, "couldn't open fits file" );
       self->openfits_error.store( true, std::memory_order_seq_cst );
-      debug( "DOTHREAD_OPENFITS_EXIT" );
       return;
     }
-    debug( "DOTHREAD_OPENFITS_EXIT" );
     return;
   }
   /***** Archon::Interface::dothread_openfits *********************************/
 
-
-  /***** Archon::Interface::dothread_start_deinterlace ************************/
-  /**
-   * @brief      calls the appropriate deinterlacer based on camera_info.datatype
-   * @param[in]  self          pointer to Archon::Interface object
-   * @param[in]  ringcount_in  the current ring buffer to deinterlace
-   *
-   */
-  void Interface::dothread_start_deinterlace( Interface *self, int ringcount_in ) {
-    debug( "DOTHREAD_START_DEINTERLACE_ENTRY ring="+std::to_string(ringcount_in) );
-    const std::string function("Archon::Interface::dothread_start_deinterlace");
-    std::stringstream message;
-
-    // If this ring buffer is marked as locked then that means a thread is currently reading data into it,
-    // which means we should not be here trying to deinterlace it. Either got here too fast or the read
-    // is taking too long.
-    //
-    bool ringlock = (*self->ringlock.at( ringcount_in )).load( std::memory_order_seq_cst );
-    if ( ringlock ) {
-      message.str(""); message << "RING BUFFER OVERFLOW: ring buffer " << ringcount_in << " is locked for writing";
-      self->camera.log_error( function, message.str() );
-      debug( "DOTHREAD_START_DEINTERLACE_EXIT ring="+std::to_string(ringcount_in) );
-      return;
-    }
-
-#ifdef LOGLEVEL_DEBUG
-    message.str(""); message << "[DEBUG] starting deinterlace for image_ring[" << std::dec << ringcount_in << "]="
-                             << std::hex << (void*)self->image_ring.at(ringcount_in)
-                             << " into work_ring[" << std::dec << ringcount_in << "]=" << std::hex << (void*)self->work_ring.at(ringcount_in);
-    logwrite( function, message.str() );
-#endif
-
-    // Call the appropriate deinterlacer here
-    //
-    switch ( self->camera_info.datatype ) {
-      case USHORT_IMG: {
-        self->deinterlace( (uint16_t *)self->image_ring.at(ringcount_in),
-                           (uint16_t *)self->work_ring.at(ringcount_in),
-                           (uint16_t *)self->cds_ring.at(ringcount_in),
-                           ringcount_in );
-        break;
-      }
-      case SHORT_IMG: {
-        self->deinterlace( (int16_t *)self->image_ring.at(ringcount_in),
-                           (int16_t *)self->work_ring.at(ringcount_in),
-                           (int16_t *)self->cds_ring.at(ringcount_in),
-                           ringcount_in );
-        break;
-      }
-      case FLOAT_IMG: {
-        self->deinterlace( (uint32_t *)self->image_ring.at(ringcount_in),
-                           (uint32_t *)self->work_ring.at(ringcount_in),
-                           (uint32_t *)self->cds_ring.at(ringcount_in),
-                           ringcount_in );
-        break;
-      }
-      default:
-        message.str(""); message << "unknown datatype " << self->camera_info.datatype;
-        self->camera.log_error( function, message.str() );
-        debug( "DOTHREAD_START_DEINTERLACE_EXIT ring="+std::to_string(ringcount_in) );
-        return;
-        break;
-    }
-    debug( "DOTHREAD_START_DEINTERLACE_EXIT ring="+std::to_string(ringcount_in) );
-    return;
-  }
-  /***** Archon::Interface::dothread_start_deinterlace ************************/
-
-
-  /***** Archon::Interface::dothread_writeframe *******************************/
-  /**
-   * @brief      this is run in a thread to write a frame after it is deinterlaced
-   * @param[in]  self          pointer to Archon::Interface object
-   * @param[in]  ringcount_in  the current ring buffer to write
-   *
-   * This thread will wait for the ringbuffer at ringcount_in to be deinterlaced,
-   * then it will write the frame.
-   *
-   * *** THIS IS THE ONLY CALL TO write_frame() USED BY NIRC2 ***
-   *
-   */
-  void Interface::dothread_writeframe( Interface *self, int ringcount_in ) {
-    debug( "DOTHREAD_WRITEFRAME_ENTRY ring="+std::to_string(ringcount_in) );
-    const std::string function("Archon::Interface::dothread_writeframe");
-    std::stringstream message;
-
-#ifdef LOGLEVEL_DEBUG
-    message.str(""); message << "[DEBUG] waiting for ringbuf_deinterlaced[" << ringcount_in << "]";
-    logwrite( function, message.str() );
-#endif
-
-    // Wait for the ring buffer to be deinterlaced
-    {
-    std::unique_lock<std::mutex> lk( self->deinter_mtx );
-    while ( /* ! self->camera.is_aborted() and*/ ! self->ringbuf_deinterlaced.at( ringcount_in ) ) self->deinter_cv.wait( lk ); //DDSH TODO check this
-    }
-    debug( "DOTHREAD_WRITEFRAME_START ring="+std::to_string(ringcount_in) );
-
-#ifdef LOGLEVEL_DEBUG
-    message.str(""); message << "[DEBUG] after the lock ringbuf_deinterlaced[" << ringcount_in << "]=" << self->ringbuf_deinterlaced.at(ringcount_in) 
-                             << " calling write_frame(" << ringcount_in << ")";
-    logwrite( function, message.str() );
-#endif
-
-    // Write the frame
-    //
-    self->write_frame( ringcount_in );
-
-    if ( self->camera.mex() ) ++self->write_frame_count;
-
-#ifdef LOGLEVEL_DEBUG
-    int wfc = self->write_frame_count.load( std::memory_order_seq_cst );
-    message.str(""); message << "[DEBUG] write_frame(" << ringcount_in << ") is done. write_frame_count=" << wfc;
-    logwrite( function, message.str() );
-#endif
-
-    debug( "DOTHREAD_WRITEFRAME_EXIT ring="+std::to_string(ringcount_in) );
-    return;
-  }
-  /***** Archon::Interface::dothread_writeframe *******************************/
 
 }
