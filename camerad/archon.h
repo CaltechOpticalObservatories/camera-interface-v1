@@ -845,16 +845,16 @@ namespace Archon {
   /***** Archon::DeInterlace **************************************************/
 
 
+  /** @brief    holds one or more frames and metadata from the Archon
+   *  @details  A single ImageBuffer object can contain multiple frames,
+   *            or slices, as would be the case for a datacube.
+   */
   struct ImageBuffer {
-    int seq;
-    int slice;
-    int cubedepth;
-    int framenum;
-    uint64_t timestamp;
-    uint64_t dts;
-    bool is_halfway;
-    size_t bufsize;
-    std::shared_ptr<char[]> rawpixels;
+    int ncoadd;
+    int n_slices;                              // number of slices in this image
+    std::vector<int> bufframen_slice;          // Archon frame number(s) for all slices in this image
+    std::vector<uint64_t> buftimestamp_slice;  // Archon timestamp(s) for all slices in this image
+    std::shared_ptr<char[]> rawpixels;         // Archon frame buffer(s)
   };
 
 
@@ -906,19 +906,19 @@ namespace Archon {
       std::unique_ptr<ProcessingBuffers<uint32_t>> buffers_32;
       std::unique_ptr<ProcessingBuffers<int16_t>>  buffers_16s;
 
-      std::queue<std::shared_ptr<ImageBuffer>> framebuf_queue;
-      std::mutex queue_mutex;
+      /** @brief FIFO queue to contain images from Archon */
+      std::queue<std::shared_ptr<ImageBuffer>> imagebuf_queue;  ///< the queue itself
+      std::mutex queue_mutex;                                   ///< mutex protects access to the queue
       std::condition_variable queue_cv;
 
       std::atomic<bool> is_producer_finished;
       std::atomic<bool> is_producer_error;
-      std::atomic<bool> is_consumer_error;
 
       long initialize_processing_buffers();
-      void frame_acquisition_loop(int nseq);
-      void frame_processing_loop();
-      void process_frame(std::shared_ptr<ImageBuffer> &framebuf);
-      template<typename T> void deinterlace_queue(std::shared_ptr<ImageBuffer> framebuf, ProcessingBuffers<T> &buffers);
+      void image_acquisition_loop(int nseq);
+      void image_processing_loop();
+      void process_image(std::shared_ptr<ImageBuffer> &imagebuf);
+      template<typename T> void deinterlace_queue(std::shared_ptr<ImageBuffer> imagebuf, ProcessingBuffers<T> &buffers);
       void runcds();
       void make_simulated_data(char* buffer, uint16_t extra);
 
@@ -1048,7 +1048,7 @@ namespace Archon {
       long get_timer(unsigned long int *timer);
       long fetch(uint64_t bufaddr, uint32_t bufblocks);
       long read_frame_cache(char* buffer, int slice);
-      long read_frame( Camera::frame_type_t frame_type, char* ptr );
+      long read_frame( Camera::frame_type_t frame_type, char* &ptr_in );
       long write_config_key( const char *key, const char *newvalue, bool &changed );
       long write_config_key( const char *key, int newvalue, bool &changed );
       long write_parameter( const char *paramname, const char *newvalue, bool &changed );
