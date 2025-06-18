@@ -130,7 +130,7 @@ namespace Archon {
     try {
       potential_max = cv::saturate_cast<T>(max_dest + max_src);
       potential_min = cv::saturate_cast<T>(min_dest + min_src);
-    } catch ( cv::Exception &e ) {
+    } catch ( const std::exception &e ) {
       std::stringstream message;
       message << "ERROR calculating potential min/max values: " << e.what();
       logwrite( "Archon::mat_add_will_overflow", message.str() );
@@ -563,38 +563,16 @@ namespace Archon {
 //          logwrite( "Archon::DeInterlace::nirc2", message.str() );
 #endif
             // Create openCV image from the coadd buffer pointed above
-	    // and add the work buffer to it.
+            // and add the work buffer to it.
             //
             cv::Mat coadd = cv::Mat( this->frame_rows, this->frame_cols, CV_32S, ptr );
-//          coadd += work;  2023-11-25
             cv::add( coadd, work, coadd, cv::noArray(), coadd.type() );
-
-            // Copy coadded image into the FITS buffer pointed to by ptr
-            // as long as ptr is pointing to valid memory.
-            //
-            if ( ptr == nullptr ) {
-              logwrite( function, "ERROR: invalid buffer allocation" );
-              return;
-            }
-            unsigned long index=0;
-            for ( int row=0; row<this->frame_rows; row++ ) {
-              for ( int col=0; col<this->frame_cols; col++ ) {
-                *( ptr + index++ ) = (int32_t)(coadd.at<int32_t>(row,col));
-              }
-            }
           }
 
         } // end of loop over cubes
         }
-        catch ( const cv::Exception& ex ) {
-          message.str(""); message << "ERROR OpenCV exception in deinterlacing for slicen " << slicen << " and nmcds " << this->nmcds << ": " << ex.what();
-          logwrite( function, message.str() );
-          return;
-        }
-        catch ( const std::exception& ex ) {
-          message.str(""); message << "ERROR in deinterlacing: " << ex.what();
-          logwrite( function, message.str() );
-          message.str(""); message << "ERROR slicen=" << slicen << " nmcds=" << this->nmcds;
+        catch ( const std::exception &ex ) {
+          message.str(""); message << "ERROR deinterlacing slicen=" << slicen << " nmcds=" << this->nmcds << ": " << ex.what();
           logwrite( function, message.str() );
           return;
         }
@@ -620,15 +598,6 @@ namespace Archon {
         cv::Mat diff;
         try {
           cv::subtract( this->readframe, this->resetframe, diff, cv::noArray(), CV_32S );
-        }
-        catch ( const cv::Exception& ex ) {
-          message.str(""); message << "ERROR subtracting readframe-resetframe: " << ex.what();
-          logwrite( function, message.str() );
-          message.str(""); message << "ERROR readframe.rows=" << this->readframe.rows << " .cols=" << this->readframe.cols
-                                   << " resetframe.rows=" << this->resetframe.rows << " .cols=" << this->resetframe.cols
-                                   << " iscds=" << this->iscds << " nmcds=" << this->nmcds << " workbuf=" << std::hex << this->workbuf;
-          logwrite( function, message.str() );
-          return;
         }
         catch ( const std::exception& ex ) {
           message.str(""); message << "ERROR subtracting readframe-resetframe: " << ex.what();
@@ -665,11 +634,6 @@ namespace Archon {
             return;
           }
           cv::add( coadd, diff, coadd, cv::noArray(), coadd.type() );
-        }
-        catch ( const cv::Exception& ex ) {
-          message.str(""); message << "ERROR coadding CDS frame: " << ex.what();
-          logwrite( function, message.str() );
-          return;
         }
         catch ( const std::exception& ex ) {
           message.str(""); message << "ERROR coadding CDS frame: " << ex.what();

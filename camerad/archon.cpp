@@ -3402,6 +3402,9 @@ namespace Archon {
                "ERROR initializing memory: "+std::string(e.what()));
       return ERROR;
     }
+std::stringstream message;
+message << "[DEBUG] initialized workbuf size=" << camera_info.section_size << " cdsbuf size=" << cds_info.section_size;
+logwrite("Archon::Interface::initialize_processing_buffers", message.str());
     return NO_ERROR;
   }
   /***** Archon::Interface::initialize_processing_buffers *********************/
@@ -3845,9 +3848,9 @@ logwrite(function, pixelvals.str());
 pixelvals.str(""); pixelvals << "[PIXELVALS] before deinterlace workbuf=";
 for (int i=0; i<10; i++) pixelvals << " " << workbuf[i];
 logwrite(function, pixelvals.str());
-pixelvals.str(""); pixelvals << "[PIXELVALS] before deinterlace cdsbuf=";
-for (int i=0; i<10; i++) pixelvals << " " << cdsbuf[i];
-logwrite(function, pixelvals.str());
+if (camera_info.iscds) {pixelvals.str(""); pixelvals << "[PIXELVALS] before deinterlace cdsbuf=";
+                        for (int i=0; i<10; i++) pixelvals << " " << cdsbuf[i];
+                        logwrite(function, pixelvals.str());}
 
       DeInterlace<T> deinterlacer( imbuf,                           // raw image
                                    workbuf,                         //
@@ -3872,9 +3875,9 @@ logwrite(function, pixelvals.str());
 pixelvals.str(""); pixelvals << "[PIXELVALS] after deinterlace workbuf=";
 for (int i=0; i<10; i++) pixelvals << " " << workbuf[i];
 logwrite(function, pixelvals.str());
-pixelvals.str(""); pixelvals << "[PIXELVALS] after deinterlace cdsbuf=";
-for (int i=0; i<10; i++) pixelvals << " " << cdsbuf[i];
-logwrite(function, pixelvals.str());
+if (camera_info.iscds) {pixelvals.str(""); pixelvals << "[PIXELVALS] after deinterlace cdsbuf=";
+                        for (int i=0; i<10; i++) pixelvals << " " << cdsbuf[i];
+                        logwrite(function, pixelvals.str());}
     }
     catch (const std::exception &e) {
       logwrite(function, "ERROR: "+std::string(e.what()));
@@ -3895,20 +3898,26 @@ logwrite(function, pixelvals.str());
     logwrite(function, "start");
 
     // These Mat images are initialized for each exposure in image_processing_loop()
-    // and remain throughout the exposure.
+    // and remain throughout the exposure, and I'm just making a local pointer to them
+    // so that repeated calls here coadd onto the same buffer.
     //
-    cv::Mat* coadd = this->coadd_img.get();
-    cv::Mat* diff  = this->diff_img.get();
+    cv::Mat* _coadd = this->coadd_img.get();
+    cv::Mat* _diff  = this->diff_img.get();
 
-message.str(""); message << "[PIXELVALS] entry coadd=";
-for (int i=0; i<10; i++) message << " " << coadd[i];
+if (this->cds_info.nmcds>0) {
+{
+message.str(""); message << "[PIXELVALS] entry coadd_img=";
+int32_t* data = (int32_t*)_coadd->data;
+for(int i=0; i<10; i++) message << " " << data[i];
 logwrite(function, message.str());
-message.str(""); message << "[PIXELVALS] entry diff=";
-for (int i=0; i<10; i++) message << " " << diff[i];
+}
+{
+message.str(""); message << "[PIXELVALS] entry diff_img=";
+int32_t* data = (int32_t*)_diff->data;
+for(int i=0; i<10; i++) message << " " << data[i];
 logwrite(function, message.str());
-
-    std::unique_ptr<cv::Mat> mcds_0(nullptr);
-    std::unique_ptr<cv::Mat> mcds_1(nullptr);
+}
+}
 
     // MCDS subtraction and co-adding
     //
@@ -3923,12 +3932,15 @@ logwrite(function, message.str());
         // then coadd the result. To do that, create Mat arrays from each of the MCDS buffers.
         //
         try {
-          mcds_0.reset( new cv::Mat( this->cds_info.imheight, this->cds_info.imwidth, CV_32S, this->mcdsbuf_0 ) );
-          mcds_1.reset( new cv::Mat( this->cds_info.imheight, this->cds_info.imwidth, CV_32S, this->mcdsbuf_1 ) );
+          std::unique_ptr<cv::Mat> _mcds_0(nullptr);
+          std::unique_ptr<cv::Mat> _mcds_1(nullptr);
 
-          *diff   = *mcds_1 - *mcds_0;           // perform the subtraction, signal-baseline
-          *diff  /= ( this->cds_info.nmcds/2 );  // average
-          *coadd += *diff;                       // coadd here
+          _mcds_0.reset( new cv::Mat( this->cds_info.imheight, this->cds_info.imwidth, CV_32S, this->mcdsbuf_0 ) );
+          _mcds_1.reset( new cv::Mat( this->cds_info.imheight, this->cds_info.imwidth, CV_32S, this->mcdsbuf_1 ) );
+
+          *_diff   = *_mcds_1 - *_mcds_0;         // perform the subtraction, signal-baseline
+          *_diff  /= ( this->cds_info.nmcds/2 );  // average
+          *_coadd += *_diff;                      // coadd here
         }
         catch (const std::exception &ex) {
           message.str(""); message << "ERROR subtracting signal-baseline: " << ex.what();
@@ -3960,7 +3972,7 @@ logwrite(function, message.str());
         unsigned long index=0;
         for ( int row=0; row<this->cds_info.imheight; row++ ) {
           for ( int col=0; col<this->cds_info.imwidth; col++ ) {
-            *( this->coaddbuf + index++ ) = static_cast<int32_t>(coadd->at<int32_t>(row, col));
+            *( this->coaddbuf + index++ ) = static_cast<int32_t>(_coadd->at<int32_t>(row, col));
           }
         }
 message.str(""); message << "[PIXELVALS] nmcds=" << camera_info.nmcds << " after cds coaddbuf=";
@@ -3994,8 +4006,9 @@ logwrite(function, message.str());
     // Fill with sequential values 1, 2, 3, ..., 65535, 1, 2, 3, ...
     uint16_t pixel_value = 1;
     for (int i = 0; i < total_pixels; i++) {
+      pixel_buffer[i] = extra*10000 + 32767 + (std::rand() % (40000-32768));
+/*
       pixel_buffer[i] = pixel_value;
-
       // Increment and wrap at 65535 back to 1
       int increment=(rand() % 10)+1;
       pixel_value += increment;
@@ -4003,6 +4016,7 @@ logwrite(function, message.str());
         pixel_value = 1 + (pixel_value-65536);
         pixel_value = rand() % 32768;
       }
+*/
     }
   }
 
