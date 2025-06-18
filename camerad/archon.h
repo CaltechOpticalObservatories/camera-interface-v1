@@ -209,8 +209,6 @@ namespace Archon {
           this->imbuf[pix] = static_cast<T>(pix % 65535);
         }
 
-//      cv::Mat image;
-//      image = cv::Mat( 256, 256, CV_16U, this->imbuf ).clone();
         cv::Mat image ( 256, 256, CV_16U, this->imbuf );
 
         return;
@@ -237,15 +235,15 @@ namespace Archon {
 
         // These Mat objects are the input frames
         //
-//      cv::Mat raw    = cv::Mat( bufrows,   this->cols, CV_16U, this->imbuf   ).clone();
-        cv::Mat raw ( bufrows,   this->cols, CV_16U, this->imbuf   );
-        cv::Mat signal ( bufrows/2, this->cols, CV_16U );
-        cv::Mat reset  ( bufrows/2, this->cols, CV_16U );
+        cv::Mat raw    = cv::Mat( bufrows,   this->cols, CV_16U, this->imbuf   );
+        cv::Mat signal = cv::Mat( bufrows/2, this->cols, CV_16U, cv::Scalar(0) );
+        cv::Mat reset  = cv::Mat( bufrows/2, this->cols, CV_16U, cv::Scalar(0) );
 
         // These Mat objects hold the deinterlaced frames
         //
-        cv::Mat deinter_reset  ( this->frame_rows, this->frame_cols, CV_16U );
-        cv::Mat deinter_signal ( this->frame_rows, this->frame_cols, CV_16U );
+        cv::Mat deinter_reset  = cv::Mat( this->frame_rows, this->frame_cols, CV_16U, cv::Scalar(0) );
+        cv::Mat deinter_signal = cv::Mat( this->frame_rows, this->frame_cols, CV_16U, cv::Scalar(0) );
+
 
         // Copy pairs of rows from the raw to the reset and signal frame Mat objects
         //
@@ -322,8 +320,7 @@ namespace Archon {
 #endif
         // Create openCV image to hold entire imbuf (all cubes)
         //
-//      cv::Mat image = cv::Mat( (this->rows * this->depth), this->cols, CV_16U, this->imbuf ).clone();
-        cv::Mat image ( (this->rows * this->depth), this->cols, CV_16U, this->imbuf );
+        cv::Mat image = cv::Mat( (this->rows * this->depth), this->cols, CV_16U, this->imbuf );
 
         // Create an empty openCV image for performing the deinterlacing work.
         // Note that this "work" Mat image is a single frame!
@@ -331,8 +328,10 @@ namespace Archon {
         // it gets back here. So if you wait until this->nirc2() returns, this work image
         // may not be what you want. Consider it a temporary workspace only.
         //
-        //cv::Mat work  = cv::Mat( this->frame_rows, this->frame_cols, CV_16U, cv::Scalar(0) );
-        cv::Mat work( this->frame_rows, this->frame_cols, CV_16U );
+        cv::Mat work  = cv::Mat( this->frame_rows, this->frame_cols, CV_16U, cv::Scalar(0) );
+
+
+
 
         int workindex=0;
         SNPRINTF(message, "workindex=%d prior to calling nirc2(workindex, image, work)", workindex);
@@ -384,6 +383,9 @@ namespace Archon {
                                  << " workindex=" << workindex;
         logwrite( "Archon::DeInterlace::nirc2", message.str() );
 #endif
+message.str(""); message << "[DEBUG] incoming image=";
+for (int i=0; i<10; i++) message << " " << image.ptr<uint16_t>()[i];
+logwrite(function,message.str());
 
         int taps=8;
 
@@ -514,16 +516,31 @@ namespace Archon {
           {
           cv::Mat uppers;
           cv::Mat lowers;
-          cv::Mat temp;
           cv::hconcat( Q2c, Q1f, uppers );      // concatenate the two upper quadrants together, horizontally
           cv::hconcat( Q4f, Q3f, lowers );      // concatenate the two lower quadrants together, horizontally
-          cv::vconcat( lowers, uppers, temp );  // concatenate the uppers and lowers together, vertically
-          temp.copyTo(work);
+          cv::vconcat( lowers, uppers, work );  // concatenate the uppers and lowers together, vertically
+message.str(""); message << "[DEBUG] before subtracting from 65535 Q2c=";
+for (int i=0; i<10; i++) message << " " << Q2c.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+message.str(""); message << "[DEBUG] before subtracting from 65535 Q1f=";
+for (int i=0; i<10; i++) message << " " << Q1f.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+message.str(""); message << "[DEBUG] before subtracting from 65535 Q4f=";
+for (int i=0; i<10; i++) message << " " << Q4f.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+message.str(""); message << "[DEBUG] before subtracting from 65535 Q3f=";
+for (int i=0; i<10; i++) message << " " << Q3f.ptr<uint16_t>()[i];
+logwrite(function,message.str());
           }
 
           // Subtract the image from 65535 because for NIRC2 the counts decrease
           // with increasing signal.
           //
+{
+message.str(""); message << "[DEBUG] before subtracting from 65535 work=";
+for (int i=0; i<10; i++) message << " " << work.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+}
           cv::subtract( 65535, work, work );
 
           // Copy assembled image into the FITS buffer, this->workbuf
@@ -768,15 +785,15 @@ namespace Archon {
        *
        */
       void do_deinterlace() {
-/***
- *      const std::string function("Archon::DeInterlace::do_deinterlace");
- *      stringstream message;
- *
- *      message.str(""); message << "[DEBUG] workbuf=" << std::hex << static_cast<void*>(this->workbuf)
- *                               << " cdsbuf=" << std::hex << static_cast<void*>(this->cdsbuf)
- *                               << " imbuf=" << std::hex << static_cast<void*>(this->imbuf);
- *      logwrite( "Archon::DeInterlace::do_deinterlace", message.str() );
- ***/
+
+        const std::string function("Archon::DeInterlace::do_deinterlace");
+        std::stringstream message;
+  
+        message.str(""); message << "[DEBUG] workbuf=" << std::hex << static_cast<void*>(this->workbuf)
+                                 << " cdsbuf=" << std::hex << static_cast<void*>(this->cdsbuf)
+                                 << " imbuf=" << std::hex << static_cast<void*>(this->imbuf);
+        logwrite( "Archon::DeInterlace::do_deinterlace", message.str() );
+
 
         switch( this->readout_type ) {
           case Archon::READOUT_NONE:

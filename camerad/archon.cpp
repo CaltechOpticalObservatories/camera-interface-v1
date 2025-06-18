@@ -3837,24 +3837,30 @@ logwrite(function, pixelvals.str());
       if (mcdsbuf_0) memset(mcdsbuf_0, 0, cds_info.section_size * sizeof(int32_t));
       if (mcdsbuf_1) memset(mcdsbuf_1, 0, cds_info.section_size * sizeof(int32_t));
 
-      T* imbuf   = reinterpret_cast<T*>(imagebuf->rawpixels.get());
-      T* workbuf = buffers.workbuf.get();
-      T* cdsbuf  = buffers.cdsbuf.get();
+      T* _imbuf   = reinterpret_cast<T*>(imagebuf->rawpixels.get());
+      T* _workbuf = buffers.workbuf.get();
+      T* _cdsbuf  = buffers.cdsbuf.get();
+
+std::stringstream message;
+message << "[DEBUG] imbuf=" << std::hex << static_cast<void*>(_imbuf)
+        << " workbuf=" << std::hex << static_cast<void*>(_workbuf)
+        << " cdsbuf=" << std::hex << static_cast<void*>(_cdsbuf);
+logwrite(function,message.str());
 
 std::stringstream pixelvals;
-pixelvals.str(""); pixelvals << "[PIXELVALS] before deinterlace imbuf=";
-for (int i=0; i<10; i++) pixelvals << " " << imbuf[i];
+pixelvals.str(""); pixelvals << "[PIXELVALS] before deinterlace imbuf=" << std::dec;
+for (int i=0; i<10; i++) pixelvals << " " << _imbuf[i];
 logwrite(function, pixelvals.str());
-pixelvals.str(""); pixelvals << "[PIXELVALS] before deinterlace workbuf=";
-for (int i=0; i<10; i++) pixelvals << " " << workbuf[i];
+pixelvals.str(""); pixelvals << "[PIXELVALS] before deinterlace workbuf=" << std::dec;
+for (int i=0; i<10; i++) pixelvals << " " << _workbuf[i];
 logwrite(function, pixelvals.str());
-if (camera_info.iscds) {pixelvals.str(""); pixelvals << "[PIXELVALS] before deinterlace cdsbuf=";
-                        for (int i=0; i<10; i++) pixelvals << " " << cdsbuf[i];
+if (camera_info.iscds) {pixelvals.str(""); pixelvals << "[PIXELVALS] before deinterlace cdsbuf=" << std::dec;
+                        for (int i=0; i<10; i++) pixelvals << " " << _cdsbuf[i];
                         logwrite(function, pixelvals.str());}
 
-      DeInterlace<T> deinterlacer( imbuf,                           // raw image
-                                   workbuf,                         //
-                                   cdsbuf,                          //
+      DeInterlace<T> deinterlacer( _imbuf,                          // raw image
+                                   _workbuf,                        //
+                                   _cdsbuf,                         //
                                    coaddbuf,                        //
                                    mcdsbuf_0,                       // MCDS baseline sum (1st half)
                                    mcdsbuf_1,                       // MCDS signal sum (2nd half)
@@ -3870,13 +3876,13 @@ if (camera_info.iscds) {pixelvals.str(""); pixelvals << "[PIXELVALS] before dein
 
       deinterlacer.do_deinterlace();
 pixelvals.str(""); pixelvals << "[PIXELVALS] after deinterlace imbuf=";
-for (int i=0; i<10; i++) pixelvals << " " << imbuf[i];
+for (int i=0; i<10; i++) pixelvals << " " << _imbuf[i];
 logwrite(function, pixelvals.str());
 pixelvals.str(""); pixelvals << "[PIXELVALS] after deinterlace workbuf=";
-for (int i=0; i<10; i++) pixelvals << " " << workbuf[i];
+for (int i=0; i<10; i++) pixelvals << " " << _workbuf[i];
 logwrite(function, pixelvals.str());
 if (camera_info.iscds) {pixelvals.str(""); pixelvals << "[PIXELVALS] after deinterlace cdsbuf=";
-                        for (int i=0; i<10; i++) pixelvals << " " << cdsbuf[i];
+                        for (int i=0; i<10; i++) pixelvals << " " << _cdsbuf[i];
                         logwrite(function, pixelvals.str());}
     }
     catch (const std::exception &e) {
