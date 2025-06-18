@@ -864,27 +864,10 @@ namespace Archon {
     std::shared_ptr<T[]> cdsbuf;
 
     ProcessingBuffers(size_t work_section_size, size_t cds_section_size) {
-      size_t work_section_bytes = work_section_size * sizeof(T);
-      size_t work_alloc_bytes   = (work_section_bytes+31) & ~size_t(31);  // round up to multiple of 32
-      size_t cds_section_bytes  = cds_section_size * sizeof(T);
-      size_t cds_alloc_bytes    = (cds_section_bytes+31) & ~size_t(31);   // round up to multiple of 32
+      workbuf = std::shared_ptr<T[]>(new T[work_section_size]());
+      cdsbuf  = std::shared_ptr<T[]>(new T[cds_section_size]());
 
-/***
- *    std::stringstream message;
- *    message << "[DEBUG] work_section_size=" << work_section_size << " work_section_bytes=" << work_section_bytes << " work_alloc_bytes=" << work_alloc_bytes;
- *    logwrite("Archon::ProcessingBuffers",message.str());
- *    message.str(""); message << "[DEBUG] cds_section_size=" << cds_section_size << " cds_section_bytes=" << cds_section_bytes << " cds_alloc_bytes=" << cds_alloc_bytes;
- *    logwrite("Archon::ProcessingBuffers",message.str());
- ***/
-
-      workbuf = std::shared_ptr<T[]>(static_cast<T*>(std::aligned_alloc(32, work_alloc_bytes)), std::free);
-      cdsbuf  = std::shared_ptr<T[]>(static_cast<T*>(std::aligned_alloc(32, cds_alloc_bytes)),  std::free);
-
-      if (!workbuf||!cdsbuf) throw std::bad_alloc();
-
-      // Zero initialize
-      std::memset(workbuf.get(), 0, work_alloc_bytes);
-      std::memset(cdsbuf.get(), 0, cds_alloc_bytes);
+      if (!workbuf || !cdsbuf) throw std::bad_alloc();
     }
   };
 
@@ -990,6 +973,9 @@ namespace Archon {
       float heater_target_max;               //!< maximum heater target temperature
 
       char *image_data;                      //!< image data buffer //TODO @todo obsolete?
+
+      std::unique_ptr<cv::Mat> coadd_img;    ///< persistent coadd image
+      std::unique_ptr<cv::Mat> diff_img;     ///< persistent diff image
 
       int32_t* coaddbuf;                     /// final coadd buffer written to FITS
       int32_t* mcdsbuf_0;                    /// first group of MCDS coadds (baseline)

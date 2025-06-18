@@ -27,6 +27,8 @@ namespace Archon {
     this->deinterlace_count.store( 0, std::memory_order_seq_cst );
     this->write_frame_count.store( 0, std::memory_order_seq_cst );
 
+    this->coadd_img = nullptr;
+    this->diff_img = nullptr;
     this->coaddbuf = nullptr;
     this->mcdsbuf_0 = nullptr;
     this->mcdsbuf_1 = nullptr;
@@ -3575,17 +3577,6 @@ pixelvals.str(""); pixelvals << "[PIXELVALS] ncoadd=" << imagebuf->ncoadd << " s
 for (int i=0; i<10; i++) pixelvals << " " << pixel_buffer[i];
 logwrite(function, pixelvals.str());
 
-/*** Jun13
-        if ( slice==0 ) ts0 = this->frame.buftimestamp[this->frame.index];  // retain the BUFnTIMESTAMP of the first frame
-
-        if ( ( slicecounter%2 == 0 ) && ( slice == slicecounter/2 ) ) {
-          imagebuf->is_halfway=true;
-        }
-        else {
-          imagebuf->is_halfway=false;
-        }
-***/
-
         bool needs_exposure_delay=false;
 
         if ( camera_info.sampmode == SAMPMODE_CDS||camera_info.sampmode==SAMPMODE_MCDS ) {
@@ -3619,10 +3610,9 @@ logwrite(function, pixelvals.str());
       this->imagebuf_queue.push(imagebuf);
       queue_cv.notify_one();
       }
-logwrite(function, "[DEBUG] pushed image into queue");
 
       // end of a sequence, broadcast the message tag
-//    this->camera.async.enqueue( messagetag );
+      this->camera.async.enqueue( messagetag );
 
     } // end while nseq
     logwrite(function, "complete");
@@ -3652,6 +3642,20 @@ logwrite(function, "[DEBUG] pushed image into queue");
 
     // allocate memory where needed
     //
+    if (!this->coadd_img || this->coadd_img->rows != cds_info.imheight || this->coadd_img->cols != cds_info.imwidth) {
+      this->coadd_img.reset(new cv::Mat(cv::Mat::zeros(cds_info.imheight, cds_info.imwidth, CV_32S)));
+    }
+    else {
+      this->coadd_img->setTo(0);  // Clear if already allocated
+    }
+
+    if (!this->diff_img || this->diff_img->rows != cds_info.imheight || this->diff_img->cols != cds_info.imwidth) {
+      this->diff_img.reset(new cv::Mat(cv::Mat::zeros(cds_info.imheight, cds_info.imwidth, CV_32S)));
+    }
+    else {
+      this->diff_img->setTo(0);
+    }
+
     if ( coaddbuf != nullptr ) { delete [] (int32_t*)coaddbuf; coaddbuf=nullptr; }
     coaddbuf = (int32_t*) new int32_t [ cds_info.section_size ]{};
 
@@ -3838,16 +3842,19 @@ std::stringstream pixelvals;
 pixelvals.str(""); pixelvals << "[PIXELVALS] before deinterlace imbuf=";
 for (int i=0; i<10; i++) pixelvals << " " << imbuf[i];
 logwrite(function, pixelvals.str());
+pixelvals.str(""); pixelvals << "[PIXELVALS] before deinterlace workbuf=";
+for (int i=0; i<10; i++) pixelvals << " " << workbuf[i];
+logwrite(function, pixelvals.str());
 pixelvals.str(""); pixelvals << "[PIXELVALS] before deinterlace cdsbuf=";
 for (int i=0; i<10; i++) pixelvals << " " << cdsbuf[i];
 logwrite(function, pixelvals.str());
 
-      DeInterlace<T> deinterlacer( imbuf,
-                                   workbuf, 
-                                   cdsbuf,
-                                   coaddbuf,
-                                   mcdsbuf_0,
-                                   mcdsbuf_1,
+      DeInterlace<T> deinterlacer( imbuf,                           // raw image
+                                   workbuf,                         //
+                                   cdsbuf,                          //
+                                   coaddbuf,                        //
+                                   mcdsbuf_0,                       // MCDS baseline sum (1st half)
+                                   mcdsbuf_1,                       // MCDS signal sum (2nd half)
                                    camera_info.iscds,
                                    camera_info.nmcds,
                                    camera_info.detector_pixels[0],  // cols
@@ -3861,6 +3868,9 @@ logwrite(function, pixelvals.str());
       deinterlacer.do_deinterlace();
 pixelvals.str(""); pixelvals << "[PIXELVALS] after deinterlace imbuf=";
 for (int i=0; i<10; i++) pixelvals << " " << imbuf[i];
+logwrite(function, pixelvals.str());
+pixelvals.str(""); pixelvals << "[PIXELVALS] after deinterlace workbuf=";
+for (int i=0; i<10; i++) pixelvals << " " << workbuf[i];
 logwrite(function, pixelvals.str());
 pixelvals.str(""); pixelvals << "[PIXELVALS] after deinterlace cdsbuf=";
 for (int i=0; i<10; i++) pixelvals << " " << cdsbuf[i];
@@ -3884,12 +3894,18 @@ logwrite(function, pixelvals.str());
     std::stringstream message;
     logwrite(function, "start");
 
-    // Create a Mat image for the final MCDS coadd
-    // Using smart pointers to automatically clean up.
+    // These Mat images are initialized for each exposure in image_processing_loop()
+    // and remain throughout the exposure.
     //
-    std::unique_ptr<cv::Mat> coadd( new cv::Mat( cv::Mat::zeros( this->cds_info.imheight, this->cds_info.imwidth, CV_32S ) ) );
+    cv::Mat* coadd = this->coadd_img.get();
+    cv::Mat* diff  = this->diff_img.get();
 
-    std::unique_ptr<cv::Mat> diff( new cv::Mat( cv::Mat::zeros( this->cds_info.imheight, this->cds_info.imwidth, CV_32S ) ) );
+message.str(""); message << "[PIXELVALS] entry coadd=";
+for (int i=0; i<10; i++) message << " " << coadd[i];
+logwrite(function, message.str());
+message.str(""); message << "[PIXELVALS] entry diff=";
+for (int i=0; i<10; i++) message << " " << diff[i];
+logwrite(function, message.str());
 
     std::unique_ptr<cv::Mat> mcds_0(nullptr);
     std::unique_ptr<cv::Mat> mcds_1(nullptr);
@@ -3927,6 +3943,9 @@ logwrite(function, pixelvals.str());
     }
     else {
       if (camera_info.nmcds==0) {
+message.str(""); message << "[PIXELVALS] nmcds=" << camera_info.nmcds << " after cds coaddbuf=";
+for (int i=0; i<10; i++) message << " " << this->coaddbuf[i];
+logwrite(function, message.str());
         logwrite( function, "[DEBUG] (a) calling __file_cds->write_image" );
         this->__file_cds->write_image( this->coaddbuf,
                                        get_timestamp(),
@@ -3944,6 +3963,9 @@ logwrite(function, pixelvals.str());
             *( this->coaddbuf + index++ ) = static_cast<int32_t>(coadd->at<int32_t>(row, col));
           }
         }
+message.str(""); message << "[PIXELVALS] nmcds=" << camera_info.nmcds << " after cds coaddbuf=";
+for (int i=0; i<10; i++) message << " " << this->coaddbuf[i];
+logwrite(function, message.str());
         logwrite( function, "[DEBUG] (b) calling __file_cds->write_image" );
         this->__file_cds->write_image( this->coaddbuf,
                                        get_timestamp(),
