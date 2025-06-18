@@ -320,6 +320,9 @@ namespace Archon {
                                  << " this->cols=" << this->cols
                                  << " this->frame_rows=" << this->frame_rows << " this->frame_cols=" << this->frame_cols;
         logwrite( "Archon::DeInterlace::nirc2", message.str() );
+message.str("");message << "[PIXELVALS] imbuf=";
+for (int i=0; i<10; i++) message << " " << this->imbuf[i];
+logwrite("Archon::DeInterlace::nirc2",message.str());
 #endif
         // Create openCV image to hold entire imbuf (all cubes)
         //
@@ -381,6 +384,10 @@ namespace Archon {
                                  << " this->frame_rows=" << this->frame_rows << " this->frame_cols=" << this->frame_cols;
         logwrite( "Archon::DeInterlace::nirc2", message.str() );
 #endif
+message.str(""); message << "[DEBUG] incoming image=";
+for (int i=0; i<10; i++) message << " " << image.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+
 
         int taps=8;
 
@@ -528,11 +535,30 @@ namespace Archon {
 			           << " work.rows=" << work.rows;
           logwrite( "Archon::DeInterlace::nirc2", message.str() );
 #endif
+message.str(""); message << "[DEBUG] before subtracting from 65535 Q2c=";
+for (int i=0; i<10; i++) message << " " << Q2c.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+message.str(""); message << "[DEBUG] before subtracting from 65535 Q1f=";
+for (int i=0; i<10; i++) message << " " << Q1f.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+message.str(""); message << "[DEBUG] before subtracting from 65535 Q4f=";
+for (int i=0; i<10; i++) message << " " << Q4f.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+message.str(""); message << "[DEBUG] before subtracting from 65535 Q3f=";
+for (int i=0; i<10; i++) message << " " << Q3f.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+
           }
 
           // Subtract the image from 65535 because for NIRC2 the counts decrease
           // with increasing signal.
           //
+{
+message.str(""); message << "[DEBUG] before subtracting from 65535 work=";
+for (int i=0; i<10; i++) message << " " << work.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+}
+
           cv::subtract( 65535, work, work );
 
           // Copy assembled image into the FITS buffer, this->workbuf

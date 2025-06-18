@@ -3484,6 +3484,9 @@ namespace Archon {
       case 16: {
         if (this->camera_info.datatype == USHORT_IMG) {                    // raw
           cbuf16   = (uint16_t *)this->work_ring.at(ringcount_in);         // cast to 16b unsigned int
+message.str(""); message << "[PIXELVALS] cbuf16=";
+for (int i=0; i<10; i++) message << " " << cbuf16[i];
+logwrite(function,message.str());
           error = this->fits_file.write_image(cbuf16, this->camera_info);  // write the image to disk
           if ( this->camera_info.iscds ) {
 //          cdsbuf16 = (uint16_t *)this->cds_ring.at(ringcount_in);          // cast to 16b unsigned int
