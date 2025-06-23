@@ -228,9 +228,9 @@ namespace Archon {
       void nirc2_video() {
         int bufrows = this->rows * this->depth;
 #ifdef LOGLEVEL_DEBUG
-        char message[256];
-        SNPRINTF(message, "[DEBUG] bufrows=%d this->rows=%d this->cols=%d", bufrows, this->rows, this->cols);
-        logwrite( "Archon::DeInterlace::nirc2", std::string(message) );
+//      char message[256];
+//      SNPRINTF(message, "[DEBUG] bufrows=%d this->rows=%d this->cols=%d", bufrows, this->rows, this->cols);
+//      logwrite( "Archon::DeInterlace::nirc2", std::string(message) );
 #endif
 
         // These Mat objects are the input frames
@@ -255,10 +255,10 @@ namespace Archon {
         }
 
 #ifdef LOGLEVEL_DEBUG
-        logwrite( "Archon::DeInterlace::nirc2", "[DEBUG] extracted reset/read pairs from video frame" );
-        SNPRINTF(message, "[DEBUG] deinter_reset.rows=%d deinter_reset.cols=%d deinter_signal.rows=%d deinter_signal.cols=%d",
-                 deinter_reset.rows, deinter_reset.cols, deinter_signal.rows, deinter_signal.cols);
-        logwrite( "Archon::DeInterlace::nirc2", std::string(message) );
+//      logwrite( "Archon::DeInterlace::nirc2", "[DEBUG] extracted reset/read pairs from video frame" );
+//      SNPRINTF(message, "[DEBUG] deinter_reset.rows=%d deinter_reset.cols=%d deinter_signal.rows=%d deinter_signal.cols=%d",
+//               deinter_reset.rows, deinter_reset.cols, deinter_signal.rows, deinter_signal.cols);
+//      logwrite( "Archon::DeInterlace::nirc2", std::string(message) );
 #endif
 
         // Now that the video frame has been split into separate buffers (for reset and signal frames)
@@ -314,9 +314,9 @@ namespace Archon {
       void nirc2() {
         char message[256];
 #ifdef LOGLEVEL_DEBUG
-        SNPRINTF(message, "[DEBUG] this->rows=%d this->cols=%d this->frame_rows=%d this->frame_cols=%d",
-                 this->rows, this->cols, this->frame_rows, this->frame_cols);
-        logwrite( "Archon::DeInterlace::nirc2", std::string(message) );
+//      SNPRINTF(message, "[DEBUG] this->rows=%d this->cols=%d this->frame_rows=%d this->frame_cols=%d",
+//               this->rows, this->cols, this->frame_rows, this->frame_cols);
+//      logwrite( "Archon::DeInterlace::nirc2", std::string(message) );
 #endif
         // Create openCV image to hold entire imbuf (all cubes)
         //
@@ -375,23 +375,19 @@ namespace Archon {
         std::stringstream message;
         const std::string function("Archon::DeInterlace::nirc2");
 #ifdef LOGLEVEL_DEBUG
-        message.str(""); message << "[DEBUG] this->rows=" << this->rows << " this->cols=" << this->cols
-                                 << " this->frame_rows=" << this->frame_rows << " this->frame_cols=" << this->frame_cols
-                                 << " workindex=" << workindex;
-        logwrite( "Archon::DeInterlace::nirc2", message.str() );
+//      message.str(""); message << "[DEBUG] this->rows=" << this->rows << " this->cols=" << this->cols
+//                               << " this->frame_rows=" << this->frame_rows << " this->frame_cols=" << this->frame_cols
+//                               << " workindex=" << workindex;
+//      logwrite( "Archon::DeInterlace::nirc2", message.str() );
 #endif
-message.str(""); message << "[PIXELVALS] incoming image=";
-for (int i=0; i<10; i++) message << " " << image.ptr<uint16_t>()[i];
-logwrite(function,message.str());
-
         int taps=8;
 
         int quad_rows  = (this->frame_rows / 2) + 4;
         int quad_cols  =  this->frame_cols / 2;
 
 #ifdef LOGLEVEL_DEBUG
-        message.str(""); message << "[DEBUG] quad_rows=" << quad_rows << " quad_cols=" << quad_cols;
-        logwrite( "Archon::DeInterlace::nirc2", message.str() );
+//      message.str(""); message << "[DEBUG] quad_rows=" << quad_rows << " quad_cols=" << quad_cols;
+//      logwrite( "Archon::DeInterlace::nirc2", message.str() );
 #endif
 
         // Define images for each quadrant
@@ -443,30 +439,6 @@ logwrite(function,message.str());
               }
             }
           }
-message.str(""); message << "[PIXELVALS] Q1=";
-for (int i=0; i<10; i++) message << " " << std::dec << Q1.ptr<uint16_t>()[i];
-logwrite(function,message.str());
-message.str(""); message << "[PIXELVALS] Q2=";
-for (int i=0; i<10; i++) message << " " << std::dec << Q2.ptr<uint16_t>()[i];
-logwrite(function,message.str());
-message.str(""); message << "[PIXELVALS] Q3=";
-for (int i=0; i<10; i++) message << " " << std::dec << Q3.ptr<uint16_t>()[i];
-logwrite(function,message.str());
-message.str(""); message << "[PIXELVALS] Q4=";
-for (int i=0; i<10; i++) message << " " << std::dec << Q4.ptr<uint16_t>()[i];
-logwrite(function,message.str());
-message.str(""); message << "[PIXELVALS] Q1d=";
-for (int i=0; i<10; i++) message << " " << std::dec << Q1d.ptr<uint16_t>()[i];
-logwrite(function,message.str());
-message.str(""); message << "[PIXELVALS] Q2d=";
-for (int i=0; i<10; i++) message << " " << std::dec << Q2d.ptr<uint16_t>()[i];
-logwrite(function,message.str());
-message.str(""); message << "[PIXELVALS] Q3d=";
-for (int i=0; i<10; i++) message << " " << std::dec << Q3d.ptr<uint16_t>()[i];
-logwrite(function,message.str());
-message.str(""); message << "[PIXELVALS] Q4d=";
-for (int i=0; i<10; i++) message << " " << std::dec << Q4d.ptr<uint16_t>()[i];
-logwrite(function,message.str());
 
 #ifdef LOGLEVEL_DEBUG
 //        logwrite( "Archon::DeInterlace::nirc2", "[DEBUG] removing rows from quadrants" );
@@ -490,9 +462,6 @@ logwrite(function,message.str());
           //
           Q1c = Q1d.rowRange( 3, Q1d.rows );
           Q2c = Q2d.rowRange( 3, Q2d.rows );
-message.str(""); message << "[PIXELVALS] copied Q2d into Q2c=";
-for (int i=0; i<10; i++) message << " " << std::dec << Q2c.ptr<uint16_t>()[i];
-logwrite(function,message.str());
 
           // Copy one of the good rows up into the dead space,
           // row 3 to row 5 (0-based).
@@ -530,71 +499,32 @@ logwrite(function,message.str());
 //          logwrite( "", message.str() );
 //        }
 #endif
-message.str(""); message << "[PIXELVALS] Q1c=";
-for (int i=0; i<10; i++) message << " " << std::dec << Q1c.ptr<uint16_t>()[i];
-logwrite(function,message.str());
-message.str(""); message << "[PIXELVALS] Q2c=";
-for (int i=0; i<10; i++) message << " " << std::dec << Q2c.ptr<uint16_t>()[i];
-logwrite(function,message.str());
-message.str(""); message << "[PIXELVALS] Q3c=";
-for (int i=0; i<10; i++) message << " " << std::dec << Q3c.ptr<uint16_t>()[i];
-logwrite(function,message.str());
-message.str(""); message << "[PIXELVALS] Q4c=";
-for (int i=0; i<10; i++) message << " " << std::dec << Q4c.ptr<uint16_t>()[i];
-logwrite(function,message.str());
-
           // Perform the quadrant flips here (Q2c is not changed)
           //
           cv::flip( Q1c, Q1f,  1 );  // flip horizontally
           cv::flip( Q3c, Q3f, -1 );  // flip vertically and vertically
           cv::flip( Q4c, Q4f,  0 );  // flip horizontally
 
-message.str(""); message << "[PIXELVALS] Q1f=";
-for (int i=0; i<10; i++) message << " " << std::dec << Q1f.ptr<uint16_t>()[i];
-logwrite(function,message.str());
-message.str(""); message << "[PIXELVALS] Q3f=";
-for (int i=0; i<10; i++) message << " " << std::dec << Q3f.ptr<uint16_t>()[i];
-logwrite(function,message.str());
-message.str(""); message << "[PIXELVALS] Q4f=";
-for (int i=0; i<10; i++) message << " " << std::dec << Q4f.ptr<uint16_t>()[i];
-logwrite(function,message.str());
           {
           cv::Mat uppers;
           cv::Mat lowers;
           cv::hconcat( Q2c, Q1f, uppers );      // concatenate the two upper quadrants together, horizontally
           cv::hconcat( Q4f, Q3f, lowers );      // concatenate the two lower quadrants together, horizontally
           cv::vconcat( lowers, uppers, work );  // concatenate the uppers and lowers together, vertically
-message.str(""); message << "[PIXELVALS] before subtracting from 65535 Q2c=";
-for (int i=0; i<10; i++) message << " " << std::dec << Q2c.ptr<uint16_t>()[i];
-logwrite(function,message.str());
-message.str(""); message << "[PIXELVALS] before subtracting from 65535 Q1f=";
-for (int i=0; i<10; i++) message << " " << std::dec << Q1f.ptr<uint16_t>()[i];
-logwrite(function,message.str());
-message.str(""); message << "[PIXELVALS] before subtracting from 65535 Q4f=";
-for (int i=0; i<10; i++) message << " " << std::dec << Q4f.ptr<uint16_t>()[i];
-logwrite(function,message.str());
-message.str(""); message << "[PIXELVALS] before subtracting from 65535 Q3f=";
-for (int i=0; i<10; i++) message << " " << std::dec << Q3f.ptr<uint16_t>()[i];
-logwrite(function,message.str());
           }
 
           // Subtract the image from 65535 because for NIRC2 the counts decrease
           // with increasing signal.
           //
-{
-message.str(""); message << "[PIXELVALS] before subtracting from 65535 work=";
-for (int i=0; i<10; i++) message << " " << work.ptr<uint16_t>()[i];
-logwrite(function,message.str());
-}
           cv::subtract( 65535, work, work );
 
           // Copy assembled image into the FITS buffer, this->workbuf
           //
 #ifdef LOGLEVEL_DEBUG
-          message.str(""); message << "[DEBUG] copying " << this->frame_rows << " from work to fits buffer";
-          logwrite( "Archon::DeInterlace::nirc2", message.str() );
-          message.str(""); message << "[DEBUG] workbuf=" << std::hex << static_cast<void*>(this->workbuf) << " workindex=" << workindex;
-          logwrite( "Archon::DeInterlace::nirc2", message.str() );
+//        message.str(""); message << "[DEBUG] copying " << this->frame_rows << " from work to fits buffer";
+//        logwrite( "Archon::DeInterlace::nirc2", message.str() );
+//        message.str(""); message << "[DEBUG] workbuf=" << std::hex << static_cast<void*>(this->workbuf) << " workindex=" << workindex;
+//        logwrite( "Archon::DeInterlace::nirc2", message.str() );
 #endif
           for ( int row=0; row<this->frame_rows; row++ ) {
             for ( int col=0; col<this->frame_cols; col++ ) {
@@ -680,11 +610,11 @@ logwrite(function,message.str());
         cv::Mat coadd = cv::Mat( this->frame_rows, this->frame_cols, CV_32S, this->coaddbuf );
 
 #ifdef LOGLEVEL_DEBUG
-        double minVal, maxVal;
-        int minIdx, maxIdx;
-        cv::minMaxIdx( coadd, &minVal, &maxVal, &minIdx, &maxIdx, cv::noArray() );
-        message.str(""); message << "[DEBUG] coadd minVal=" << minVal << " maxVal=" << maxVal;
-        logwrite( function, message.str() );
+//      double minVal, maxVal;
+//      int minIdx, maxIdx;
+//      cv::minMaxIdx( coadd, &minVal, &maxVal, &minIdx, &maxIdx, cv::noArray() );
+//      message.str(""); message << "[DEBUG] coadd minVal=" << minVal << " maxVal=" << maxVal;
+//      logwrite( function, message.str() );
 #endif
 
         // Perform the coadd, this current pair plus whatever is already there.
@@ -830,16 +760,7 @@ logwrite(function,message.str());
        *
        */
       void do_deinterlace() {
-
-        const std::string function("Archon::DeInterlace::do_deinterlace");
-        std::stringstream message;
   
-        message.str(""); message << "[DEBUG] workbuf=" << std::hex << static_cast<void*>(this->workbuf)
-                                 << " cdsbuf=" << std::hex << static_cast<void*>(this->cdsbuf)
-                                 << " imbuf=" << std::hex << static_cast<void*>(this->imbuf);
-        logwrite( "Archon::DeInterlace::do_deinterlace", message.str() );
-
-
         switch( this->readout_type ) {
           case Archon::READOUT_NONE:
             this->none();
@@ -911,10 +832,6 @@ logwrite(function,message.str());
       struct timespec cal_systime;
       uint64_t cal_archontime;
 
-      std::unique_ptr<ProcessingBuffers<uint16_t>> buffers_16;
-      std::unique_ptr<ProcessingBuffers<uint32_t>> buffers_32;
-      std::unique_ptr<ProcessingBuffers<int16_t>>  buffers_16s;
-
       /** @brief FIFO queue to contain images from Archon */
       std::queue<std::shared_ptr<ImageBuffer>> imagebuf_queue;  ///< the queue itself
       std::mutex queue_mutex;                                   ///< mutex protects access to the queue
@@ -922,14 +839,13 @@ logwrite(function,message.str());
 
       std::atomic<bool> is_producer_finished;
       std::atomic<bool> is_producer_error;
+      std::atomic<bool> is_consumer_error;
 
-      long initialize_processing_buffers();
       void image_acquisition_loop(int nseq);
       void image_processing_loop();
       void process_image(std::shared_ptr<ImageBuffer> &imagebuf);
       template<typename T> void deinterlace_queue(std::shared_ptr<ImageBuffer> imagebuf, ProcessingBuffers<T> &buffers);
       void runcds();
-      void make_simulated_data(char* buffer, uint16_t extra);
 
       // Add any pre-exposures onto the requested number of sequences,
       // using 1 if not supplied.
@@ -955,16 +871,12 @@ logwrite(function,message.str());
       Network::TcpSocket archon;             /// this is how we talk to the Archon
       Camera::Information camera_info;       /// this is the main camera_info object
       Camera::Information cds_info;          /// this is the main camera_info object
-//    Camera::Information fits_info;         /// used to copy the camera_info object to preserve info for FITS writing  //TODO @todo obsolete?
       Camera::Camera camera;                 /// instantiate a Camera object
       Common::FitsKeys userkeys;             /// instantiate a FitsKeys object for user-defined keywords
       Common::FitsKeys systemkeys;           /// instantiate a FitsKeys object for system-defined keywords
       Common::FitsKeys extkeys;              /// instantiate a FitsKeys object for extension-only keywords
 
       Config config;
-
-//    xxxx_file xfits_file;                  //!< instantiate a FITS container object *** old method to be removed
-//    xxxx_file xcds_file;                   //!< instantiate a FITS container object *** old method to be removed
 
       std::unique_ptr<FITS_file<uint16_t>> __fits_file; /*** for new FITS engine ***/
       std::unique_ptr<FITS_file<int32_t>>  __file_cds;  /*** for new FITS engine ***/
@@ -977,7 +889,6 @@ logwrite(function,message.str());
       std::map< std::string, readout_info_t > readout_source;  //!< STL map of readout sources indexed by readout name
 
       std::atomic<int> deinterlace_count;     /// number of times deinterlace has been called when mex=true
-      std::atomic<int> write_frame_count;     /// number of times write_frame() has been called when mex=true
 
       std::mutex deinter_mtx;                 /// deinterlacing mutex
       std::condition_variable deinter_cv;     /// deinterlacing condition variable
@@ -998,8 +909,6 @@ logwrite(function,message.str());
       float heater_target_min;               //!< minimum heater target temperature
       float heater_target_max;               //!< maximum heater target temperature
 
-      char *image_data;                      //!< image data buffer //TODO @todo obsolete?
-
       std::unique_ptr<cv::Mat> coadd_img;    ///< persistent coadd image
       std::unique_ptr<cv::Mat> diff_img;     ///< persistent diff image
 
@@ -1007,13 +916,8 @@ logwrite(function,message.str());
       int32_t* mcdsbuf_0;                    /// first group of MCDS coadds (baseline)
       int32_t* mcdsbuf_1;                    /// second group of MCDS coadds (signal)
 
-      void *workbuf;                         //!< pointer to workspace for performing deinterlacing //TODO @todo obsolete?
-      long workbuf_size;
-      long cdsbuf_size;
       uint32_t image_data_bytes;             //!< requested number of bytes allocated for image_data rounded up to block size
-      uint32_t image_data_allocated;         //!< allocated number of bytes for image_data
 
-      std::atomic<bool> openfits_error;      //!< indicates the openfits thread had an error (or not)
       std::atomic_flag archon_busy = ATOMIC_FLAG_INIT;  //!< indicates a thread is accessing Archon
       std::mutex archon_mutex;               //!< protects Archon from being accessed by multiple threads
       std::string exposeparam;               //!< param name to trigger exposure when set =1
@@ -1106,8 +1010,6 @@ logwrite(function,message.str());
       long sample_mode( std::string args, std::string &retstring );
       long readout( std::string readout_in, std::string &readout_out );
       long test(std::string args, std::string &retstring);
-
-      static void dothread_openfits( Interface *self );                             /// this is run in a thread to open a fits file for flat (non-mex) files only
 
       /**
        * @var     struct geometry_t geometry[]
