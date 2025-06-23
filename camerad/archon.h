@@ -236,13 +236,13 @@ namespace Archon {
         // These Mat objects are the input frames
         //
         cv::Mat raw    = cv::Mat( bufrows,   this->cols, CV_16U, this->imbuf   );
-        cv::Mat signal = cv::Mat( bufrows/2, this->cols, CV_16U, cv::Scalar(0) );
-        cv::Mat reset  = cv::Mat( bufrows/2, this->cols, CV_16U, cv::Scalar(0) );
+        cv::Mat signal = cv::Mat::zeros(bufrows/2, this->cols, CV_16U);
+        cv::Mat reset  = cv::Mat::zeros(bufrows/2, this->cols, CV_16U);
 
         // These Mat objects hold the deinterlaced frames
         //
-        cv::Mat deinter_reset  = cv::Mat( this->frame_rows, this->frame_cols, CV_16U, cv::Scalar(0) );
-        cv::Mat deinter_signal = cv::Mat( this->frame_rows, this->frame_cols, CV_16U, cv::Scalar(0) );
+        cv::Mat deinter_reset  = cv::Mat::zeros(this->frame_rows, this->frame_cols, CV_16U);
+        cv::Mat deinter_signal = cv::Mat::zeros(this->frame_rows, this->frame_cols, CV_16U);
 
 
         // Copy pairs of rows from the raw to the reset and signal frame Mat objects
@@ -328,10 +328,7 @@ namespace Archon {
         // it gets back here. So if you wait until this->nirc2() returns, this work image
         // may not be what you want. Consider it a temporary workspace only.
         //
-        cv::Mat work  = cv::Mat( this->frame_rows, this->frame_cols, CV_16U, cv::Scalar(0) );
-
-
-
+        cv::Mat work  = cv::Mat::zeros(this->frame_rows, this->frame_cols, CV_16U);
 
         int workindex=0;
         SNPRINTF(message, "workindex=%d prior to calling nirc2(workindex, image, work)", workindex);
