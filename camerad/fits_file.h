@@ -397,7 +397,6 @@ private:
         this->add_primary_key( val.keyword, val.keytype, val.keyvalue, val.keycomment );
       }
 
-/**
       if (_camera_info.datatype == SHORT_IMG) {
         this->pFits->pHDU().addKey( "BZERO", 32768, "offset for signed short int" );
         this->pFits->pHDU().addKey( "BSCALE", 1, "scaling factor" );
@@ -406,7 +405,6 @@ private:
         this->pFits->pHDU().addKey( "BZERO", 0.0, "offset" );
         this->pFits->pHDU().addKey( "BSCALE", 1, "scaling factor" );
       }
-**/
 
       // Set the compression. You have to do this after allocating the FITS file
       if (this->compression == FITS_COMPRESSION_RICE){
