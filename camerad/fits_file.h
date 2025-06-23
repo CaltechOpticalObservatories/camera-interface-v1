@@ -978,7 +978,6 @@ private:
     std::stringstream temp;
 
     try {
-/**
       if ( _camera_info.datatype == SHORT_IMG ) {
         this->imageExt->addKey("BZERO", 32768, "offset for signed short int");
         this->imageExt->addKey("BSCALE", 1, "scaling factor");
@@ -987,7 +986,6 @@ private:
         this->imageExt->addKey("BZERO", 0.0, "offset");
         this->imageExt->addKey("BSCALE", 1, "scaling factor");
       }
-**/
 
 //      for ( const auto &[key,val] : _camera_info.systemkeys.keydb ) {
 //        this->add_extension_key( val.keyword, val.keytype, val.keyvalue, val.keycomment );
