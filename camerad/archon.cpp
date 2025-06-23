@@ -2508,6 +2508,10 @@ namespace Archon {
     long error = ERROR;
     int num_detect = this->modemap[this->camera_info.current_observing_mode].geometry.num_detect;
 
+message << "[PIXELVALS]";
+for (int i=0;i<10;i++) { message << " " << static_cast<int>(ptr_in[i]); }
+logwrite(function, message.str());
+
     this->camera_info.frame_type = frame_type;
 
     // Archon buffer number of the last frame read into memory
@@ -2620,13 +2624,12 @@ namespace Archon {
       // Read the frame contents
       //
       bytesread = 0;
-      char* ptr = ptr_in;
       do {
         toread = BLOCK_LEN - bytesread;
-        if ( (retval=this->archon.Read(ptr, (size_t)toread)) > 0 ) {
+        if ( (retval=this->archon.Read(ptr_in, (size_t)toread)) > 0 ) {
           bytesread += retval;         // this will get zeroed after each block
           totalbytesread += retval;    // this won't (used only for info purposes)
-          ptr += retval;               // advance pointer
+          ptr_in += retval;            // advance pointer
         }
       } while (bytesread < BLOCK_LEN);
 
@@ -3358,7 +3361,7 @@ namespace Archon {
       }
     }
 
-    if (initialize_processing_buffers()==ERROR) return ERROR;
+//  if (initialize_processing_buffers()==ERROR) return ERROR;
 
     this->lastframe = this->frame.bufframen[this->frame.index];     // save the last frame number acquired (wait_for_readout will need this)
 
@@ -3378,6 +3381,7 @@ namespace Archon {
     is_producer_finished=true;
     error |= is_producer_error;
     }
+    queue_cv.notify_all();
 
     logwrite(function, "waiting for image processing to finish");
 
@@ -3530,8 +3534,14 @@ logwrite("Archon::Interface::initialize_processing_buffers", message.str());
       //
       uint32_t bufferbytes = this->image_data_bytes * this->camera_info.cubedepth;
       auto imagebuf = std::make_shared<ImageBuffer>();
-      imagebuf->rawpixels = std::shared_ptr<char[]>(new char[bufferbytes], std::default_delete<char[]>());
+      imagebuf->rawpixels = std::shared_ptr<char[]>(new char[bufferbytes]);
+std::stringstream debugstr;
+debugstr<<"[DEBUG] allocated bufferbytes=" << bufferbytes; logwrite(function, debugstr.str());
       char* imbufptr = imagebuf->rawpixels.get();
+debugstr.str(""); debugstr << "[IMBUFPTR] ";
+      for (int i=0;i<10;i++) imbufptr[i]=i;
+      for (int i=0;i<10;i++) { debugstr << " " << std::hex << static_cast<int>(imbufptr[i]); }
+      logwrite(function, debugstr.str());
       imagebuf->n_slices  = slicecounter;
       imagebuf->ncoadd = this->camera_info.ncoadd;
 
@@ -3559,27 +3569,6 @@ logwrite("Archon::Interface::initialize_processing_buffers", message.str());
         this->camera_info.stop_time = get_timestamp();
         this->cds_info.stop_time = this->camera_info.stop_time;
 
-        // read that Archon frame buffer into the rawpixel image buffer
-        //
-        error = this->read_frame(Camera::FRAME_IMAGE, imbufptr);
-
-        // record the Archon buffer frame number and timestamp for this frame
-        //
-        imagebuf->bufframen_slice.push_back( this->frame.bufframen[this->frame.index] );
-        imagebuf->buftimestamp_slice.push_back( this->frame.buftimestamp[this->frame.index] );
-
-// uint16_t* pixel_buffer = reinterpret_cast<uint16_t*>(imagebuf->rawpixels.get());
-// auto total_pixels=camera_info.detector_pixels[0] * camera_info.detector_pixels[1];
-// for (int i = 0; i < total_pixels; i++) pixel_buffer[i] = 0xDEAD;
-// 
-//make_simulated_data(imagebuf->rawpixels.get(), ((slice%2)+1));
-
-uint16_t* pixel_buffer = reinterpret_cast<uint16_t*>(imagebuf->rawpixels.get());
-std::stringstream pixelvals;
-pixelvals.str(""); pixelvals << "[PIXELVALS] ncoadd=" << imagebuf->ncoadd << " seq=" << this->camera_info.nseq - nseq << " slice=" << slice+1 << " pix=";
-for (int i=0; i<10; i++) pixelvals << " " << pixel_buffer[i];
-logwrite(function, pixelvals.str());
-
         bool needs_exposure_delay=false;
 
         if ( camera_info.sampmode == SAMPMODE_CDS||camera_info.sampmode==SAMPMODE_MCDS ) {
@@ -3603,8 +3592,33 @@ logwrite(function, pixelvals.str());
               return;
             }
           }
-          if (camera_info.sampmode==SAMPMODE_SINGLE) continue;
+          if (camera_info.sampmode==SAMPMODE_SINGLE) { logwrite(function, "[DEBUG] continue"); continue;}
         }
+
+        // read that Archon frame buffer into the rawpixel image buffer
+        //
+debugstr.str(""); debugstr << "[DEBUG] imbufptr = " << std::hex << static_cast<void*>(imbufptr);
+logwrite(function, debugstr.str());
+        error = this->read_frame(Camera::FRAME_IMAGE, imbufptr);
+
+        // record the Archon buffer frame number and timestamp for this frame
+        //
+        imagebuf->bufframen_slice.push_back( this->frame.bufframen[this->frame.index] );
+        imagebuf->buftimestamp_slice.push_back( this->frame.buftimestamp[this->frame.index] );
+
+// uint16_t* pixel_buffer = reinterpret_cast<uint16_t*>(imagebuf->rawpixels.get());
+// auto total_pixels=camera_info.detector_pixels[0] * camera_info.detector_pixels[1];
+// for (int i = 0; i < total_pixels; i++) pixel_buffer[i] = 0xDEAD;
+//
+//make_simulated_data(imagebuf->rawpixels.get(), ((slice%2)+1));
+
+uint16_t* pixel_buffer = reinterpret_cast<uint16_t*>(imagebuf->rawpixels.get());
+//uint16_t* pixel_buffer = reinterpret_cast<uint16_t*>(imagebuf->rawpixels);
+std::stringstream pixelvals;
+pixelvals.str(""); pixelvals << "[PIXELVALS] ncoadd=" << imagebuf->ncoadd << " seq=" << this->camera_info.nseq - nseq << " slice=" << slice+1 << " pix=";
+for (int i=0; i<10; i++) pixelvals << " " << pixel_buffer[i];
+logwrite(function, pixelvals.str());
+
       } // end loop over slices in datacube
 
       // push the datacube into the queue
@@ -3688,12 +3702,11 @@ logwrite(function, pixelvals.str());
     this->extkeys.erasedb();
     this->extkeys.addkey( message.str() );
 
-    std::shared_ptr<ImageBuffer> imagebuf;
-
     // pop an image out of the queue--
     // waits until producer stops producing data, or aborted
     //
     while (!camera.is_aborted()) {
+      std::shared_ptr<ImageBuffer> imagebuf;
       {
       std::unique_lock<std::mutex> lock(queue_mutex);
       // keep trying to get the queue lock until success or aborted
@@ -3702,12 +3715,9 @@ logwrite(function, pixelvals.str());
           });
       if (camera.is_aborted()) break;
 
-      if (imagebuf_queue.empty()) {      // nothing in the queue
-        if (is_producer_finished) break; // nothing else is coming
-        else {
-          std::this_thread::sleep_for(std::chrono::microseconds(10));
-          continue;                      // or keep waiting after short delay to prevent spinlock
-        }
+      if (imagebuf_queue.empty()) {       // nothing in the queue
+        if (is_producer_finished) break;  // nothing else is coming
+        else continue;                    // or keep waiting
       }
 
       imagebuf = imagebuf_queue.front();
@@ -3723,6 +3733,7 @@ logwrite(function, pixelvals.str());
       uint64_t ts0 = imagebuf->buftimestamp_slice[0];  // timestamp of first slice in the cube to compute deltas (DTS)
 
 uint16_t* pixel_buffer = reinterpret_cast<uint16_t*>(imagebuf->rawpixels.get());
+//uint16_t* pixel_buffer = reinterpret_cast<uint16_t*>(imagebuf->rawpixels);
 std::stringstream pixelvals;
 pixelvals.str(""); pixelvals << "[PIXELVALS] ncoadd=" << imagebuf->ncoadd << " n_slices=" << imagebuf->n_slices << " first frame=" << imagebuf->bufframen_slice[0] << " pix=";
 for (int i=0; i<10; i++) pixelvals << " " << pixel_buffer[i];
@@ -3802,13 +3813,16 @@ logwrite(function, pixelvals.str());
     //
     switch (this->camera_info.datatype) {
       case USHORT_IMG:
-        deinterlace_queue<uint16_t>(imagebuf, *buffers_16);
-        error=this->__fits_file->write_image( buffers_16->workbuf.get(),
+        {
+        auto buf16 = std::make_unique<ProcessingBuffers<uint16_t>>(camera_info.section_size, cds_info.section_size);
+        deinterlace_queue<uint16_t>(imagebuf, *buf16);
+        error=this->__fits_file->write_image( buf16->workbuf.get(),
                                               get_timestamp(),
                                               this->camera_info.extension.load(),
                                               this->camera_info
                                             );
         break;
+        }
       case SHORT_IMG:
         deinterlace_queue<int16_t>(imagebuf, *buffers_16s);
         break;
@@ -4012,7 +4026,7 @@ logwrite(function, message.str());
     // Fill with sequential values 1, 2, 3, ..., 65535, 1, 2, 3, ...
     uint16_t pixel_value = 1;
     for (int i = 0; i < total_pixels; i++) {
-      pixel_buffer[i] = extra*10000 + 32767 + (std::rand() % (40000-32768));
+      pixel_buffer[i] = extra*5000 + 32000 + (std::rand() % (35000-32000));
 /*
       pixel_buffer[i] = pixel_value;
       // Increment and wrap at 65535 back to 1

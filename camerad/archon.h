@@ -383,7 +383,7 @@ namespace Archon {
                                  << " workindex=" << workindex;
         logwrite( "Archon::DeInterlace::nirc2", message.str() );
 #endif
-message.str(""); message << "[DEBUG] incoming image=";
+message.str(""); message << "[PIXELVALS] incoming image=";
 for (int i=0; i<10; i++) message << " " << image.ptr<uint16_t>()[i];
 logwrite(function,message.str());
 
@@ -446,6 +446,30 @@ logwrite(function,message.str());
               }
             }
           }
+message.str(""); message << "[PIXELVALS] Q1=";
+for (int i=0; i<10; i++) message << " " << std::dec << Q1.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+message.str(""); message << "[PIXELVALS] Q2=";
+for (int i=0; i<10; i++) message << " " << std::dec << Q2.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+message.str(""); message << "[PIXELVALS] Q3=";
+for (int i=0; i<10; i++) message << " " << std::dec << Q3.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+message.str(""); message << "[PIXELVALS] Q4=";
+for (int i=0; i<10; i++) message << " " << std::dec << Q4.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+message.str(""); message << "[PIXELVALS] Q1d=";
+for (int i=0; i<10; i++) message << " " << std::dec << Q1d.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+message.str(""); message << "[PIXELVALS] Q2d=";
+for (int i=0; i<10; i++) message << " " << std::dec << Q2d.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+message.str(""); message << "[PIXELVALS] Q3d=";
+for (int i=0; i<10; i++) message << " " << std::dec << Q3d.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+message.str(""); message << "[PIXELVALS] Q4d=";
+for (int i=0; i<10; i++) message << " " << std::dec << Q4d.ptr<uint16_t>()[i];
+logwrite(function,message.str());
 
 #ifdef LOGLEVEL_DEBUG
 //        logwrite( "Archon::DeInterlace::nirc2", "[DEBUG] removing rows from quadrants" );
@@ -464,11 +488,14 @@ logwrite(function,message.str());
 //        }
 #endif
           // Remove first 3 rows (0,1,2) from Q1, Q2
-	  // by copying from row 3 (0-based) to the bottom.
-	  // (first arg of rowRange is inclusive, second arg is exclusive)
+          // by copying from row 3 (0-based) to the bottom.
+          // (first arg of rowRange is inclusive, second arg is exclusive)
           //
           Q1c = Q1d.rowRange( 3, Q1d.rows );
           Q2c = Q2d.rowRange( 3, Q2d.rows );
+message.str(""); message << "[PIXELVALS] copied Q2d into Q2c=";
+for (int i=0; i<10; i++) message << " " << std::dec << Q2c.ptr<uint16_t>()[i];
+logwrite(function,message.str());
 
           // Copy one of the good rows up into the dead space,
           // row 3 to row 5 (0-based).
@@ -506,6 +533,18 @@ logwrite(function,message.str());
 //          logwrite( "", message.str() );
 //        }
 #endif
+message.str(""); message << "[PIXELVALS] Q1c=";
+for (int i=0; i<10; i++) message << " " << std::dec << Q1c.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+message.str(""); message << "[PIXELVALS] Q2c=";
+for (int i=0; i<10; i++) message << " " << std::dec << Q2c.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+message.str(""); message << "[PIXELVALS] Q3c=";
+for (int i=0; i<10; i++) message << " " << std::dec << Q3c.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+message.str(""); message << "[PIXELVALS] Q4c=";
+for (int i=0; i<10; i++) message << " " << std::dec << Q4c.ptr<uint16_t>()[i];
+logwrite(function,message.str());
 
           // Perform the quadrant flips here (Q2c is not changed)
           //
@@ -513,23 +552,32 @@ logwrite(function,message.str());
           cv::flip( Q3c, Q3f, -1 );  // flip vertically and vertically
           cv::flip( Q4c, Q4f,  0 );  // flip horizontally
 
+message.str(""); message << "[PIXELVALS] Q1f=";
+for (int i=0; i<10; i++) message << " " << std::dec << Q1f.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+message.str(""); message << "[PIXELVALS] Q3f=";
+for (int i=0; i<10; i++) message << " " << std::dec << Q3f.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+message.str(""); message << "[PIXELVALS] Q4f=";
+for (int i=0; i<10; i++) message << " " << std::dec << Q4f.ptr<uint16_t>()[i];
+logwrite(function,message.str());
           {
           cv::Mat uppers;
           cv::Mat lowers;
           cv::hconcat( Q2c, Q1f, uppers );      // concatenate the two upper quadrants together, horizontally
           cv::hconcat( Q4f, Q3f, lowers );      // concatenate the two lower quadrants together, horizontally
           cv::vconcat( lowers, uppers, work );  // concatenate the uppers and lowers together, vertically
-message.str(""); message << "[DEBUG] before subtracting from 65535 Q2c=";
-for (int i=0; i<10; i++) message << " " << Q2c.ptr<uint16_t>()[i];
+message.str(""); message << "[PIXELVALS] before subtracting from 65535 Q2c=";
+for (int i=0; i<10; i++) message << " " << std::dec << Q2c.ptr<uint16_t>()[i];
 logwrite(function,message.str());
-message.str(""); message << "[DEBUG] before subtracting from 65535 Q1f=";
-for (int i=0; i<10; i++) message << " " << Q1f.ptr<uint16_t>()[i];
+message.str(""); message << "[PIXELVALS] before subtracting from 65535 Q1f=";
+for (int i=0; i<10; i++) message << " " << std::dec << Q1f.ptr<uint16_t>()[i];
 logwrite(function,message.str());
-message.str(""); message << "[DEBUG] before subtracting from 65535 Q4f=";
-for (int i=0; i<10; i++) message << " " << Q4f.ptr<uint16_t>()[i];
+message.str(""); message << "[PIXELVALS] before subtracting from 65535 Q4f=";
+for (int i=0; i<10; i++) message << " " << std::dec << Q4f.ptr<uint16_t>()[i];
 logwrite(function,message.str());
-message.str(""); message << "[DEBUG] before subtracting from 65535 Q3f=";
-for (int i=0; i<10; i++) message << " " << Q3f.ptr<uint16_t>()[i];
+message.str(""); message << "[PIXELVALS] before subtracting from 65535 Q3f=";
+for (int i=0; i<10; i++) message << " " << std::dec << Q3f.ptr<uint16_t>()[i];
 logwrite(function,message.str());
           }
 
@@ -537,7 +585,7 @@ logwrite(function,message.str());
           // with increasing signal.
           //
 {
-message.str(""); message << "[DEBUG] before subtracting from 65535 work=";
+message.str(""); message << "[PIXELVALS] before subtracting from 65535 work=";
 for (int i=0; i<10; i++) message << " " << work.ptr<uint16_t>()[i];
 logwrite(function,message.str());
 }
