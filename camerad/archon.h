@@ -375,11 +375,15 @@ namespace Archon {
         std::stringstream message;
         const std::string function("Archon::DeInterlace::nirc2");
 #ifdef LOGLEVEL_DEBUG
-//      message.str(""); message << "[DEBUG] this->rows=" << this->rows << " this->cols=" << this->cols
-//                               << " this->frame_rows=" << this->frame_rows << " this->frame_cols=" << this->frame_cols
-//                               << " workindex=" << workindex;
-//      logwrite( "Archon::DeInterlace::nirc2", message.str() );
+        message.str(""); message << "[DEBUG] this->rows=" << this->rows << " this->cols=" << this->cols
+                                 << " this->frame_rows=" << this->frame_rows << " this->frame_cols=" << this->frame_cols
+                                 << " workindex=" << workindex;
+        logwrite( "Archon::DeInterlace::nirc2", message.str() );
 #endif
+message.str(""); message << "[PIXELVALS] incoming image=";
+for (int i=0; i<10; i++) message << " " << image.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+
         int taps=8;
 
         int quad_rows  = (this->frame_rows / 2) + 4;
@@ -516,15 +520,25 @@ namespace Archon {
           // Subtract the image from 65535 because for NIRC2 the counts decrease
           // with increasing signal.
           //
+{
+message.str(""); message << "[PIXELVALS] before subtracting from 65535 work=";
+for (int i=0; i<10; i++) message << " " << work.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+}
           cv::subtract( 65535, work, work );
+{
+message.str(""); message << "[PIXELVALS] after subtracting from 65535 work=";
+for (int i=0; i<10; i++) message << " " << work.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+}
 
           // Copy assembled image into the FITS buffer, this->workbuf
           //
 #ifdef LOGLEVEL_DEBUG
-//        message.str(""); message << "[DEBUG] copying " << this->frame_rows << " from work to fits buffer";
-//        logwrite( "Archon::DeInterlace::nirc2", message.str() );
-//        message.str(""); message << "[DEBUG] workbuf=" << std::hex << static_cast<void*>(this->workbuf) << " workindex=" << workindex;
-//        logwrite( "Archon::DeInterlace::nirc2", message.str() );
+          message.str(""); message << "[DEBUG] copying " << this->frame_rows << " from work to fits buffer";
+          logwrite( "Archon::DeInterlace::nirc2", message.str() );
+          message.str(""); message << "[DEBUG] workbuf=" << std::hex << static_cast<void*>(this->workbuf) << " workindex=" << workindex;
+          logwrite( "Archon::DeInterlace::nirc2", message.str() );
 #endif
           for ( int row=0; row<this->frame_rows; row++ ) {
             for ( int col=0; col<this->frame_cols; col++ ) {
@@ -532,17 +546,29 @@ namespace Archon {
             }
           }
 #ifdef LOGLEVEL_DEBUG
-//        message.str(""); message << "[DEBUG] work.rows=" << work.rows << " work.cols=" << work.cols 
-//                                 << " resetframe.rows=" << this->resetframe.rows
-//                                 << " resetframe.cols=" << this->resetframe.cols
-//                                 << " readframe.rows=" << this->readframe.rows << " readframe.cols=" << this->readframe.cols;
-//        logwrite( "Archon::DeInterlace::nirc2", message.str() );
+          message.str(""); message << "[DEBUG] work.rows=" << work.rows << " work.cols=" << work.cols 
+                                   << " resetframe.rows=" << this->resetframe.rows
+                                   << " resetframe.cols=" << this->resetframe.cols
+                                   << " readframe.rows=" << this->readframe.rows << " readframe.cols=" << this->readframe.cols;
+          logwrite( "Archon::DeInterlace::nirc2", message.str() );
 #endif
 
           // For CDS mode, copy the work buffer to the appropriate frame buffer
           //
-          if ( this->iscds && this->nmcds==0 && slicen==0 ) work.copyTo( this->resetframe );  // this is the reset frame
-          if ( this->iscds && this->nmcds==0 && slicen==1 ) work.copyTo( this->readframe  );  // this is the read frame
+message.str(""); message << "[DEBUG] iscds=" << this->iscds << " nmcds=" << this->nmcds << " slicen=" << slicen;
+logwrite(function,message.str());
+          if ( this->iscds && this->nmcds==0 && slicen==0 ) {
+            work.copyTo( this->resetframe );  // this is the reset frame
+message.str(""); message << "[PIXELVALS] resetframe=" << std::dec;
+for (int i=0; i<10; i++) message << " " << resetframe.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+          }
+          if ( this->iscds && this->nmcds==0 && slicen==1 ) {
+            work.copyTo( this->readframe  );  // this is the read frame
+message.str(""); message << "[PIXELVALS] readframe=";
+for (int i=0; i<10; i++) message << " " << readframe.ptr<uint16_t>()[i];
+logwrite(function,message.str());
+          }
 
           // For MCDS mode, copy the work buffer to the appropriate frame buffer
           //
@@ -551,14 +577,33 @@ namespace Archon {
             //
             int32_t* ptr = ( (slicen < this->nmcds/2) ? this->mcdsbuf_0 : this->mcdsbuf_1 );
 #ifdef LOGLEVEL_DEBUG
-//          message.str(""); message << "[DEBUG] " << ( (slicen < this->nmcds/2) ? "first" : "second" ) << " half of MCDS";
-//          logwrite( "Archon::DeInterlace::nirc2", message.str() );
+            message.str(""); message << "[DEBUG] ptr=" << std::hex << static_cast<void*>(ptr);
+            logwrite(function,message.str());
 #endif
             // Create openCV image from the coadd buffer pointed above
             // and add the work buffer to it.
             //
             cv::Mat coadd = cv::Mat( this->frame_rows, this->frame_cols, CV_32S, ptr );
             cv::add( coadd, work, coadd, cv::noArray(), coadd.type() );
+message.str(""); message << "[PIXELVALS] (before) " << ( (slicen < this->nmcds/2) ? "first" : "second" ) << " half of MCDS pixels=" << std::dec;
+for (int i=0; i<10; i++) message << " " << ptr[i];
+logwrite(function,message.str());
+            // Copy coadded image into the FITS buffer pointed to by ptr
+            // as long as ptr is pointing to valid memory.
+            //
+            if ( ptr == nullptr ) {
+              logwrite( function, "ERROR: invalid buffer allocation" );
+              return;
+            }
+            unsigned long index=0;
+            for ( int row=0; row<this->frame_rows; row++ ) {
+              for ( int col=0; col<this->frame_cols; col++ ) {
+                *( ptr + index++ ) = (int32_t)(coadd.at<int32_t>(row,col));
+              }
+            }
+message.str(""); message << "[PIXELVALS] (after) " << ( (slicen < this->nmcds/2) ? "first" : "second" ) << " half of MCDS pixels=" << std::dec;
+for (int i=0; i<10; i++) message << " " << ptr[i];
+logwrite(function,message.str());
           }
 
         } // end of loop over cubes
@@ -982,6 +1027,7 @@ namespace Archon {
       long power( std::string state_in, std::string &retstring );     /// wrapper for do_power
       long do_power( std::string state_in, std::string &retstring );  /// set/get Archon power state
       long expose( std::string nseq_in );
+void make_simulated_data(char* buffer, int slice);
       long do_expose(std::string nseq_in);
       long wait_for_exposure();
       long wait_for_readout();

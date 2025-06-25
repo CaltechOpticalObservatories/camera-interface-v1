@@ -3380,6 +3380,25 @@ namespace Archon {
   }
   /***** Archon::Interface::do_expose *****************************************/
 
+  void Interface::make_simulated_data(char* buffer, int slice) {
+    int total_pixels = camera_info.detector_pixels[0] * camera_info.detector_pixels[1];
+
+    // Cast the buffer to uint16_t* to fill with 16-bit values
+    uint16_t* pixel_buffer = reinterpret_cast<uint16_t*>(buffer);
+
+    static bool seeded=false;
+    if (!seeded) {
+      srand(time(nullptr));
+      seeded=true;
+    }
+
+    uint16_t pixel_value = 1;
+    for (int i = 0; i < total_pixels; i++) {
+      int offset = total_pixels*slice;
+      pixel_buffer[i+offset] = (slice%2)*5000 + 32000 + (std::rand() % (35000-32000));
+      if (i<10) {std::cout << "**************" << (i+offset) << " " << pixel_buffer[i+offset] << "\n";}
+    }
+  }
 
   /***** Archon::Interface::image_acquisition_loop ****************************/
   /**
@@ -3497,6 +3516,10 @@ namespace Archon {
           break;
       }
 
+if (slicecounter != this->camera_info.cubedepth) {
+  SNPRINTF(message, "[DEBUG] slicecounter=%d cubedepth=%d", slicecounter, this->camera_info.cubedepth);
+  logwrite(function,message);
+}
       // prepage an ImageBuffer object for the datacube
       //
       uint32_t bufferbytes = this->image_data_bytes * this->camera_info.cubedepth;
@@ -3560,6 +3583,19 @@ namespace Archon {
           //
           error = this->read_frame(Camera::FRAME_IMAGE, imbufptr);
 
+{
+make_simulated_data(imagebuf->rawpixels.get(), slice);
+std::stringstream debugstr; debugstr.str(""); debugstr << "[PIXELVALS]";
+int total_pixels = camera_info.detector_pixels[0] * camera_info.detector_pixels[1];
+uint16_t* pixel_buffer = reinterpret_cast<uint16_t*>(imagebuf->rawpixels.get());
+for (int frame=0; frame<this->camera_info.cubedepth; frame++) {
+  debugstr << " frame=" << frame << " pix [" << frame*total_pixels << "]=";
+  for (int p=0; p<10; p++) {
+    debugstr << " " << pixel_buffer[frame*total_pixels+p];
+  }
+}
+logwrite(function,debugstr.str());
+}
         // record the Archon buffer frame number and timestamp for this frame
         //
         imagebuf->bufframen_slice.push_back( this->frame.bufframen[this->frame.index] );
@@ -3656,14 +3692,24 @@ namespace Archon {
       {
       std::unique_lock<std::mutex> lock(queue_mutex);
       // keep trying to get the queue lock until success or aborted
-      queue_cv.wait_for(lock, std::chrono::milliseconds(100), [this] {
+      queue_cv.wait(lock, [this] {
           return !imagebuf_queue.empty() || is_producer_finished || camera.is_aborted();
           });
+message.str(""); message << "[DEBUG] Woke up. Queue size: " << imagebuf_queue.size()
+                         << ", finished: " << is_producer_finished
+                         << ", aborted: " << camera.is_aborted();
+logwrite(function, message.str());
       if (camera.is_aborted()) break;
 
       if (imagebuf_queue.empty()) {       // nothing in the queue
-        if (is_producer_finished) break;  // nothing else is coming
-        else continue;                    // or keep waiting
+        if (is_producer_finished) {
+          logwrite(function, "[DEBUG] exit due to empty queue and producer finished");
+          break;  // nothing else is coming
+        }
+        else {
+          logwrite(function, "[DEBUG] queue empty but producer not finished");
+          continue;                    // or keep waiting
+        }
       }
 
       imagebuf = imagebuf_queue.front();
@@ -3718,6 +3764,8 @@ namespace Archon {
 
     } // end while !aborted
 
+    logwrite(function, (camera.is_aborted()?"aborted":"completed"));
+
     if (__fits_file) {
       __fits_file->complete();
       this->camera.async.enqueue("FILE:" + this->camera_info.fits_name + " COMPLETE");
@@ -3729,8 +3777,6 @@ namespace Archon {
 
     // increment image_num when fitsnaming == "number"
     this->camera.increment_imnum();
-
-    logwrite(function, "complete");
   }
   /***** Archon::Interface::image_processing_loop *****************************/
 
@@ -3796,6 +3842,10 @@ namespace Archon {
       if (mcdsbuf_0) memset(mcdsbuf_0, 0, cds_info.section_size * sizeof(int32_t));
       if (mcdsbuf_1) memset(mcdsbuf_1, 0, cds_info.section_size * sizeof(int32_t));
 
+std::stringstream message;
+message << "[DEBUG] mcdsbuf_0=" << std::hex << static_cast<void*>(mcdsbuf_0)
+        << " mcdsbuf_1=" << static_cast<void*>(mcdsbuf_1);
+logwrite(function,message.str());
       T* _imbuf   = reinterpret_cast<T*>(imagebuf->rawpixels.get());
       T* _workbuf = buffers.workbuf.get();
       T* _cdsbuf  = buffers.cdsbuf.get();
@@ -3823,7 +3873,7 @@ namespace Archon {
       return;
     }
 
-    ++deinterlace_count;
+//  ++deinterlace_count;
     if (camera_info.iscds) runcds();
     logwrite(function, "complete");
   }
@@ -3842,10 +3892,38 @@ namespace Archon {
     //
     cv::Mat* _coadd = this->coadd_img.get();
     cv::Mat* _diff  = this->diff_img.get();
+message.str(""); message << "deinterlace_count=" << deinterlace_count << " nseq=" << camera_info.nseq << " cds_info.nmcds=" << this->cds_info.nmcds << " camera_info.nmcds=" << this->camera_info.nmcds;
+logwrite( function, message.str() );
+if (this->cds_info.nmcds>0) {
+{
+message.str(""); message << "[PIXELVALS] entry coadd_img=";
+int32_t* data = (int32_t*)_coadd->data;
+for(int i=0; i<10; i++) message << " " << data[i];
+logwrite(function, message.str());
+}
+{
+message.str(""); message << "[PIXELVALS] entry diff_img=";
+int32_t* data = (int32_t*)_diff->data;
+for(int i=0; i<10; i++) message << " " << data[i];
+logwrite(function, message.str());
+}
+{
+message.str(""); message << "[PIXELVALS] entry mcdsbuf_0 " << std::hex << static_cast<void*>(this->mcdsbuf_0)
+                         << " pixels=" << std::dec;
+for(int i=0; i<10; i++) message << " " << this->mcdsbuf_0[i];
+logwrite(function, message.str());
+}
+{
+message.str(""); message << "[PIXELVALS] entry mcdsbuf_1 " << std::hex << static_cast<void*>(this->mcdsbuf_1)
+                         << " pixels=" << std::dec;
+for(int i=0; i<10; i++) message << " " << this->mcdsbuf_1[i];
+logwrite(function, message.str());
+}
+}
 
     // MCDS subtraction and co-adding
     //
-    if ( deinterlace_count < camera_info.nseq ) {
+    if ( deinterlace_count++ < camera_info.nseq ) {
 
       if (this->cds_info.nmcds > 0 ) {
         // Perform the CDS subtraction, sum of signal frames - sum of baseline frames, average,
@@ -3858,6 +3936,18 @@ namespace Archon {
           _mcds_0.reset( new cv::Mat( this->cds_info.imheight, this->cds_info.imwidth, CV_32S, this->mcdsbuf_0 ) );
           _mcds_1.reset( new cv::Mat( this->cds_info.imheight, this->cds_info.imwidth, CV_32S, this->mcdsbuf_1 ) );
 
+{
+int* d = _mcds_0->ptr<int>(0);
+message.str(""); message << "[PIXELVALS] _mcds_0=";
+for(int i=0; i<10; i++) message << " " << d[i];
+logwrite(function, message.str());
+}
+{
+int* d = _mcds_1->ptr<int>(0);
+message.str(""); message << "[PIXELVALS] _mcds_1=";
+for(int i=0; i<10; i++) message << " " << d[i];
+logwrite(function, message.str());
+}
           *_diff   = *_mcds_1 - *_mcds_0;         // perform the subtraction, signal-baseline
           *_diff  /= ( this->cds_info.nmcds/2 );  // average
           *_coadd += *_diff;                      // coadd here
@@ -3873,8 +3963,12 @@ namespace Archon {
         }
       }
     }
-    else {
+    if ( deinterlace_count >= camera_info.nseq ) {
       if (camera_info.nmcds==0) {
+message.str(""); message << "[PIXELVALS] nmcds=" << camera_info.nmcds << " after cds coaddbuf=";
+for (int i=0; i<10; i++) message << " " << this->coaddbuf[i];
+logwrite(function, message.str());
+logwrite( function, "[DEBUG] (a) calling __file_cds->write_image" );
         this->__file_cds->write_image( this->coaddbuf,
                                        get_timestamp(),
                                        0,
@@ -3890,6 +3984,10 @@ namespace Archon {
             *( this->coaddbuf + index++ ) = static_cast<int32_t>(_coadd->at<int32_t>(row, col));
           }
         }
+message.str(""); message << "[PIXELVALS] nmcds=" << camera_info.nmcds << " after cds coaddbuf=";
+for (int i=0; i<10; i++) message << " " << this->coaddbuf[i];
+logwrite(function, message.str());
+logwrite( function, "[DEBUG] (b) calling __file_cds->write_image" );
         this->__file_cds->write_image( this->coaddbuf,
                                        get_timestamp(),
                                        0,
@@ -3897,6 +3995,20 @@ namespace Archon {
                                      );
       }
     }
+if (this->cds_info.nmcds>0) {
+{
+message.str(""); message << "[PIXELVALS] exit coadd_img=";
+int32_t* data = (int32_t*)_coadd->data;
+for(int i=0; i<10; i++) message << " " << data[i];
+logwrite(function, message.str());
+}
+{
+message.str(""); message << "[PIXELVALS] exit diff_img=";
+int32_t* data = (int32_t*)_diff->data;
+for(int i=0; i<10; i++) message << " " << data[i];
+logwrite(function, message.str());
+}
+}
     logwrite(function, "complete");
   }
   /***** Archon::Interface::runcds ********************************************/
