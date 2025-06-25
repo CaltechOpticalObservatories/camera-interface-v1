@@ -23,8 +23,6 @@ namespace Archon {
     this->frame.next_index = 0;
     this->taplines = 0;
 
-    this->deinterlace_count.store( 0, std::memory_order_seq_cst );
-
     this->coadd_img = nullptr;
     this->diff_img = nullptr;
     this->coaddbuf = nullptr;
@@ -3205,8 +3203,6 @@ namespace Archon {
     this->camera_info.cmd_start_time = get_timestamp();           // current system time formatted as YYYY-MM-DDTHH:MM:SS.sss
     this->camera.clear_abort();                                   // could be cleared by any earlier expose() wrapper
 
-    this->deinterlace_count.store( 0, std::memory_order_seq_cst );
-
     std::string mode = this->camera_info.current_observing_mode;  // local copy for convenience
 
     if ( ! this->modeselected ) {
@@ -3876,10 +3872,8 @@ logwrite(function,message.str());
       return;
     }
 
-//  ++deinterlace_count;
-message.str(""); message << "[DEBUG] calling runcds and imagebuf->ncoadd=" << imagebuf->ncoadd;
-logwrite(function, message.str());
     if (camera_info.iscds) runcds(imagebuf->ncoadd==cds_info.ncoadd);
+
     logwrite(function, "complete");
   }
   /***** Archon::Interface::deinterlace_queue *********************************/
@@ -3897,7 +3891,7 @@ logwrite(function, message.str());
     //
     cv::Mat* _coadd = this->coadd_img.get();
     cv::Mat* _diff  = this->diff_img.get();
-message.str(""); message << "ncoadd=" << this->cds_info.ncoadd << " deinterlace_count=" << deinterlace_count << " nseq=" << camera_info.nseq << " cds_info.nmcds=" << this->cds_info.nmcds << " camera_info.nmcds=" << this->camera_info.nmcds;
+message.str(""); message << "ncoadd=" << this->cds_info.ncoadd << " nseq=" << camera_info.nseq << " cds_info.nmcds=" << this->cds_info.nmcds << " camera_info.nmcds=" << this->camera_info.nmcds;
 logwrite( function, message.str() );
 if (this->cds_info.nmcds>0) {
 {
@@ -3928,18 +3922,16 @@ logwrite(function, message.str());
 
     // MCDS subtraction and co-adding
     //
-//  if ( deinterlace_count++ < camera_info.nseq ) {
+    if (this->cds_info.nmcds > 0 ) {
+      // Perform the CDS subtraction, sum of signal frames - sum of baseline frames, average,
+      // then coadd the result. To do that, create Mat arrays from each of the MCDS buffers.
+      //
+      try {
+        std::unique_ptr<cv::Mat> _mcds_0(nullptr);
+        std::unique_ptr<cv::Mat> _mcds_1(nullptr);
 
-      if (this->cds_info.nmcds > 0 ) {
-        // Perform the CDS subtraction, sum of signal frames - sum of baseline frames, average,
-        // then coadd the result. To do that, create Mat arrays from each of the MCDS buffers.
-        //
-        try {
-          std::unique_ptr<cv::Mat> _mcds_0(nullptr);
-          std::unique_ptr<cv::Mat> _mcds_1(nullptr);
-
-          _mcds_0.reset( new cv::Mat( this->cds_info.imheight, this->cds_info.imwidth, CV_32S, this->mcdsbuf_0 ) );
-          _mcds_1.reset( new cv::Mat( this->cds_info.imheight, this->cds_info.imwidth, CV_32S, this->mcdsbuf_1 ) );
+        _mcds_0.reset( new cv::Mat( this->cds_info.imheight, this->cds_info.imwidth, CV_32S, this->mcdsbuf_0 ) );
+        _mcds_1.reset( new cv::Mat( this->cds_info.imheight, this->cds_info.imwidth, CV_32S, this->mcdsbuf_1 ) );
 
 {
 int* d = _mcds_0->ptr<int>(0);
@@ -3953,25 +3945,24 @@ message.str(""); message << "[PIXELVALS] _mcds_1=";
 for(int i=0; i<10; i++) message << " " << d[i];
 logwrite(function, message.str());
 }
-          *_diff   = *_mcds_1 - *_mcds_0;         // perform the subtraction, signal-baseline
-          *_diff  /= ( this->cds_info.nmcds/2 );  // average
-          *_coadd += *_diff;                      // coadd here
-        }
-        catch (const std::exception &ex) {
-          message.str(""); message << "ERROR subtracting signal-baseline: " << ex.what();
-          logwrite( function, message.str() );
-          return;
-        }
-        catch (...) {
-          logwrite( function, "ERROR subtracting signal-baseline: other" );
-          return;
-        }
+        *_diff   = *_mcds_1 - *_mcds_0;         // perform the subtraction, signal-baseline
+        *_diff  /= ( this->cds_info.nmcds/2 );  // average
+        *_coadd += *_diff;                      // coadd here
       }
-//  }
+      catch (const std::exception &ex) {
+        message.str(""); message << "ERROR subtracting signal-baseline: " << ex.what();
+        logwrite( function, message.str() );
+        return;
+      }
+      catch (...) {
+        logwrite( function, "ERROR subtracting signal-baseline: other" );
+        return;
+      }
+    }
 
-//  if ( deinterlace_count >= camera_info.nseq ) {
+    // Write the coadd buffer if this is the last coadd
+    //
     if ( is_last_coadd ) {
-logwrite(function, "[DEBUG] last coadd");
       if (camera_info.nmcds==0) {
 message.str(""); message << "[PIXELVALS] nmcds=" << camera_info.nmcds << " after cds coaddbuf=";
 for (int i=0; i<10; i++) message << " " << this->coaddbuf[i];

@@ -923,8 +923,6 @@ logwrite(function,message.str());
 
       std::map< std::string, readout_info_t > readout_source;  //!< STL map of readout sources indexed by readout name
 
-      std::atomic<int> deinterlace_count;     /// number of times deinterlace has been called when mex=true
-
       std::mutex deinter_mtx;                 /// deinterlacing mutex
       std::condition_variable deinter_cv;     /// deinterlacing condition variable
 
