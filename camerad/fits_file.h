@@ -82,6 +82,7 @@ public:
   FITS_mex_frame(T * data, int size, std::string timestamp_in, int sequence_in,
                   Camera::Information camera_info_in): array(data, size)
   {
+    logwrite("FITS_file::FITS_mex_frame", "[DEBUG] constructed with type "+demangle(typeid(T).name()));
 // std::cout << "(FITS_mex_frame) constructing FITS_mex_frame. camera_info_in.extension=" << camera_info_in.extension.load() << "\n";
     // Copy the camera info from the input
     this->camera_info = camera_info_in;
@@ -397,7 +398,7 @@ private:
         this->add_primary_key( val.keyword, val.keytype, val.keyvalue, val.keycomment );
       }
 
-      if (_camera_info.datatype == SHORT_IMG) {
+      if (_camera_info.datatype == USHORT_IMG) {
         this->pFits->pHDU().addKey( "BZERO", 32768, "offset for signed short int" );
         this->pFits->pHDU().addKey( "BSCALE", 1, "scaling factor" );
       }
@@ -582,6 +583,7 @@ private:
     // Set the function information for logging
     std::string function("FITS_file::write_single_image");
     std::stringstream message;
+    logwrite(function, "[DEBUG] writing type "+demangle(typeid(T).name()));
 
     // Set the FITS system to verbose mode so it writes error messages
     CCfits::FITS::setVerboseMode(true);
@@ -677,14 +679,12 @@ private:
       // Pull data out of the cube cache if there is something in it.  This is
       // done here to avoid the writing process slowing down the process putting
       // images in the cache.
-      if (this->mex_cache.size() > 0){
+      if (this->mex_cache.size() > 0) {
 
         // Pull a maximum of 5 images over.  This limits how much the system is
         // accessing the cache to avoid slowing the writing process.
         int size = this->mex_cache.size();
-        if (size > 5){
-          size = 5;
-        }
+        if (size > 5) size = 5;
 
         // Get the front image out of the queue, then clear it.  The mutex is
         // locked while clearing.  There are two options here, do it one image
@@ -699,6 +699,8 @@ private:
                 boost::lock_guard<boost::timed_mutex> lock(this->cache_mutex, boost::adopt_lock_t());
                 this->mex_cache.pop_front();
               }
+              size = this->mex_cache.size();
+              if (size > 5) size = 5;
             }
           }
         }
@@ -978,7 +980,7 @@ private:
     std::stringstream temp;
 
     try {
-      if ( _camera_info.datatype == SHORT_IMG ) {
+      if ( _camera_info.datatype == USHORT_IMG ) {
         this->imageExt->addKey("BZERO", 32768, "offset for signed short int");
         this->imageExt->addKey("BSCALE", 1, "scaling factor");
       }
@@ -1268,6 +1270,7 @@ public:
     int error;
 // std::cout << "*** sequence="<<sequence << " *** extension=" << camera_info.extension << "\n";
     // Write into the data cube
+    logwrite(function, "[DEBUG] writing type "+demangle(typeid(T).name()));
     if (this->ismex == true){
 
       // Open the file if it's not already open
@@ -1286,11 +1289,9 @@ public:
                                 sequence, _camera_info);
 
       boost::unique_lock<boost::timed_mutex> lock(this->cache_mutex);
-// std::cout << "*** frame.info.extension=" << frame.camera_info.extension << "\n";
       this->mex_cache.push_back(frame);
-// std::cout << "*** frame.info.extension=" << " mex_cache.info.extension=" << mex_cache[0].camera_info.extension << "\n";
-      boost::timed_mutex *m = lock.release();
-      m->unlock();
+//    boost::timed_mutex *m = lock.release();
+//    m->unlock();
     }
 
     // Write a single frame FITS image

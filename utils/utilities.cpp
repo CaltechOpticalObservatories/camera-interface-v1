@@ -882,3 +882,11 @@ std::mutex generate_tmpfile_mtx;
     }
   }
   /***** generate_temp_filename ***********************************************/
+
+  std::string demangle(const char* name) {
+    int status=-1;
+    char* demangled_name = abi::__cxa_demangle(name, nullptr, nullptr, &status);
+    std::string result = (status==0) ? demangled_name : name;
+    std::free(demangled_name);
+    return result;
+  }

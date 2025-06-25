@@ -3388,10 +3388,10 @@ namespace Archon {
       seeded=true;
     }
 
-    uint16_t pixel_value = 1;
+    if (this->camera_info.sampmode==SAMPMODE_SINGLE) slice=0;
     for (int i = 0; i < total_pixels; i++) {
       int offset = total_pixels*slice;
-      pixel_buffer[i+offset] = (slice%2)*5000 + 32000 + (std::rand() % (35000-32000));
+      pixel_buffer[i+offset] = (std::rand() % (25000 - 20000 + 1)) + 20000 + (slice % 2) * 5000;
       if (i<10) {std::cout << "**************" << (i+offset) << " " << pixel_buffer[i+offset] << "\n";}
     }
   }
@@ -3580,19 +3580,19 @@ if (slicecounter != this->camera_info.cubedepth) {
           error = this->read_frame(Camera::FRAME_IMAGE, imbufptr);
 
 /***
-  * {
-  * make_simulated_data(imagebuf->rawpixels.get(), slice);
-  * std::stringstream debugstr; debugstr.str(""); debugstr << "[PIXELVALS]";
-  * int total_pixels = camera_info.detector_pixels[0] * camera_info.detector_pixels[1];
-  * uint16_t* pixel_buffer = reinterpret_cast<uint16_t*>(imagebuf->rawpixels.get());
-  * for (int frame=0; frame<this->camera_info.cubedepth; frame++) {
-  *   debugstr << " frame=" << frame << " pix [" << frame*total_pixels << "]=";
-  *   for (int p=0; p<10; p++) {
-  *     debugstr << " " << pixel_buffer[frame*total_pixels+p];
-  *   }
-  * }
-  * logwrite(function,debugstr.str());
-  * }
+ *  {
+ *  make_simulated_data(imagebuf->rawpixels.get(), slice);
+ *  std::stringstream debugstr; debugstr.str(""); debugstr << "[PIXELVALS]";
+ *  int total_pixels = camera_info.detector_pixels[0] * camera_info.detector_pixels[1];
+ *  uint16_t* pixel_buffer = reinterpret_cast<uint16_t*>(imagebuf->rawpixels.get());
+ *  for (int frame=0; frame<this->camera_info.cubedepth; frame++) {
+ *    debugstr << " frame=" << frame << " pix [" << frame*total_pixels << "]=";
+ *    for (int p=0; p<10; p++) {
+ *      debugstr << " " << pixel_buffer[frame*total_pixels+p];
+ *    }
+ *  }
+ *  logwrite(function,debugstr.str());
+ *  }
   ***/
 
         // record the Archon buffer frame number and timestamp for this frame
@@ -3765,12 +3765,15 @@ logwrite(function, message.str());
 
     logwrite(function, (camera.is_aborted()?"aborted":"completed"));
 
+    // close the FITS files and notify completion
     if (__fits_file) {
       __fits_file->complete();
+      __fits_file.reset();
       this->camera.async.enqueue("FILE:" + this->camera_info.fits_name + " COMPLETE");
     }
     if (__file_cds) {
       __file_cds->complete();
+      __file_cds.reset();
       this->camera.async.enqueue("FILE:" + this->cds_info.fits_name + " COMPLETE");
     }
 
@@ -3791,15 +3794,17 @@ logwrite(function, message.str());
     long error=NO_ERROR;
 
     logwrite(function, "start");
+    message << "[DEBUG] camera_info.datatype=" << this->camera_info.datatype; logwrite(function,message.str());
 
     // call the appropriate template deinterlacer
     //
     switch (this->camera_info.datatype) {
       case USHORT_IMG:
         {
-        auto buf16 = std::make_unique<ProcessingBuffers<uint16_t>>(camera_info.section_size, cds_info.section_size);
-        deinterlace_queue<uint16_t>(imagebuf, *buf16);
-        error=this->__fits_file->write_image( buf16->workbuf.get(),
+        logwrite(function, "[DEBUG] processing 16-bit unsigned");
+        auto buf16u = std::make_unique<ProcessingBuffers<uint16_t>>(camera_info.section_size, cds_info.section_size);
+        deinterlace_queue<uint16_t>(imagebuf, *buf16u);
+        error=this->__fits_file->write_image( buf16u->workbuf.get(),
                                               get_timestamp(),
                                               this->camera_info.extension.load(),
                                               this->camera_info
@@ -3808,14 +3813,16 @@ logwrite(function, message.str());
         }
       case SHORT_IMG:
         {
+        logwrite(function, "[DEBUG] processing 16-bit signed");
         auto buf16s = std::make_unique<ProcessingBuffers<int16_t>>(camera_info.section_size, cds_info.section_size);
         deinterlace_queue<int16_t>(imagebuf, *buf16s);
         break;
         }
       case FLOAT_IMG:
         {
-        auto buf32 = std::make_unique<ProcessingBuffers<uint32_t>>(camera_info.section_size, cds_info.section_size);
-        deinterlace_queue<uint32_t>(imagebuf, *buf32);
+        logwrite(function, "[DEBUG] processing 32-bit unsigned");
+        auto buf32u = std::make_unique<ProcessingBuffers<uint32_t>>(camera_info.section_size, cds_info.section_size);
+        deinterlace_queue<uint32_t>(imagebuf, *buf32u);
         break;
         }
       default:
