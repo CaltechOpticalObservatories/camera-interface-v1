@@ -3728,8 +3728,8 @@ logwrite(function, message.str());
       if (n_slices%2 == 0) {
         uint64_t dts = imagebuf->buftimestamp_slice[n_slices/2] - imagebuf->buftimestamp_slice[0];
         double truitime = static_cast<double>(dts/100000000.0);
-        this->cds_info.systemkeys.addkey( "TRUITIME", truitime, "True integration time in seconds (calculated)", 3 );
-        this->camera_info.systemkeys.addkey( "TRUITIME", truitime, "True integration time in seconds (calculated)", 3 );
+        this->cds_info.systemkeys.addkey( "TRUITIME", truitime, "True integration time in seconds (calculated)", 8 );
+        this->camera_info.systemkeys.addkey( "TRUITIME", truitime, "True integration time in seconds (calculated)", 8 );
       }
 
       // Add Archon TIMESTAMP for this frame buffer to the extkeys database.
