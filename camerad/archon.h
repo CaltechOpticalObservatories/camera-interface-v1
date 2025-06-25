@@ -880,7 +880,7 @@ logwrite(function,message.str());
       void image_processing_loop();
       void process_image(std::shared_ptr<ImageBuffer> &imagebuf);
       template<typename T> void deinterlace_queue(std::shared_ptr<ImageBuffer> imagebuf, ProcessingBuffers<T> &buffers);
-      void runcds();
+      void runcds(bool is_last_coadd);
 
       // Add any pre-exposures onto the requested number of sequences,
       // using 1 if not supplied.

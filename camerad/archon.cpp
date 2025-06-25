@@ -3879,14 +3879,14 @@ logwrite(function,message.str());
 //  ++deinterlace_count;
 message.str(""); message << "[DEBUG] calling runcds and imagebuf->ncoadd=" << imagebuf->ncoadd;
 logwrite(function, message.str());
-    if (camera_info.iscds) runcds();
+    if (camera_info.iscds) runcds(imagebuf->ncoadd==cds_info.ncoadd);
     logwrite(function, "complete");
   }
   /***** Archon::Interface::deinterlace_queue *********************************/
 
 
   /***** Archon::Interface::runcds ********************************************/
-  void Interface::runcds() {
+  void Interface::runcds(bool is_last_coadd) {
     const std::string function("Archon::Interface::runcds");
     std::stringstream message;
     logwrite(function, "start");
@@ -3928,7 +3928,7 @@ logwrite(function, message.str());
 
     // MCDS subtraction and co-adding
     //
-    if ( deinterlace_count++ < camera_info.nseq ) {
+//  if ( deinterlace_count++ < camera_info.nseq ) {
 
       if (this->cds_info.nmcds > 0 ) {
         // Perform the CDS subtraction, sum of signal frames - sum of baseline frames, average,
@@ -3967,8 +3967,11 @@ logwrite(function, message.str());
           return;
         }
       }
-    }
-    if ( deinterlace_count >= camera_info.nseq ) {
+//  }
+
+//  if ( deinterlace_count >= camera_info.nseq ) {
+    if ( is_last_coadd ) {
+logwrite(function, "[DEBUG] last coadd");
       if (camera_info.nmcds==0) {
 message.str(""); message << "[PIXELVALS] nmcds=" << camera_info.nmcds << " after cds coaddbuf=";
 for (int i=0; i<10; i++) message << " " << this->coaddbuf[i];
