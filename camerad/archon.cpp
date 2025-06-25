@@ -3583,19 +3583,22 @@ if (slicecounter != this->camera_info.cubedepth) {
           //
           error = this->read_frame(Camera::FRAME_IMAGE, imbufptr);
 
-{
-make_simulated_data(imagebuf->rawpixels.get(), slice);
-std::stringstream debugstr; debugstr.str(""); debugstr << "[PIXELVALS]";
-int total_pixels = camera_info.detector_pixels[0] * camera_info.detector_pixels[1];
-uint16_t* pixel_buffer = reinterpret_cast<uint16_t*>(imagebuf->rawpixels.get());
-for (int frame=0; frame<this->camera_info.cubedepth; frame++) {
-  debugstr << " frame=" << frame << " pix [" << frame*total_pixels << "]=";
-  for (int p=0; p<10; p++) {
-    debugstr << " " << pixel_buffer[frame*total_pixels+p];
-  }
-}
-logwrite(function,debugstr.str());
-}
+/***
+  * {
+  * make_simulated_data(imagebuf->rawpixels.get(), slice);
+  * std::stringstream debugstr; debugstr.str(""); debugstr << "[PIXELVALS]";
+  * int total_pixels = camera_info.detector_pixels[0] * camera_info.detector_pixels[1];
+  * uint16_t* pixel_buffer = reinterpret_cast<uint16_t*>(imagebuf->rawpixels.get());
+  * for (int frame=0; frame<this->camera_info.cubedepth; frame++) {
+  *   debugstr << " frame=" << frame << " pix [" << frame*total_pixels << "]=";
+  *   for (int p=0; p<10; p++) {
+  *     debugstr << " " << pixel_buffer[frame*total_pixels+p];
+  *   }
+  * }
+  * logwrite(function,debugstr.str());
+  * }
+  ***/
+
         // record the Archon buffer frame number and timestamp for this frame
         //
         imagebuf->bufframen_slice.push_back( this->frame.bufframen[this->frame.index] );
@@ -3838,11 +3841,11 @@ logwrite(function, message.str());
 
     logwrite(function, "start");
 
+std::stringstream message;
     try {
       if (mcdsbuf_0) memset(mcdsbuf_0, 0, cds_info.section_size * sizeof(int32_t));
       if (mcdsbuf_1) memset(mcdsbuf_1, 0, cds_info.section_size * sizeof(int32_t));
 
-std::stringstream message;
 message << "[DEBUG] mcdsbuf_0=" << std::hex << static_cast<void*>(mcdsbuf_0)
         << " mcdsbuf_1=" << static_cast<void*>(mcdsbuf_1);
 logwrite(function,message.str());
@@ -3874,6 +3877,8 @@ logwrite(function,message.str());
     }
 
 //  ++deinterlace_count;
+message.str(""); message << "[DEBUG] calling runcds and imagebuf->ncoadd=" << imagebuf->ncoadd;
+logwrite(function, message.str());
     if (camera_info.iscds) runcds();
     logwrite(function, "complete");
   }
@@ -3892,7 +3897,7 @@ logwrite(function,message.str());
     //
     cv::Mat* _coadd = this->coadd_img.get();
     cv::Mat* _diff  = this->diff_img.get();
-message.str(""); message << "deinterlace_count=" << deinterlace_count << " nseq=" << camera_info.nseq << " cds_info.nmcds=" << this->cds_info.nmcds << " camera_info.nmcds=" << this->camera_info.nmcds;
+message.str(""); message << "ncoadd=" << this->cds_info.ncoadd << " deinterlace_count=" << deinterlace_count << " nseq=" << camera_info.nseq << " cds_info.nmcds=" << this->cds_info.nmcds << " camera_info.nmcds=" << this->camera_info.nmcds;
 logwrite( function, message.str() );
 if (this->cds_info.nmcds>0) {
 {

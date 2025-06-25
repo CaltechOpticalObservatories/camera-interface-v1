@@ -581,27 +581,17 @@ logwrite(function,message.str());
             logwrite(function,message.str());
 #endif
             // Create openCV image from the coadd buffer pointed above
-            // and add the work buffer to it.
-            //
-            cv::Mat coadd = cv::Mat( this->frame_rows, this->frame_cols, CV_32S, ptr );
-            cv::add( coadd, work, coadd, cv::noArray(), coadd.type() );
-message.str(""); message << "[PIXELVALS] (before) " << ( (slicen < this->nmcds/2) ? "first" : "second" ) << " half of MCDS pixels=" << std::dec;
-for (int i=0; i<10; i++) message << " " << ptr[i];
-logwrite(function,message.str());
-            // Copy coadded image into the FITS buffer pointed to by ptr
-            // as long as ptr is pointing to valid memory.
+            // and add the work buffer to it. The coadd Mat array doesn't
+            // own the memory, it still points back to the buffer at ptr, so
+            // the add operation modifies that memory.
             //
             if ( ptr == nullptr ) {
               logwrite( function, "ERROR: invalid buffer allocation" );
               return;
             }
-            unsigned long index=0;
-            for ( int row=0; row<this->frame_rows; row++ ) {
-              for ( int col=0; col<this->frame_cols; col++ ) {
-                *( ptr + index++ ) = (int32_t)(coadd.at<int32_t>(row,col));
-              }
-            }
-message.str(""); message << "[PIXELVALS] (after) " << ( (slicen < this->nmcds/2) ? "first" : "second" ) << " half of MCDS pixels=" << std::dec;
+            cv::Mat coadd = cv::Mat( this->frame_rows, this->frame_cols, CV_32S, ptr );
+            cv::add( coadd, work, coadd, cv::noArray(), coadd.type() );
+message.str(""); message << "[PIXELVALS] " << ( (slicen < this->nmcds/2) ? "first" : "second" ) << " half of MCDS pixels=" << std::dec;
 for (int i=0; i<10; i++) message << " " << ptr[i];
 logwrite(function,message.str());
           }
