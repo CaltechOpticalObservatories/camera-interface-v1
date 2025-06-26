@@ -3600,7 +3600,7 @@ if (slicecounter != this->camera_info.cubedepth) {
         imagebuf->bufframen_slice.push_back( this->frame.bufframen[this->frame.index] );
         imagebuf->buftimestamp_slice.push_back( this->frame.buftimestamp[this->frame.index] );
 
-        SNPRINTF(message, "NSLICE:%d", slice);
+        SNPRINTF(message, "NSLICE:%d", slice+1);
         this->camera.async.enqueue(std::string(message));
 
       } // end loop over slices in datacube
