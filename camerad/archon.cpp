@@ -2914,10 +2914,15 @@ namespace Archon {
    *
    */
   void Interface::add_filename_key( Camera::Information &info ) {
-    std::stringstream keystr;
+    if (info.fits_name.empty()) {
+      logwrite("Archon::Interface::add_filename_key", "ERROR filename empty");
+      return;
+    }
     auto loc = info.fits_name.find_last_of( "/" );
     std::string filename;
-    filename = info.fits_name.substr( loc+1 );
+    filename = (loc == std::string::npos) ? info.fits_name : info.fits_name.substr( loc + 1 );
+
+    std::stringstream keystr;
     keystr << "FILENAME=" << filename << "// this filename";
     info.systemkeys.addkey( keystr.str() );
   }
@@ -3404,10 +3409,12 @@ namespace Archon {
    *
    */
   void Interface::image_acquisition_loop(int nseq) {
-    const std::string function("Archon::Interface::frame_acquisition_loop");
+    const std::string function("Archon::Interface::image_acquisition_loop");
     char message[256];
     long error=NO_ERROR;
 
+SNPRINTF(message, "[DEBUG] nseq=%d", nseq);
+logwrite(function, std::string(message));
     // Before initiating the exposure, there is a kludge needed for SAMPMODE_SINGLE.
     // This mode is the same as SAMPMODE_RXV with 2 frames, except that NIRC2 only
     // wants 1. So we let the user tell us 1 frame but then we have to tell Archon
@@ -3451,20 +3458,27 @@ namespace Archon {
 
     this->camera_info.systemkeys.keydb = this->systemkeys.keydb;    // copy the systemkeys database object into camera_info
 
+logwrite(function, "[DEBUG] calling add_filename_key");
     this->add_filename_key();                                       // add filename to system keys database
+logwrite(function, "[DEBUG] back from add_filename_key");
 
     // Prepare the cds info struct if a processed file is requested
     //
     if ( this->camera_info.iscds ) {
+logwrite(function, "[DEBUG] copying systemkeys db");
       this->cds_info.systemkeys.keydb  = this->systemkeys.keydb;    // copy the systemkeys database object into cds_info
+logwrite(function, "[DEBUG] get start_time");
       this->cds_info.start_time = this->camera_info.start_time;     // start time is the same
+logwrite(function, "[DEBUG] assemling fits filename");
       error=this->camera.get_fitsname( this->cds_info.fits_name);   // assemble the FITS filename
       logwrite(function, "cds_info.fitsname="+this->cds_info.fits_name);
       if ( error != NO_ERROR ) {
         logwrite( function, "ERROR validating FITS filename "+this->cds_info.fits_name );
         return;
       }
+logwrite(function, "[DEBUG] adding filename to cds systemkeys db");
       this->add_filename_key( this->cds_info );                     // add filename to cds system keys database
+logwrite(function, "[DEBUG] added filename to cds systemkeys db");
     }
 
     if (this->camera.writekeys_when=="before") this->copy_keydb();  // copy the ACF and userkeys database into camera_info
@@ -4760,6 +4774,12 @@ logwrite(function, message.str());
     // camera_info.userkeys object
     //
     std::string mode = this->camera_info.current_observing_mode;
+
+    if ( this->modemap.count(mode) == 0 ) {
+      logwrite(function, "ERROR: unknown observing mode " + mode);
+      return;
+    }
+
     Common::FitsKeys::fits_key_t::iterator keyit;
     for ( keyit  = this->modemap[mode].acfkeys.keydb.begin();
           keyit != this->modemap[mode].acfkeys.keydb.end();
@@ -4780,7 +4800,7 @@ logwrite(function, message.str());
     }
 
 #ifdef LOGLEVEL_DEBUG
-//  logwrite( function, "[DEBUG] copied userkeys db to camera_info" );
+    logwrite( function, "[DEBUG] copied userkeys db to camera_info" );
 #endif
 
     return;
