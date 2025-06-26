@@ -3906,13 +3906,13 @@ logwrite( function, message.str() );
 if (this->cds_info.nmcds>0) {
 {
 message.str(""); message << "[PIXELVALS] entry coadd_img=";
-int32_t* data = (int32_t*)_coadd->data;
+double* data = (double*)_coadd->data;
 for(int i=0; i<10; i++) message << " " << data[i];
 logwrite(function, message.str());
 }
 {
 message.str(""); message << "[PIXELVALS] entry diff_img=";
-int32_t* data = (int32_t*)_diff->data;
+double* data = (double*)_diff->data;
 for(int i=0; i<10; i++) message << " " << data[i];
 logwrite(function, message.str());
 }
@@ -3941,44 +3941,19 @@ logwrite(function, message.str());
         cv::Mat _mcds_0(this->cds_info.imheight, this->cds_info.imwidth, CV_32S, this->mcdsbuf_0);
         cv::Mat _mcds_1(this->cds_info.imheight, this->cds_info.imwidth, CV_32S, this->mcdsbuf_1);
 
-{
-int* d = _mcds_0.ptr<int>(0);
-message.str(""); message << "[PIXELVALS] _mcds_0=";
-for(int i=0; i<10; i++) message << " " << d[i];
-logwrite(function, message.str());
-}
-{
-int* d = _mcds_1.ptr<int>(0);
-message.str(""); message << "[PIXELVALS] _mcds_1=";
-for(int i=0; i<10; i++) message << " " << d[i];
-logwrite(function, message.str());
-}
-        // convert to double-precision
-        cv::Mat _mcds_0d, _mcds_1d, _diffd;
+        // convert mcds buffers to double-precision
+        cv::Mat _mcds_0d, _mcds_1d;
         _mcds_0.convertTo(_mcds_0d, CV_64F);
         _mcds_1.convertTo(_mcds_1d, CV_64F);
 
         // perform the subtraction
-        _diffd = _mcds_1d - _mcds_0d;
+        cv::Mat _diffd = _mcds_1d - _mcds_0d;
 
         // average
         _diffd /= static_cast<double>(this->cds_info.nmcds / 2.0);
 
-        // update diff_img
-        if ( !this->diff_img || this->diff_img->type() != CV_64F) {
-          this->diff_img = std::make_unique<cv::Mat>(_diffd.clone());
-        }
-        else {
-          *(this->diff_img) = _diffd;
-        }
-
         // coadd here
-        if ( !this->coadd_img || this->coadd_img->type() != CV_64F) {
-          this->coadd_img = std::make_unique<cv::Mat>(_diffd.clone());
-        }
-        else {
-          *(this->coadd_img) += _diffd;
-        }
+        *(this->coadd_img) += _diffd;
       }
       catch (const std::exception &ex) {
         message.str(""); message << "ERROR subtracting signal-baseline: " << ex.what();
