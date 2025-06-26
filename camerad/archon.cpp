@@ -3600,6 +3600,9 @@ if (slicecounter != this->camera_info.cubedepth) {
         imagebuf->bufframen_slice.push_back( this->frame.bufframen[this->frame.index] );
         imagebuf->buftimestamp_slice.push_back( this->frame.buftimestamp[this->frame.index] );
 
+        SNPRINTF(message, "NSLICE:%d", slice);
+        this->camera.async.enqueue(std::string(message));
+
       } // end loop over slices in datacube
 
       // push the datacube into the queue
@@ -3632,7 +3635,7 @@ if (slicecounter != this->camera_info.cubedepth) {
     // open FITS files
     //
     camera_info.writekeys_before = (camera.writekeys_when=="before"?true:false);
-    __fits_file = std::make_unique<FITS_file<uint16_t>>(camera_info.sampmode == SAMPMODE_SINGLE ? false : true);
+    __fits_file = std::make_unique<FITS_file<uint16_t>>(true);
     if ( camera_info.iscds ) {
       cds_info.writekeys_before = (camera.writekeys_when=="before"?true:false);
       __file_cds = std::make_unique<FITS_file<int32_t>>(false);

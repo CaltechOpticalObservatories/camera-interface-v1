@@ -398,7 +398,8 @@ private:
         this->add_primary_key( val.keyword, val.keytype, val.keyvalue, val.keycomment );
       }
 
-      if (_camera_info.datatype == USHORT_IMG) {
+      // I think this is wrong but it's what NIRC2 wants. Should be == USHORT_IMG
+      if (_camera_info.datatype == SHORT_IMG) {
         this->pFits->pHDU().addKey( "BZERO", 32768, "offset for signed short int" );
         this->pFits->pHDU().addKey( "BSCALE", 1, "scaling factor" );
       }
@@ -980,7 +981,8 @@ private:
     std::stringstream temp;
 
     try {
-      if ( _camera_info.datatype == USHORT_IMG ) {
+      // I think this is wrong but it's what NIRC2 wants. Should be == USHORT_IMG
+      if ( _camera_info.datatype == SHORT_IMG ) {
         this->imageExt->addKey("BZERO", 32768, "offset for signed short int");
         this->imageExt->addKey("BSCALE", 1, "scaling factor");
       }
