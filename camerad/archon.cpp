@@ -3644,14 +3644,14 @@ if (slicecounter != this->camera_info.cubedepth) {
     // allocate memory where needed
     //
     if (!this->coadd_img || this->coadd_img->rows != cds_info.imheight || this->coadd_img->cols != cds_info.imwidth) {
-      this->coadd_img.reset(new cv::Mat(cv::Mat::zeros(cds_info.imheight, cds_info.imwidth, CV_32S)));
+      this->coadd_img.reset(new cv::Mat(cv::Mat::zeros(cds_info.imheight, cds_info.imwidth, CV_64F)));
     }
     else {
       this->coadd_img->setTo(0);  // Clear if already allocated
     }
 
     if (!this->diff_img || this->diff_img->rows != cds_info.imheight || this->diff_img->cols != cds_info.imwidth) {
-      this->diff_img.reset(new cv::Mat(cv::Mat::zeros(cds_info.imheight, cds_info.imwidth, CV_32S)));
+      this->diff_img.reset(new cv::Mat(cv::Mat::zeros(cds_info.imheight, cds_info.imwidth, CV_64F)));
     }
     else {
       this->diff_img->setTo(0);
@@ -3937,27 +3937,48 @@ logwrite(function, message.str());
       // then coadd the result. To do that, create Mat arrays from each of the MCDS buffers.
       //
       try {
-        std::unique_ptr<cv::Mat> _mcds_0(nullptr);
-        std::unique_ptr<cv::Mat> _mcds_1(nullptr);
-
-        _mcds_0.reset( new cv::Mat( this->cds_info.imheight, this->cds_info.imwidth, CV_32S, this->mcdsbuf_0 ) );
-        _mcds_1.reset( new cv::Mat( this->cds_info.imheight, this->cds_info.imwidth, CV_32S, this->mcdsbuf_1 ) );
+        // create cv::Mat header from raw mcds buffers
+        cv::Mat _mcds_0(this->cds_info.imheight, this->cds_info.imwidth, CV_32S, this->mcdsbuf_0);
+        cv::Mat _mcds_1(this->cds_info.imheight, this->cds_info.imwidth, CV_32S, this->mcdsbuf_1);
 
 {
-int* d = _mcds_0->ptr<int>(0);
+int* d = _mcds_0.ptr<int>(0);
 message.str(""); message << "[PIXELVALS] _mcds_0=";
 for(int i=0; i<10; i++) message << " " << d[i];
 logwrite(function, message.str());
 }
 {
-int* d = _mcds_1->ptr<int>(0);
+int* d = _mcds_1.ptr<int>(0);
 message.str(""); message << "[PIXELVALS] _mcds_1=";
 for(int i=0; i<10; i++) message << " " << d[i];
 logwrite(function, message.str());
 }
-        *_diff   = *_mcds_1 - *_mcds_0;         // perform the subtraction, signal-baseline
-        *_diff  /= ( this->cds_info.nmcds/2 );  // average
-        *_coadd += *_diff;                      // coadd here
+        // convert to double-precision
+        cv::Mat _mcds_0d, _mcds_1d, _diffd;
+        _mcds_0.convertTo(_mcds_0d, CV_64F);
+        _mcds_1.convertTo(_mcds_1d, CV_64F);
+
+        // perform the subtraction
+        _diffd = _mcds_1d - _mcds_0d;
+
+        // average
+        _diffd /= static_cast<double>(this->cds_info.nmcds / 2.0);
+
+        // update diff_img
+        if ( !this->diff_img || this->diff_img->type() != CV_64F) {
+          this->diff_img = std::make_unique<cv::Mat>(_diffd.clone());
+        }
+        else {
+          *(this->diff_img) = _diffd;
+        }
+
+        // coadd here
+        if ( !this->coadd_img || this->coadd_img->type() != CV_64F) {
+          this->coadd_img = std::make_unique<cv::Mat>(_diffd.clone());
+        }
+        else {
+          *(this->coadd_img) += _diffd;
+        }
       }
       catch (const std::exception &ex) {
         message.str(""); message << "ERROR subtracting signal-baseline: " << ex.what();
@@ -3986,11 +4007,12 @@ logwrite( function, "[DEBUG] (a) calling __file_cds->write_image" );
       }
       else {
         // Copy assembled image into the FITS buffer, this->coaddbuf
-        //
+        // convert double coadd_img to int32
+        const cv::Mat &finalcoadd = *(this->coadd_img);
         unsigned long index=0;
         for ( int row=0; row<this->cds_info.imheight; row++ ) {
           for ( int col=0; col<this->cds_info.imwidth; col++ ) {
-            *( this->coaddbuf + index++ ) = static_cast<int32_t>(_coadd->at<int32_t>(row, col));
+            this->coaddbuf[index++] = static_cast<int32_t>(std::round(finalcoadd.at<double>(row,col)));
           }
         }
 message.str(""); message << "[PIXELVALS] nmcds=" << camera_info.nmcds << " after cds coaddbuf=";
