@@ -78,6 +78,12 @@ std::string get_file_time(std::string tmzone_in);   /// return current time in f
 
 double get_clock_time();
 
+inline double fast_clock_time() {
+  struct timespec ts;
+  if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) return 0;
+  return ts.tv_sec + ts.tv_nsec / 1e9;
+}
+
 long timeout( int wholesec=0, std::string next="" );  /// wait until next integral second or minute
 
 double mjd_from( struct timespec &time_n );         /// modified Julian date from input timespec struct

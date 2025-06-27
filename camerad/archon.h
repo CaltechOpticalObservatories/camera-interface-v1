@@ -264,7 +264,7 @@ namespace Archon {
         // Now that the video frame has been split into separate buffers (for reset and signal frames)
         // the regular deinterlacing function can be used on each, individually.
         //
-        int workindex=0;
+        uint64_t workindex=0;
         this->nirc2( workindex, reset, deinter_reset );    // deinterlace here, reset --> deinter_reset
         this->nirc2( workindex, signal, deinter_signal );  // deinterlace here, signal --> deinter_signal
 
@@ -330,8 +330,8 @@ namespace Archon {
         //
         cv::Mat work  = cv::Mat::zeros(this->frame_rows, this->frame_cols, CV_16U);
 
-        int workindex=0;
-        SNPRINTF(message, "workindex=%d prior to calling nirc2(workindex, image, work)", workindex);
+        uint64_t workindex=0;
+        SNPRINTF(message, "workindex=%lu prior to calling nirc2(workindex, image, work)", workindex);
         logwrite( "Archon::DeInterlace::nirc2", std::string(message) );
         this->nirc2( workindex, image, work );  // this is where the actual deinterlacing takes place
 
@@ -371,18 +371,18 @@ namespace Archon {
        * ~~~
        *
        */
-      void nirc2( int &workindex, cv::Mat &image, cv::Mat &work ) {
+      void nirc2( uint64_t &workindex, cv::Mat &image, cv::Mat &work ) {
         std::stringstream message;
         const std::string function("Archon::DeInterlace::nirc2");
 #ifdef LOGLEVEL_DEBUG
-        message.str(""); message << "[DEBUG] this->rows=" << this->rows << " this->cols=" << this->cols
-                                 << " this->frame_rows=" << this->frame_rows << " this->frame_cols=" << this->frame_cols
-                                 << " workindex=" << workindex;
-        logwrite( "Archon::DeInterlace::nirc2", message.str() );
+//      message.str(""); message << "[DEBUG] this->rows=" << std::dec << this->rows << " this->cols=" << this->cols
+//                               << " this->frame_rows=" << this->frame_rows << " this->frame_cols=" << this->frame_cols
+//                               << " workindex=" << workindex;
+//      logwrite( "Archon::DeInterlace::nirc2", message.str() );
 #endif
-message.str(""); message << "[PIXELVALS] incoming image=";
-for (int i=0; i<10; i++) message << " " << image.ptr<uint16_t>()[i];
-logwrite(function,message.str());
+//message.str(""); message << "[PIXELVALS] incoming image=";
+//for (int i=0; i<10; i++) message << " " << image.ptr<uint16_t>()[i];
+//logwrite(function,message.str());
 
         int taps=8;
 
@@ -520,25 +520,25 @@ logwrite(function,message.str());
           // Subtract the image from 65535 because for NIRC2 the counts decrease
           // with increasing signal.
           //
-{
-message.str(""); message << "[PIXELVALS] before subtracting from 65535 work=";
-for (int i=0; i<10; i++) message << " " << work.ptr<uint16_t>()[i];
-logwrite(function,message.str());
-}
+//{
+//message.str(""); message << "[PIXELVALS] before subtracting from 65535 work=";
+//for (int i=0; i<10; i++) message << " " << work.ptr<uint16_t>()[i];
+//logwrite(function,message.str());
+//}
           cv::subtract( 65535, work, work );
-{
-message.str(""); message << "[PIXELVALS] after subtracting from 65535 work=";
-for (int i=0; i<10; i++) message << " " << work.ptr<uint16_t>()[i];
-logwrite(function,message.str());
-}
+//{
+//message.str(""); message << "[PIXELVALS] after subtracting from 65535 work=";
+//for (int i=0; i<10; i++) message << " " << work.ptr<uint16_t>()[i];
+//logwrite(function,message.str());
+//}
 
           // Copy assembled image into the FITS buffer, this->workbuf
           //
 #ifdef LOGLEVEL_DEBUG
-          message.str(""); message << "[DEBUG] copying " << this->frame_rows << " from work to fits buffer";
-          logwrite( "Archon::DeInterlace::nirc2", message.str() );
-          message.str(""); message << "[DEBUG] workbuf=" << std::hex << static_cast<void*>(this->workbuf) << " workindex=" << workindex;
-          logwrite( "Archon::DeInterlace::nirc2", message.str() );
+//        message.str(""); message << "[DEBUG] copying " << this->frame_rows << " from work to fits buffer";
+//        logwrite( "Archon::DeInterlace::nirc2", message.str() );
+//        message.str(""); message << "[DEBUG] workbuf=" << std::hex << static_cast<void*>(this->workbuf) << " workindex=" << std::dec << workindex;
+//        logwrite( "Archon::DeInterlace::nirc2", message.str() );
 #endif
           for ( int row=0; row<this->frame_rows; row++ ) {
             for ( int col=0; col<this->frame_cols; col++ ) {
@@ -546,11 +546,11 @@ logwrite(function,message.str());
             }
           }
 #ifdef LOGLEVEL_DEBUG
-          message.str(""); message << "[DEBUG] work.rows=" << work.rows << " work.cols=" << work.cols 
-                                   << " resetframe.rows=" << this->resetframe.rows
-                                   << " resetframe.cols=" << this->resetframe.cols
-                                   << " readframe.rows=" << this->readframe.rows << " readframe.cols=" << this->readframe.cols;
-          logwrite( "Archon::DeInterlace::nirc2", message.str() );
+//        message.str(""); message << "[DEBUG] work.rows=" << work.rows << " work.cols=" << work.cols
+//                                 << " resetframe.rows=" << this->resetframe.rows
+//                                 << " resetframe.cols=" << this->resetframe.cols
+//                                 << " readframe.rows=" << this->readframe.rows << " readframe.cols=" << this->readframe.cols;
+//        logwrite( "Archon::DeInterlace::nirc2", message.str() );
 #endif
 
           // For CDS mode, copy the work buffer to the appropriate frame buffer
@@ -559,15 +559,15 @@ message.str(""); message << "[DEBUG] iscds=" << this->iscds << " nmcds=" << this
 logwrite(function,message.str());
           if ( this->iscds && this->nmcds==0 && slicen==0 ) {
             work.copyTo( this->resetframe );  // this is the reset frame
-message.str(""); message << "[PIXELVALS] resetframe=" << std::dec;
-for (int i=0; i<10; i++) message << " " << resetframe.ptr<uint16_t>()[i];
-logwrite(function,message.str());
+//message.str(""); message << "[PIXELVALS] resetframe=" << std::dec;
+//for (int i=0; i<10; i++) message << " " << resetframe.ptr<uint16_t>()[i];
+//logwrite(function,message.str());
           }
           if ( this->iscds && this->nmcds==0 && slicen==1 ) {
             work.copyTo( this->readframe  );  // this is the read frame
-message.str(""); message << "[PIXELVALS] readframe=";
-for (int i=0; i<10; i++) message << " " << readframe.ptr<uint16_t>()[i];
-logwrite(function,message.str());
+//message.str(""); message << "[PIXELVALS] readframe=";
+//for (int i=0; i<10; i++) message << " " << readframe.ptr<uint16_t>()[i];
+//logwrite(function,message.str());
           }
 
           // For MCDS mode, copy the work buffer to the appropriate frame buffer
@@ -591,9 +591,9 @@ logwrite(function,message.str());
             }
             cv::Mat coadd = cv::Mat( this->frame_rows, this->frame_cols, CV_32S, ptr );
             cv::add( coadd, work, coadd, cv::noArray(), coadd.type() );
-message.str(""); message << "[PIXELVALS] " << ( (slicen < this->nmcds/2) ? "first" : "second" ) << " half of MCDS pixels=" << std::dec;
-for (int i=0; i<10; i++) message << " " << ptr[i];
-logwrite(function,message.str());
+//message.str(""); message << "[PIXELVALS] " << ( (slicen < this->nmcds/2) ? "first" : "second" ) << " half of MCDS pixels=" << std::dec;
+//for (int i=0; i<10; i++) message << " " << ptr[i];
+//logwrite(function,message.str());
           }
 
         } // end of loop over cubes

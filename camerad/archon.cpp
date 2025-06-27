@@ -2914,17 +2914,10 @@ namespace Archon {
    *
    */
   void Interface::add_filename_key( Camera::Information &info ) {
-    if (info.fits_name.empty()) {
-      logwrite("Archon::Interface::add_filename_key", "ERROR filename empty");
-      return;
-    }
     auto loc = info.fits_name.find_last_of( "/" );
     std::string filename;
     filename = (loc == std::string::npos) ? info.fits_name : info.fits_name.substr( loc + 1 );
-
-    std::stringstream keystr;
-    keystr << "FILENAME=" << filename << "// this filename";
-    info.systemkeys.addkey( keystr.str() );
+    info.systemkeys.addkey( "FILENAME", filename, "this filename" );
   }
   /***** Archon::Interface::add_filename_key **********************************/
 
@@ -3412,9 +3405,8 @@ namespace Archon {
     const std::string function("Archon::Interface::image_acquisition_loop");
     char message[256];
     long error=NO_ERROR;
+    is_producer_error=true;  // set false only on successful completion
 
-SNPRINTF(message, "[DEBUG] nseq=%d", nseq);
-logwrite(function, std::string(message));
     // Before initiating the exposure, there is a kludge needed for SAMPMODE_SINGLE.
     // This mode is the same as SAMPMODE_RXV with 2 frames, except that NIRC2 only
     // wants 1. So we let the user tell us 1 frame but then we have to tell Archon
@@ -3427,17 +3419,6 @@ logwrite(function, std::string(message));
     else {
       nseqstr=std::to_string(nseq);
     }
-
-    //
-    // *** initiate the exposure here ***
-    //
-    error = this->prep_parameter(this->exposeparam, nseqstr);
-    if (error == NO_ERROR) error = this->load_parameter(this->exposeparam, nseqstr);
-    if ( error != NO_ERROR ) {
-      logwrite( function, "ERROR could not initiate exposure" );
-      return;
-    }
-    logwrite(function, "exposure started");
 
     // get system time and Archon's timer after exposure starts
     // start_timer is used to determine when the exposure has ended, in wait_for_exposure()
@@ -3458,27 +3439,19 @@ logwrite(function, std::string(message));
 
     this->camera_info.systemkeys.keydb = this->systemkeys.keydb;    // copy the systemkeys database object into camera_info
 
-logwrite(function, "[DEBUG] calling add_filename_key");
-    this->add_filename_key();                                       // add filename to system keys database
-logwrite(function, "[DEBUG] back from add_filename_key");
+    this->add_filename_key( this->camera_info );                    // add filename to system keys database
 
     // Prepare the cds info struct if a processed file is requested
     //
     if ( this->camera_info.iscds ) {
-logwrite(function, "[DEBUG] copying systemkeys db");
       this->cds_info.systemkeys.keydb  = this->systemkeys.keydb;    // copy the systemkeys database object into cds_info
-logwrite(function, "[DEBUG] get start_time");
       this->cds_info.start_time = this->camera_info.start_time;     // start time is the same
-logwrite(function, "[DEBUG] assemling fits filename");
       error=this->camera.get_fitsname( this->cds_info.fits_name);   // assemble the FITS filename
-      logwrite(function, "cds_info.fitsname="+this->cds_info.fits_name);
       if ( error != NO_ERROR ) {
         logwrite( function, "ERROR validating FITS filename "+this->cds_info.fits_name );
         return;
       }
-logwrite(function, "[DEBUG] adding filename to cds systemkeys db");
       this->add_filename_key( this->cds_info );                     // add filename to cds system keys database
-logwrite(function, "[DEBUG] added filename to cds systemkeys db");
     }
 
     if (this->camera.writekeys_when=="before") this->copy_keydb();  // copy the ACF and userkeys database into camera_info
@@ -3488,7 +3461,16 @@ logwrite(function, "[DEBUG] added filename to cds systemkeys db");
       logwrite(function, std::string(message));
     }
 
-    int framespushed=0;
+    //
+    // *** initiate the exposure here ***
+    //
+    error = this->prep_parameter(this->exposeparam, nseqstr);
+    if (error == NO_ERROR) error = this->load_parameter(this->exposeparam, nseqstr);
+    if ( error != NO_ERROR ) {
+      logwrite( function, "ERROR could not initiate exposure" );
+      return;
+    }
+    logwrite(function, "exposure started");
 
     while (error==NO_ERROR && !camera.is_aborted() && nseq-- > 0) {
 
@@ -3526,26 +3508,34 @@ logwrite(function, "[DEBUG] added filename to cds systemkeys db");
           break;
       }
 
-if (slicecounter != this->camera_info.cubedepth) {
-  SNPRINTF(message, "[DEBUG] slicecounter=%d cubedepth=%d", slicecounter, this->camera_info.cubedepth);
-  logwrite(function,message);
-}
       // prepage an ImageBuffer object for the datacube
       //
-      uint32_t bufferbytes = this->image_data_bytes * this->camera_info.cubedepth;
+      uint64_t bufferbytes = (uint64_t)this->image_data_bytes * (this->camera_info.cubedepth+1);
       auto imagebuf = std::make_shared<ImageBuffer>();
-      imagebuf->rawpixels = std::shared_ptr<char[]>(new char[bufferbytes]);
-        char* imbufptr = imagebuf->rawpixels.get();
-        imagebuf->n_slices  = slicecounter;
-        imagebuf->ncoadd = this->camera_info.ncoadd;
+      try {
+        imagebuf->rawpixels = std::shared_ptr<char[]>(new char[bufferbytes]);
+      }
+      catch (const std::bad_alloc &e) {
+        SNPRINTF(message, "ERROR memory allocation failed: %s", e.what());
+        logwrite(function, std::string(message));
+        error=ERROR;
+        break;
+      }
+
+      char* imbufptr = imagebuf->rawpixels.get();
+
+      imagebuf->n_slices  = slicecounter;
+      imagebuf->ncoadd = this->camera_info.ncoadd;
+
+        const std::string firstframe("waiting for first frame (discarded)");
+        const std::string firstslice("waiting for slice 1 of 1");
 
         // Loop over the number of slices in this datacube.
         // If there is more than one slice, then wait for all slices (the whole cube)
         // before pushing the cube into the queue.
         //
-        const std::string firstframe("waiting for first frame (discarded)");
-        const std::string firstslice("waiting for slice 1 of 1");
         for ( int slice=0; !this->camera.is_aborted() && slice < slicecounter; slice++ ) {
+
           if ( this->camera_info.sampmode == SAMPMODE_SINGLE && slice==0 ) {
             logwrite( function, firstframe );
           }
@@ -3579,7 +3569,7 @@ if (slicecounter != this->camera_info.cubedepth) {
 
           if ( needs_exposure_delay ) {
             last_frame_timer = frame.buftimestamp[frame.index];
-            if (camera_info.exposure_delay > 5000) {
+            if (camera_info.exposure_delay > 3000) {
               error=wait_for_exposure();
               if (error!=NO_ERROR) {
                 logwrite(function, "ERROR");
@@ -4055,7 +4045,7 @@ logwrite(function, message.str());
    */
   long Interface::wait_for_exposure() {
     const std::string function("Archon::Interface::wait_for_exposure");
-    std::stringstream message;
+    char message[256];
     long error = NO_ERROR;
 
     int exposure_timeout_time;  // Time to wait for the exposure delay to time out
@@ -4064,12 +4054,12 @@ logwrite(function, message.str());
     // "exposure_delay" is the amount of time that the Archon is told to delay.
     // This is not "exposure_time" which is the total exposure time, exposure_delay + readouttime.
     //
-    int32_t exposure_delay = this->camera_info.exposure_delay;
+    uint32_t exposure_delay = this->camera_info.exposure_delay;
 
     // waittime is 1 second less than the exposure time,
     // or 0 if exposure time is <= 1 sec.
     //
-    double waittime = ( exposure_delay / this->camera_info.exposure_factor ) - 1;
+    double waittime = ( (double)exposure_delay / this->camera_info.exposure_factor ) - 1.0;
     waittime = ( waittime < 0 ? 0 : waittime );
 
     // Wait, (don't sleep) for the above waittime.
@@ -4082,18 +4072,18 @@ logwrite(function, message.str());
     // and is computed as last_frame_timer + exposure_delay in Archon ticks.
     // Each Archon tick is 10 nsec (1e8 sec). Divide by exposure_factor (=1 for sec, =1000 for msec).
     //
-    uint64_t prediction   = this->last_frame_timer + this->camera_info.exposure_delay * 100000000 / this->camera_info.exposure_factor;
+    uint64_t prediction = this->last_frame_timer + ( (uint64_t)this->camera_info.exposure_delay * 100000000 ) / this->camera_info.exposure_factor;
 
 #ifdef LOGLEVEL_DEBUG
-    message.str(""); message << "[DEBUG] exposure_delay=" << this->camera_info.exposure_delay << " exposure_factor=" << this->camera_info.exposure_factor
-                             << " waittime=" << waittime << "s  last_frame_timer=" << this->last_frame_timer << " prediction=" << prediction;
-    logwrite( function, message.str() );
+//  SNPRINTF(message, "[DEBUG] exposure_delay=%u exposure_factor=%d waittime=%lfs last_frame_timer=%lu prediction=%lu",
+//           this->camera_info.exposure_delay, this->camera_info.exposure_factor, waittime, this->last_frame_timer, prediction);
+//  logwrite( function, std::string(message) );
 #endif
 
 //  std::cerr << "exposure progress: ";
     while ( (now - (waittime + start_time) < 0) && not this->camera.is_aborted() ) {
-      std::this_thread::sleep_for( std::chrono::milliseconds(10) );  // sleep 10 msec = 1e6 Archon ticks
-      increment += 1000000;
+      std::this_thread::sleep_for( std::chrono::milliseconds(100) );  // sleep 100 msec = 1e7 Archon ticks
+      increment += 10000000;
       now = get_clock_time();
       this->camera_info.exposure_progress = (double)increment / (double)(prediction - this->last_frame_timer);
       if (this->camera_info.exposure_progress < 0 || this->camera_info.exposure_progress > 1) this->camera_info.exposure_progress=1;
@@ -4101,8 +4091,8 @@ logwrite(function, message.str());
 
       // ASYNC status message reports the elapsed time in the chosen unit
       //
-      message.str(""); message << "EXPOSURE:" << (int)(this->camera_info.exposure_delay - (this->camera_info.exposure_progress * this->camera_info.exposure_delay));
-      this->camera.async.enqueue( message.str() );
+      SNPRINTF(message, "EXPOSURE:%d", (int)(this->camera_info.exposure_delay - (this->camera_info.exposure_progress * this->camera_info.exposure_delay)));
+      this->camera.async.enqueue( std::string(message) );
     }
 
     // Set the time out value. If the exposure time is less than a second, set
@@ -4135,8 +4125,8 @@ logwrite(function, message.str());
 
       // ASYNC status message reports the elapsed time in the chosen unit
       //
-      message.str(""); message << "EXPOSURE:" << (int)(this->camera_info.exposure_delay - (this->camera_info.exposure_progress * this->camera_info.exposure_delay));
-      this->camera.async.enqueue( message.str() );
+      SNPRINTF(message, "EXPOSURE:%d", (int)(this->camera_info.exposure_delay - (this->camera_info.exposure_progress * this->camera_info.exposure_delay)));
+      this->camera.async.enqueue( std::string(message) );
 
 //    std::cerr << std::setw(3) << (int)(this->camera_info.exposure_progress*100) << "\b\b\b";  // send to stderr in case anyone is watching
 
@@ -4165,6 +4155,7 @@ logwrite(function, message.str());
         break;
       }
     }  // end while (done == false && not this->camera.is_aborted)
+    this->camera.async.enqueue( "EXPOSURE:0" );
 
 //  std::cerr << "\n";
 
@@ -4192,6 +4183,7 @@ logwrite(function, message.str());
     const std::string function("Archon::Interface::wait_for_readout");
     long error = NO_ERROR;
     int currentframe=this->lastframe;
+    uint32_t pollcount=0;
     int busycount=0;
     bool done = false;
 
@@ -4208,7 +4200,7 @@ logwrite(function, message.str());
       return ERROR;
     }
 
-    double clock_now     = get_clock_time();                   // get_clock_time returns seconds
+    double clock_now     = fast_clock_time();                  // get_clock_time returns seconds
     double clock_timeout = clock_now + waittime/1000.;         // must receive frame by this time
 
     // Poll frame status until current frame is not the last frame and the buffer is ready to read.
@@ -4251,14 +4243,16 @@ logwrite(function, message.str());
       // If the frame isn't done by the predicted time then
       // enough time has passed to trigger a timeout error.
       //
-      if (clock_now > clock_timeout) {
-        done = true;
-        error = ERROR;
-        SNPRINTF(message, "ERROR timeout waiting for new frame exceeded %lf. lastframe=%d", waittime, this->lastframe);
-        logwrite( function, std::string(message) );
-        break;
+      if (++pollcount % 100 == 0) {
+        clock_now = fast_clock_time();
+        if (clock_now > clock_timeout) {
+          done = true;
+          error = ERROR;
+          SNPRINTF(message, "ERROR timeout waiting for new frame exceeded %lf. lastframe=%d", waittime, this->lastframe);
+          logwrite( function, std::string(message) );
+          break;
+        }
       }
-      clock_now = get_clock_time();
 
       // ASYNC status message reports the number of lines read so far,
       // which is buflines not from this->frame.index but from the NEXT index...
@@ -4753,7 +4747,6 @@ logwrite(function, message.str());
    */
   void Interface::copy_keydb() {
     const std::string function("Archon::Interface::copy_keydb");
-    std::stringstream message;
 
     // copy the userkeys database object into camera_info
     //
@@ -4766,8 +4759,7 @@ logwrite(function, message.str());
       this->cds_info.userkeys.keydb  = this->userkeys.keydb;
       this->cds_info.extkeys.keydb   = this->extkeys.keydb;
       // also must insert this special key just for cds proc
-      message.str(""); message << "CDS_OFFS=" << Archon::CDS_OFFS << " // CDS read frame offset";
-      this->cds_info.extkeys.addkey( message.str() );
+      this->cds_info.extkeys.addkey( "CDS_OFFS", Archon::CDS_OFFS, "CDS read frame offset" );
     }
 
     // add any keys from the ACF file (from modemap[mode].acfkeys) into the
@@ -4798,10 +4790,6 @@ logwrite(function, message.str());
         this->cds_info.userkeys.keydb[keyit->second.keyword].keycomment = keyit->second.keycomment;
       }
     }
-
-#ifdef LOGLEVEL_DEBUG
-    logwrite( function, "[DEBUG] copied userkeys db to camera_info" );
-#endif
 
     return;
   }

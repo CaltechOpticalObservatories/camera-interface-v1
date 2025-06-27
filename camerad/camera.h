@@ -241,7 +241,7 @@ namespace Camera {
       bool          shutterenable;           //!< set true to allow the controller to open the shutter on expose, false to disable it
       std::string   shutteractivate;         //!< shutter activation state
       int32_t       exposure_time;           //!< requested exposure time in exposure_unit
-      int32_t       exposure_delay;          //!< exposure delay given to controller in exposure_unit
+      uint32_t      exposure_delay;          //!< exposure delay given to controller in exposure_unit
       int32_t       requested_exptime;       //!< user-requested exposure time
       int32_t       readouttime;             //!< readout time, or minimum exposure time
       std::string   exposure_unit;           //!< exposure time unit
