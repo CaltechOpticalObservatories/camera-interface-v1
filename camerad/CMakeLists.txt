@@ -38,7 +38,7 @@ include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 
 # ----------------------------------------------------------------------------
 
-add_definitions( -ansi -O1 -Wno-variadic-macros -std=c++17 -ggdb3 )
+add_compile_options( -O3 -march=native -DNDEBUG )
 
 add_executable(camerad
         ${CAMERA_DIR}/camerad.cpp

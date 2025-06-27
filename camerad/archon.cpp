@@ -3701,19 +3701,19 @@ namespace Archon {
       queue_cv.wait(lock, [this] {
           return !imagebuf_queue.empty() || is_producer_finished || camera.is_aborted();
           });
-message.str(""); message << "[DEBUG] Woke up. Queue size: " << imagebuf_queue.size()
-                         << ", finished: " << is_producer_finished
-                         << ", aborted: " << camera.is_aborted();
-logwrite(function, message.str());
+//message.str(""); message << "[DEBUG] Woke up. Queue size: " << imagebuf_queue.size()
+//                         << ", finished: " << is_producer_finished
+//                         << ", aborted: " << camera.is_aborted();
+//logwrite(function, message.str());
       if (camera.is_aborted()) break;
 
       if (imagebuf_queue.empty()) {       // nothing in the queue
         if (is_producer_finished) {
-          logwrite(function, "[DEBUG] exit due to empty queue and producer finished");
+//        logwrite(function, "[DEBUG] exit due to empty queue and producer finished");
           break;  // nothing else is coming
         }
         else {
-          logwrite(function, "[DEBUG] queue empty but producer not finished");
+//        logwrite(function, "[DEBUG] queue empty but producer not finished");
           continue;                    // or keep waiting
         }
       }
@@ -3757,12 +3757,6 @@ logwrite(function, message.str());
 
       this->copy_keydb();  // copy the ACF and userkeys database into camera_info
 
-/*** is this needed?
- *    const std::string slicestr(std::to_string(slice_ts));
- *    this->extkeys.addkey( "NSLICE=" + slicestr + "// slice number" );
- *    this->camera.async.enqueue( "NSLICE:" + slicestr );
- ***/
-
       // process this image cube will deinterlace, perform any needed CDS subtraction,
       // and write the image to disk
       //
@@ -3771,6 +3765,8 @@ logwrite(function, message.str());
     } // end while !aborted
 
     logwrite(function, (camera.is_aborted()?"aborted":"completed"));
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));  // kludge for now, fits engine race condition
 
     // close the FITS files and notify completion
     if (__fits_file) {
@@ -3801,14 +3797,14 @@ logwrite(function, message.str());
     long error=NO_ERROR;
 
     logwrite(function, "start");
-    message << "[DEBUG] camera_info.datatype=" << this->camera_info.datatype; logwrite(function,message.str());
+//  message << "[DEBUG] camera_info.datatype=" << this->camera_info.datatype; logwrite(function,message.str());
 
     // call the appropriate template deinterlacer
     //
     switch (this->camera_info.datatype) {
       case USHORT_IMG:
         {
-        logwrite(function, "[DEBUG] processing 16-bit unsigned");
+//      logwrite(function, "[DEBUG] processing 16-bit unsigned");
         auto buf16u = std::make_unique<ProcessingBuffers<uint16_t>>(camera_info.section_size, cds_info.section_size);
         deinterlace_queue<uint16_t>(imagebuf, *buf16u);
         error=this->__fits_file->write_image( buf16u->workbuf.get(),
@@ -3820,14 +3816,14 @@ logwrite(function, message.str());
         }
       case SHORT_IMG:
         {
-        logwrite(function, "[DEBUG] processing 16-bit signed");
+//      logwrite(function, "[DEBUG] processing 16-bit signed");
         auto buf16s = std::make_unique<ProcessingBuffers<int16_t>>(camera_info.section_size, cds_info.section_size);
         deinterlace_queue<int16_t>(imagebuf, *buf16s);
         break;
         }
       case FLOAT_IMG:
         {
-        logwrite(function, "[DEBUG] processing 32-bit unsigned");
+//      logwrite(function, "[DEBUG] processing 32-bit unsigned");
         auto buf32u = std::make_unique<ProcessingBuffers<uint32_t>>(camera_info.section_size, cds_info.section_size);
         deinterlace_queue<uint32_t>(imagebuf, *buf32u);
         break;
@@ -3851,14 +3847,14 @@ logwrite(function, message.str());
 
     logwrite(function, "start");
 
-std::stringstream message;
+//std::stringstream message;
     try {
       if (mcdsbuf_0) memset(mcdsbuf_0, 0, cds_info.section_size * sizeof(int32_t));
       if (mcdsbuf_1) memset(mcdsbuf_1, 0, cds_info.section_size * sizeof(int32_t));
 
-message << "[DEBUG] mcdsbuf_0=" << std::hex << static_cast<void*>(mcdsbuf_0)
-        << " mcdsbuf_1=" << static_cast<void*>(mcdsbuf_1);
-logwrite(function,message.str());
+//message << "[DEBUG] mcdsbuf_0=" << std::hex << static_cast<void*>(mcdsbuf_0)
+//        << " mcdsbuf_1=" << static_cast<void*>(mcdsbuf_1);
+//logwrite(function,message.str());
       T* _imbuf   = reinterpret_cast<T*>(imagebuf->rawpixels.get());
       T* _workbuf = buffers.workbuf.get();
       T* _cdsbuf  = buffers.cdsbuf.get();
@@ -3905,34 +3901,34 @@ logwrite(function,message.str());
     //
     cv::Mat* _coadd = this->coadd_img.get();
     cv::Mat* _diff  = this->diff_img.get();
-message.str(""); message << "ncoadd=" << this->cds_info.ncoadd << " nseq=" << camera_info.nseq << " cds_info.nmcds=" << this->cds_info.nmcds << " camera_info.nmcds=" << this->camera_info.nmcds;
-logwrite( function, message.str() );
-if (this->cds_info.nmcds>0) {
-{
-message.str(""); message << "[PIXELVALS] entry coadd_img=";
-double* data = (double*)_coadd->data;
-for(int i=0; i<10; i++) message << " " << data[i];
-logwrite(function, message.str());
-}
-{
-message.str(""); message << "[PIXELVALS] entry diff_img=";
-double* data = (double*)_diff->data;
-for(int i=0; i<10; i++) message << " " << data[i];
-logwrite(function, message.str());
-}
-{
-message.str(""); message << "[PIXELVALS] entry mcdsbuf_0 " << std::hex << static_cast<void*>(this->mcdsbuf_0)
-                         << " pixels=" << std::dec;
-for(int i=0; i<10; i++) message << " " << this->mcdsbuf_0[i];
-logwrite(function, message.str());
-}
-{
-message.str(""); message << "[PIXELVALS] entry mcdsbuf_1 " << std::hex << static_cast<void*>(this->mcdsbuf_1)
-                         << " pixels=" << std::dec;
-for(int i=0; i<10; i++) message << " " << this->mcdsbuf_1[i];
-logwrite(function, message.str());
-}
-}
+//message.str(""); message << "ncoadd=" << this->cds_info.ncoadd << " nseq=" << camera_info.nseq << " cds_info.nmcds=" << this->cds_info.nmcds << " camera_info.nmcds=" << this->camera_info.nmcds;
+//logwrite( function, message.str() );
+//if (this->cds_info.nmcds>0) {
+//{
+//message.str(""); message << "[PIXELVALS] entry coadd_img=";
+//double* data = (double*)_coadd->data;
+//for(int i=0; i<10; i++) message << " " << data[i];
+//logwrite(function, message.str());
+//}
+//{
+//message.str(""); message << "[PIXELVALS] entry diff_img=";
+//double* data = (double*)_diff->data;
+//for(int i=0; i<10; i++) message << " " << data[i];
+//logwrite(function, message.str());
+//}
+//{
+//message.str(""); message << "[PIXELVALS] entry mcdsbuf_0 " << std::hex << static_cast<void*>(this->mcdsbuf_0)
+//                         << " pixels=" << std::dec;
+//for(int i=0; i<10; i++) message << " " << this->mcdsbuf_0[i];
+//logwrite(function, message.str());
+//}
+//{
+//message.str(""); message << "[PIXELVALS] entry mcdsbuf_1 " << std::hex << static_cast<void*>(this->mcdsbuf_1)
+//                         << " pixels=" << std::dec;
+//for(int i=0; i<10; i++) message << " " << this->mcdsbuf_1[i];
+//logwrite(function, message.str());
+//}
+//}
 
     // MCDS subtraction and co-adding
     //
@@ -3974,10 +3970,10 @@ logwrite(function, message.str());
     //
     if ( is_last_coadd ) {
       if (camera_info.nmcds==0) {
-message.str(""); message << "[PIXELVALS] nmcds=" << camera_info.nmcds << " after cds coaddbuf=";
-for (int i=0; i<10; i++) message << " " << this->coaddbuf[i];
-logwrite(function, message.str());
-logwrite( function, "[DEBUG] (a) calling __file_cds->write_image" );
+//message.str(""); message << "[PIXELVALS] nmcds=" << camera_info.nmcds << " after cds coaddbuf=";
+//for (int i=0; i<10; i++) message << " " << this->coaddbuf[i];
+//logwrite(function, message.str());
+//logwrite( function, "[DEBUG] (a) calling __file_cds->write_image" );
         this->__file_cds->write_image( this->coaddbuf,
                                        get_timestamp(),
                                        0,
@@ -3994,10 +3990,10 @@ logwrite( function, "[DEBUG] (a) calling __file_cds->write_image" );
             this->coaddbuf[index++] = static_cast<int32_t>(std::round(finalcoadd.at<double>(row,col)));
           }
         }
-message.str(""); message << "[PIXELVALS] nmcds=" << camera_info.nmcds << " after cds coaddbuf=";
-for (int i=0; i<10; i++) message << " " << this->coaddbuf[i];
-logwrite(function, message.str());
-logwrite( function, "[DEBUG] (b) calling __file_cds->write_image" );
+//message.str(""); message << "[PIXELVALS] nmcds=" << camera_info.nmcds << " after cds coaddbuf=";
+//for (int i=0; i<10; i++) message << " " << this->coaddbuf[i];
+//logwrite(function, message.str());
+//logwrite( function, "[DEBUG] (b) calling __file_cds->write_image" );
         this->__file_cds->write_image( this->coaddbuf,
                                        get_timestamp(),
                                        0,
@@ -4005,20 +4001,20 @@ logwrite( function, "[DEBUG] (b) calling __file_cds->write_image" );
                                      );
       }
     }
-if (this->cds_info.nmcds>0) {
-{
-message.str(""); message << "[PIXELVALS] exit coadd_img=";
-int32_t* data = (int32_t*)_coadd->data;
-for(int i=0; i<10; i++) message << " " << data[i];
-logwrite(function, message.str());
-}
-{
-message.str(""); message << "[PIXELVALS] exit diff_img=";
-int32_t* data = (int32_t*)_diff->data;
-for(int i=0; i<10; i++) message << " " << data[i];
-logwrite(function, message.str());
-}
-}
+//if (this->cds_info.nmcds>0) {
+//{
+//message.str(""); message << "[PIXELVALS] exit coadd_img=";
+//int32_t* data = (int32_t*)_coadd->data;
+//for(int i=0; i<10; i++) message << " " << data[i];
+//logwrite(function, message.str());
+//}
+//{
+//message.str(""); message << "[PIXELVALS] exit diff_img=";
+//int32_t* data = (int32_t*)_diff->data;
+//for(int i=0; i<10; i++) message << " " << data[i];
+//logwrite(function, message.str());
+//}
+//}
     logwrite(function, "complete");
   }
   /***** Archon::Interface::runcds ********************************************/

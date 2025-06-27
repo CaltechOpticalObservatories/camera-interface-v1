@@ -529,6 +529,10 @@ private:
     message << "closing FITS data cube " << this->fits_name;
     logwrite(function, message.str());
 
+message.str(""); message << "[DEBUG] last_image=" << (this->last_image?"T":"F")
+                         << " mex_frames.size=" << this->mex_frames.size()
+                         << " mex_cache.size=" << this->mex_cache.size();
+logwrite(function, message.str());
     // Stop the mex writing thread only after the final image is received and
     // processed
     if (this->last_image == true && this->mex_frames.size() == 0 &&
@@ -675,6 +679,7 @@ private:
     this->total_frames = 0;
 
     // Loop until the flag to finish processing is set
+logwrite(function, "[DEBUG] enter Loop until the flag to finish processing is set");
     while (this->run_mex_thread == true && finished == false){
 
       // Pull data out of the cube cache if there is something in it.  This is
@@ -849,6 +854,7 @@ private:
         logwrite(function, "flag set to finish writing the data mex");
       }
     }
+logwrite(function, "[DEBUG] exit Loop until the flag to finish processing is set");
 
     // Close the final cube
     error = this->close_mex(_camera_info);
