@@ -276,6 +276,7 @@ namespace Camera {
         naxes({0, 0, 0}),                  //!< array of axis lengths where element 0=cols, 1=rows, 2=cubedepth
         binning{1, 1},                     //!< pixel binning, each axis
         region_of_interest{1, 1, 1, 1},    //!< region of interest
+        activebufs(3),
         datatype(0),                       //!< FITS data type (corresponding to bitpix) used in set_axes()
         type_set(false),                   //!< set when FITS data type has been defined
         pixel_time(0),                     //!< pixel time in usec

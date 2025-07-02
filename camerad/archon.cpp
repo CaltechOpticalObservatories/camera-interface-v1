@@ -19,7 +19,8 @@ namespace Archon {
     this->firmwareloaded = false;
     this->msgref = 0;
     this->lastframe = 0;
-    this->frame.index = 0;
+    this->lasttimestamp = 0;
+    this->frame.index.store(0);
     this->frame.next_index = 0;
     this->taplines = 0;
 
@@ -621,6 +622,27 @@ namespace Archon {
     std::stringstream keystr;
     keystr << "HDRSHIFT=" << this->n_hdrshift << "// number of HDR right-shift bits";
     this->systemkeys.addkey( keystr.str() );
+
+    // Ensures these values are set on startup
+    //
+    get_frame_status();
+    if (this->lastframe==0) {
+      for (int i=0; i<Archon::nbufs; ++i) {
+        if (this->frame.bufframen[i] > this->lastframe) {
+          this->lastframe = this->frame.bufframen[i];
+          this->lasttimestamp = this->frame.buftimestamp[i];
+          this->frame.index.store(i);
+        }
+      }
+      if (this->lastframe==0) {
+        this->frame.index.store(0);
+        this->lasttimestamp=0;
+      }
+    }
+    message.str(""); message << "last frame " << this->lastframe
+                             << " buffer " << this->frame.index.load()
+                             << " timestamp " << this->lasttimestamp;
+    logwrite(function, message.str());
 
     return(error);
   }
@@ -2137,8 +2159,7 @@ namespace Archon {
   long Interface::get_frame_status() {
     const std::string function("Archon::Interface::get_frame_status");
     std::string reply;
-    std::stringstream message;
-    int   newestframe, newestbuf;
+    char message[512];
     long  error=NO_ERROR;
 
     // send FRAME command to get frame buffer status
@@ -2235,60 +2256,111 @@ namespace Archon {
       } // end if BUFnXXXX pattern
     } // end looping through reply
 
-    newestbuf   = this->frame.index;
+    int completed_index = -1;
+    int newestframe=0, newestbuf;
+char statestr[Archon::nbufs][64];
+char framestr[Archon::nbufs][64];
 
-    if (this->frame.index < (int)this->frame.bufframen.size()) {
-      newestframe = this->frame.bufframen[this->frame.index];
-    }
-    else {
-      message.str(""); message << "newest buf " << this->frame.index << " from FRAME message exceeds number of buffers " << this->frame.bufframen.size();
-      this->camera.log_error( function, message.str() );
-      return ERROR;
-    }
-
-    // loop through the number of buffers
-    //
-    int num_zero = 0;
-    for (int bc=0; bc<Archon::nbufs; bc++) {
-
-      // look for special start-up case, when all frame buffers are zero
-      //
-      if ( this->frame.bufframen[bc] == 0 ) num_zero++;
-
-      if ( (this->frame.bufframen[bc] > newestframe) &&
-            this->frame.bufcomplete[bc] ) {
-        newestframe = this->frame.bufframen[bc];
-        newestbuf   = bc;
+    for (int i = 0; i < Archon::nbufs; ++i) {
+memset(statestr[i], '\0', sizeof(statestr[i]));
+memset(framestr[i], '\0', sizeof(framestr[i]));
+if ( (this->frame.rbuf-1) == i)   strcat(statestr[i], "R");
+if ( (this->frame.wbuf-1) == i)   strcat(statestr[i], "W");
+if ( this->frame.bufcomplete[i] ) strcat(statestr[i], "C");
+SNPRINTF(framestr[i], "%d %lu", this->frame.bufframen[i], (this->frame.bufcomplete[i]?this->frame.buftimestamp[i]:0));
+//    if (this->frame.bufcomplete[i] && this->frame.bufframen[i] > newestframe) {
+SNPRINTF(message, "[DEBUG] bufframen[%d]=%d bufcomplete[%d]=%s newestframe=%d",
+         i, frame.bufframen[i], i, frame.bufcomplete[i]?"T":"F", newestframe);
+logwrite(function, std::string(message));
+      if (this->frame.bufframen[i] > newestframe) {
+        this->frame.currentframe.store(this->frame.bufframen[i]);
+        if (this->frame.bufcomplete[i]) {
+          newestframe = this->frame.bufframen[i];
+          completed_index = i;
+        }
       }
     }
-
-    // start-up case, all frame buffers are zero
-    //
-    if (num_zero == Archon::nbufs) {
-      newestframe = 0;
-      newestbuf   = 0;
+    this->lastframe = newestframe;
+    if (completed_index != -1) {
+SNPRINTF(message, "[DEBUG] completed_index=%d bufframen=%d lasttimestamp=%lu",
+         completed_index, frame.bufframen[completed_index], this->frame.buftimestamp[completed_index]);
+logwrite(function, std::string(message));
+      this->lasttimestamp = this->frame.buftimestamp[completed_index];
+      this->frame.index.store(completed_index);
+//    this->frame.currentframe = this->frame.bufframen[completed_index];
+      this->frame.next_index = (completed_index + 1) % this->camera_info.activebufs;
     }
+SNPRINTF(message, "     %s %s  |  %s %s  |  %s %s", framestr[0], statestr[0], framestr[1], statestr[1],framestr[2], statestr[2]);
+logwrite(function,std::string(message));
+SNPRINTF(message, "     newestframe=%d  frame.currentframe=%d", newestframe, this->frame.currentframe.load());
+logwrite(function,std::string(message));
 
-    /**
-     * save index of newest buffer. From this we can find the newest frame, etc.
-     */
-    this->frame.index = newestbuf;
-    this->frame.frame = newestframe;
-
-    // Index of next frame is this->frame.index+1 
-    // except for start-up case (when it is 0) and
-    // wrapping to 0 when it reaches the maximum number of active buffers.
-    //
-    this->frame.next_index = this->frame.index + 1;
-    if ( this->frame.next_index >= this->camera_info.activebufs ) {
-      this->frame.next_index = 0;
-    }
-
-    // startup condition for next_frame
-    //
-    if ( ( this->frame.bufframen[ this->frame.index ] ) == 1 && this->frame.bufcomplete[ this->frame.index ] == 0 ) {
-      this->frame.next_index = 0;
-    }
+/*****
+ *  newestbuf   = this->frame.index;
+ *
+ *  if (this->frame.index < (int)this->frame.bufframen.size()) {
+ *    newestframe = this->frame.bufframen[this->frame.index];
+ *  }
+ *  else {
+ *    message.str(""); message << "newest buf " << this->frame.index << " from FRAME message exceeds number of buffers " << this->frame.bufframen.size();
+ *    this->camera.log_error( function, message.str() );
+ *    return ERROR;
+ *  }
+ *
+ *  // loop through the number of buffers
+ *  //
+ *  int num_zero = 0;
+ *char statestr[Archon::nbufs][64];
+ *char framestr[Archon::nbufs][64];
+ *  for (int bc=0; bc<Archon::nbufs; bc++) {
+ *
+ *    // look for special start-up case, when all frame buffers are zero
+ *    //
+ *    if ( this->frame.bufframen[bc] == 0 ) num_zero++;
+ *
+ *    if ( (this->frame.bufframen[bc] > newestframe) &&
+ *          this->frame.bufcomplete[bc] ) {
+ *      newestframe = this->frame.bufframen[bc];
+ *      newestbuf   = bc;
+ *    }
+memset(statestr[bc], '\0', 4);
+if ( (this->frame.rbuf-1) == bc)   strcat(statestr[bc], "R");
+if ( (this->frame.wbuf-1) == bc)   strcat(statestr[bc], "W");
+if ( this->frame.bufcomplete[bc] ) strcat(statestr[bc], "C");
+SNPRINTF(framestr[bc], "%u %lu", this->frame.bufframen[bc], (this->frame.bufcomplete[bc]?this->frame.buftimestamp[bc]:0));
+ *  }
+char msg[512];
+SNPRINTF(msg, "     %s %s  |  %s %s  |  %s %s", framestr[0], statestr[0], framestr[1], statestr[1],framestr[2], statestr[2]);
+logwrite(function,std::string(msg));
+ *
+ *  // start-up case, all frame buffers are zero
+ *  //
+ *  if (num_zero == Archon::nbufs) {
+ *    newestframe = 0;
+ *    newestbuf   = 0;
+ *  }
+ *
+ *  **
+ *   * save index of newest buffer. From this we can find the newest frame, etc.
+ *   *
+ *  this->frame.index = newestbuf;
+ *  this->frame.currentframe = newestframe;
+ *
+ *  // Index of next frame is this->frame.index+1 
+ *  // except for start-up case (when it is 0) and
+ *  // wrapping to 0 when it reaches the maximum number of active buffers.
+ *  //
+ *  this->frame.next_index = this->frame.index + 1;
+ *  if ( this->frame.next_index >= this->camera_info.activebufs ) {
+ *    this->frame.next_index = 0;
+ *  }
+ *
+ *  // startup condition for next_frame
+ *  //
+ *  if ( ( this->frame.bufframen[ this->frame.index ] ) == 1 && this->frame.bufcomplete[ this->frame.index ] == 0 ) {
+ *    this->frame.next_index = 0;
+ *  }
+ *****/
 
     return error;
   }
@@ -2312,6 +2384,7 @@ namespace Archon {
     std::stringstream message;
     int bufn;
     char statestr[Archon::nbufs][4];
+    auto index = this->frame.index.load();
 
     // write as log message
     //
@@ -2327,7 +2400,7 @@ namespace Archon {
       if ( this->frame.bufcomplete[bufn] ) strcat(statestr[bufn], "C");
     }
     for (bufn=0; bufn < Archon::nbufs; bufn++) {
-      message << std::setw(3) << (bufn==this->frame.index ? "-->" : "") << " ";                       // buf
+      message << std::setw(3) << (bufn==index ? "-->" : "") << " ";                       // buf
       message << std::setw(3) << bufn+1 << " ";
       message << "0x" << std::uppercase << std::setfill('0') << std::setw(8) << std::hex
               << this->frame.bufbase[bufn] << " ";                                                    // base
@@ -2441,8 +2514,9 @@ namespace Archon {
   long Interface::fetch(uint64_t bufaddr, uint32_t bufblocks) {
     const std::string function("Archon::Interface::fetch");
     std::stringstream message;
+    auto index = this->frame.index.load();
     uint32_t maxblocks = (uint32_t)(1.5E9 / this->camera_info.activebufs / 1024 );
-    uint64_t maxoffset = this->frame.bufbase[this->frame.index];
+    uint64_t maxoffset = this->frame.bufbase[index];
     uint64_t maxaddr = maxoffset + maxblocks;
 
     if ( bufaddr > maxaddr ) {
@@ -2496,12 +2570,13 @@ namespace Archon {
     unsigned int block, bufblocks=0;
     long error = ERROR;
     int num_detect = this->modemap[this->camera_info.current_observing_mode].geometry.num_detect;
+    auto index = this->frame.index.load();
 
     this->camera_info.frame_type = frame_type;
 
     // Archon buffer number of the last frame read into memory
     //
-    bufready = this->frame.index + 1;
+    bufready = index + 1;
 
     if (bufready < 1 || bufready > this->camera_info.activebufs) {
       message.str(""); message << "invalid Archon buffer " << bufready << " requested. Expected {1:" << this->camera_info.activebufs << "}";
@@ -2520,7 +2595,7 @@ namespace Archon {
     switch (frame_type) {
       case Camera::FRAME_RAW:
         // Archon buffer base address
-        bufaddr   = this->frame.bufbase[this->frame.index] + this->frame.bufrawoffset[this->frame.index];
+        bufaddr   = this->frame.bufbase[index] + this->frame.bufrawoffset[index];
 
         // Calculate the number of blocks expected. image_memory is bytes per detector
         bufblocks = (unsigned int) floor( (this->camera_info.image_memory + BLOCK_LEN - 1 ) / BLOCK_LEN );
@@ -2528,7 +2603,7 @@ namespace Archon {
 
       case Camera::FRAME_IMAGE:
         // Archon buffer base address
-        bufaddr   = this->frame.bufbase[this->frame.index];
+        bufaddr   = this->frame.bufbase[index];
 
         // Calculate the number of blocks expected. image_memory is bytes per detector
         bufblocks =
@@ -3313,7 +3388,7 @@ namespace Archon {
     //
     this->camera_info.ismex = this->camera.mex();
 
-    error = this->get_frame_status();  // TODO is this needed here?
+//  error = this->get_frame_status();  // TODO is this needed here?
 
     if (error != NO_ERROR) {
       logwrite( function, "ERROR: unable to get frame status" );
@@ -3340,8 +3415,6 @@ namespace Archon {
         this->cds_info.bitpix = 32;
       }
     }
-
-    this->lastframe = this->frame.bufframen[this->frame.index];     // save the last frame number acquired (wait_for_readout will need this)
 
     is_producer_finished=false;  // tells the consumer that no more images are coming
     is_producer_error=false;     // tells this thread if producer had an error
@@ -3470,7 +3543,10 @@ namespace Archon {
       logwrite( function, "ERROR could not initiate exposure" );
       return;
     }
+    clock_gettime(CLOCK_MONOTONIC, &this->exposure_reference_time);  // note when exposure started
     logwrite(function, "exposure started");
+
+    this->buffer_timestamps.clear();
 
     while (error==NO_ERROR && !camera.is_aborted() && nseq-- > 0) {
 
@@ -3567,8 +3643,10 @@ namespace Archon {
             needs_exposure_delay = (slice==0);
           }
 
+          auto index = frame.index.load();
+
           if ( needs_exposure_delay ) {
-            last_frame_timer = frame.buftimestamp[frame.index];
+            last_frame_timer = frame.buftimestamp[index];
             if (camera_info.exposure_delay > 3000) {
               error=wait_for_exposure();
               if (error!=NO_ERROR) {
@@ -3601,8 +3679,8 @@ namespace Archon {
 
         // record the Archon buffer frame number and timestamp for this frame
         //
-        imagebuf->bufframen_slice.push_back( this->frame.bufframen[this->frame.index] );
-        imagebuf->buftimestamp_slice.push_back( this->frame.buftimestamp[this->frame.index] );
+        imagebuf->bufframen_slice.push_back( this->frame.bufframen[index] );
+        imagebuf->buftimestamp_slice.push_back( this->frame.buftimestamp[index] );
 
         SNPRINTF(message, "NSLICE:%d", slice+1);
         this->camera.async.enqueue(std::string(message));
@@ -3772,7 +3850,7 @@ namespace Archon {
     if (__fits_file) {
       __fits_file->complete();
       __fits_file.reset();
-      this->camera.async.enqueue("FILE:" + this->camera_info.fits_name + " COMPLETE");
+      this->camera.async.enqueue("RAWFILE:" + this->camera_info.fits_name + " COMPLETE");
     }
     if (__file_cds) {
       __file_cds->complete();
@@ -4177,34 +4255,59 @@ namespace Archon {
    */
   long Interface::wait_for_readout() {
     const std::string function("Archon::Interface::wait_for_readout");
+    char message[256];
     long error = NO_ERROR;
-    int currentframe=this->lastframe;
-    uint32_t pollcount=0;
-    int busycount=0;
     bool done = false;
 
-    char message[256];
-    SNPRINTF(message, "waiting for new frame: lastframe=%d frame.index=%d", this->lastframe, this->frame.index);
+    // local copies
+    int index                  = this->frame.index.load();
+    int previous_frame         = this->lastframe;  // this is the frame number coming in here, don't change this
+    int latest_completed_frame = this->lastframe;
+    int newframe               = this->frame.currentframe.load();
+
+    SNPRINTF(message, "waiting for new frame: lastframe=%d frame.index=%d", this->lastframe, index);
     logwrite(function, std::string(message));
+
+/***** experimental
+ *  // delay for readout time since the reference time
+ *  //
+ *  std::chrono::microseconds duration;
+ *  if (this->buffer_timestamps.size()==2) {
+ *  long msecdelay = (this->buffer_timestamps[1]-this->buffer_timestamps[0])/100000L;
+ *  SNPRINTF(message, "[DEBUG] will delay %ul - %ul = %ld msec", this->buffer_timestamps[1], this->buffer_timestamps[0], msecdelay);
+ *  logwrite(function, std::string(message));
+ *  msecdelay-=5;
+ *  auto start = std::chrono::high_resolution_clock::now();
+ *  precise_timer.delay_until(exposure_reference_time, (long)(0.9*(float)msecdelay));
+ *  auto end = std::chrono::high_resolution_clock::now();
+ *  duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+ *  logwrite(function, "[DEBUG] DELAYED "+std::to_string(duration.count())+" microsec");
+ *  }
+ *****/
 
     // waittime is 10% over the specified readout time
     // and will be used to keep track of timeout errors
     //
-    double waittime = this->camera.readout_time[0] * 1.1;      // this is in msec
-    if (waittime==0) {
+    double waittime_ms = this->camera.readout_time[0] * 1.1;   // this is in msec
+    if (waittime_ms==0) {
       logwrite(function, "ERROR readout time for Archon not found from config file");
       return ERROR;
     }
 
-    double clock_now     = fast_clock_time();                  // get_clock_time returns seconds
-    double clock_timeout = clock_now + waittime/1000.;         // must receive frame by this time
+    uint64_t start_ns   = clock_time_nsec();                 // returns nanoseconds
+    uint64_t timeout_ns = (uint64_t)(waittime_ms * 1e6);     // convert waittime msec to nsec
+    uint32_t pollcount  = 0;
+    uint32_t busycount  = 0;
 
     // Poll frame status until current frame is not the last frame and the buffer is ready to read.
     // The last frame was recorded before the readout was triggered in get_frame().
     //
-    while ( done == false && !this->camera.is_aborted() ) {
+    while ( !done && !this->camera.is_aborted() ) {
 
       error = this->get_frame_status();
+
+      latest_completed_frame = this->lastframe;
+      newframe               = this->frame.currentframe.load();
 
       if (error == ERROR) {
         done = true;
@@ -4213,7 +4316,7 @@ namespace Archon {
       }
       else
       // If Archon is busy then ignore it, keep trying for up to ~ 3 second
-      // (30000 attempts, ~100us between attempts)
+      // (300000 attempts, ~10us between attempts)
       //
       if (error == BUSY) {
         if ( ++busycount > 30000 ) {
@@ -4222,65 +4325,68 @@ namespace Archon {
           break;
         }
         else {
-          std::this_thread::sleep_for( std::chrono::microseconds( 100 ) );  // reduces polling frequency
+          usleep(10); // reduces polling frequency
           continue;
         }
       }
       else busycount=0;
 
-      currentframe = this->frame.bufframen[this->frame.index];
+      SNPRINTF(message, "[DEBUG] previous_frame=%d latest_completed_frame=%d newframe=%d bufcomplete[%d]=%s",
+               previous_frame, latest_completed_frame, newframe, index, frame.bufcomplete[index]?"T":"F");
+      logwrite(function, std::string(message));
 
-      if ( (currentframe != this->lastframe) && (this->frame.bufcomplete[this->frame.index]==1) ) {
+      // latest completed frame number +1 above frame number coming in here,
+      // then a new frame has arrived.
+      //
+      if (latest_completed_frame == previous_frame+1) {
+        if (this->buffer_timestamps.size()<2) { this->buffer_timestamps.push_back(this->lasttimestamp); }
         done  = true;
         error = NO_ERROR;
         break;
-      }  // end if ( (currentframe != this->lastframe) && (this->frame.bufcomplete[this->frame.index]==1) )
+      }
+      else
+      // latest completed frame number more than +1 above frame number coming in here,
+      // then at least one frame has been skipped.
+      //
+      if ( latest_completed_frame > previous_frame+1 ) {
+        logwrite(function, "ERROR frame skipped");
+        this->abort_archon();
+        error = ERROR;
+        break;
+      }
 
       // If the frame isn't done by the predicted time then
       // enough time has passed to trigger a timeout error.
       //
-      if (++pollcount % 100 == 0) {
-        clock_now = fast_clock_time();
-        if (clock_now > clock_timeout) {
-          done = true;
-          error = ERROR;
-          SNPRINTF(message, "ERROR timeout waiting for new frame exceeded %lf. lastframe=%d", waittime, this->lastframe);
-          logwrite( function, std::string(message) );
-          break;
-        }
+      if (++pollcount >= 1000 && (clock_time_nsec()-start_ns) > timeout_ns) {
+        pollcount=0;
+        done = true;
+        error = ERROR;
+        SNPRINTF(message, "ERROR timeout waiting for new frame exceeded %lf msec. lastframe=%d", waittime_ms, this->lastframe);
+        logwrite( function, std::string(message) );
+        break;
       }
 
-      // ASYNC status message reports the number of lines read so far,
-      // which is buflines not from this->frame.index but from the NEXT index...
-      // Only enqueue this message if the buffer is actively being written to, which
-      // is when wbuf is the next_index (must subtract 1 from wbuf because it is {1:3}
-      // while index is {0:2}).
-      //
-      if ( this->frame.next_index == this->frame.wbuf-1 ) {
-        this->camera.async.enqueue("LINECOUNT:"+std::to_string(this->frame.buflines[ this->frame.next_index]));
-      }
+/***
+ *    // ASYNC status message reports the number of lines read so far,
+ *    // which is buflines not from this->frame.index but from the NEXT index...
+ *    // Only enqueue this message if the buffer is actively being written to, which
+ *    // is when wbuf is the next_index (must subtract 1 from wbuf because it is {1:3}
+ *    // while index is {0:2}).
+ *    //
+ *    //
+ *    if ( this->frame.next_index == this->frame.wbuf-1 ) {
+ *      this->camera.async.enqueue("LINECOUNT:"+std::to_string(this->frame.buflines[ this->frame.next_index]));  // 1-24 usec
+ *    }
+ ***/
 #ifdef LOGLEVEL_DEBUG
 //    message << " [DEBUG] ";
 //    message << " index=" << this->frame.index << " next_index=" << this->frame.next_index << " | ";
 //    for ( int i=0; i < Archon::nbufs; i++ ) { message << " " << this->frame.buflines[ i ]; }
 #endif
 
-      std::this_thread::sleep_for( std::chrono::microseconds( 10 ) );  // reduces polling frequency
+      usleep(10);  // reduces polling frequency
     } // end while (done == false && not this->camera.is_aborted)
-/*** disable ASYNC message here:
- *  // After exiting while loop, one update to ensure accurate ASYNC message
- *  // reporting of LINECOUNT.
- *  //
- *  if ( error == NO_ERROR ) {
- *    error = this->get_frame_status();
- *    if ( error != NO_ERROR ) {
- *      logwrite( function, "ERROR: unable to get frame status" );
- *      return error;
- *    }
- *    message.str(""); message << "LINECOUNT:" << this->frame.buflines[ this->frame.index ];
- *    this->camera.async.enqueue( message.str() );
- *  }
- ***/
 
     if ( error != NO_ERROR ) {
       this->camera.log_error( function, "waiting for readout" );
@@ -4295,12 +4401,16 @@ namespace Archon {
 //          << " timestamp=" << this->frame.buftimestamp[this->frame.index];
 //  logwrite(function, message.str());
 #endif
-    this->lastframe = currentframe;
+////this->lastframe = currentframe;
 
     // On success, write the value to the log and return
     //
     if ( ! this->camera.is_aborted() ) {
-      logwrite(function, "received currentframe: "+std::to_string(currentframe));
+      logwrite(function, "received currentframe: "+std::to_string(latest_completed_frame)+
+                         " at TS "+std::to_string(this->lasttimestamp));
+/*** experimental
+ *    clock_gettime(CLOCK_MONOTONIC, &this->exposure_reference_time);  // update reference time
+ ***/
       return NO_ERROR;
     }
     // If the wait was stopped, log a message and return NO_ERROR

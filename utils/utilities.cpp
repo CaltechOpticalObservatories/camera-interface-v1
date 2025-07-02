@@ -422,6 +422,43 @@ std::mutex generate_tmpfile_mtx;
   /***** timestamp_from *******************************************************/
 
 
+  long timestamp_to_timespec( const std::string &timestamp_in, struct timespec &ts_out ) {
+    struct tm time = {};
+    int milliseconds = 0;
+    char dot;
+
+    std::istringstream ss(timestamp_in);
+    ss >> std::get_time(&time, "%Y-%m-%dT%H:%M:%S");
+    if (!(ss >> dot >> milliseconds) || dot != '.') {
+      return 1;  // error
+    }
+
+    time_t seconds = mktime(&time);
+    if (seconds == -1) return 1;  // error
+
+    ts_out.tv_sec = seconds;
+    ts_out.tv_nsec = milliseconds * 1'000'000;
+    return 0;
+  }
+
+
+  std::string timestamp_delta( struct timespec time, uint64_t buftimestamp ) {
+    return timestamp_delta(time, buftimestamp, 0);
+  }
+  std::string timestamp_delta( struct timespec time, uint64_t buftimestamp, int32_t offset ) {
+    buftimestamp *= 10;
+    time.tv_nsec += buftimestamp;
+    time.tv_nsec += offset*1e6;
+
+    if (time.tv_nsec >= 1'000'000'000) {
+      time.tv_sec += time.tv_nsec / 1'000'000'000;
+      time.tv_nsec = time.tv_nsec % 1'000'000'000;
+    }
+
+    return timestamp_from( tmzone_cfg, time );
+  }
+
+
   /***** get_system_date ******************************************************/
   /**
    * @brief      return current date in formatted string "YYYYMMDD"

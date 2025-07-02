@@ -866,6 +866,11 @@ logwrite(function,message.str());
       int n_hdrshift;                      //!< number of right-shift bits for Archon buffer in HDR mode
       struct timespec cal_systime;
       uint64_t cal_archontime;
+      struct timespec exposure_reference_time;
+
+      std::vector<uint64_t> buffer_timestamps;
+
+      PreciseTimer precise_timer;
 
       /** @brief FIFO queue to contain images from Archon */
       std::queue<std::shared_ptr<ImageBuffer>> imagebuf_queue;  ///< the queue itself
@@ -1074,8 +1079,8 @@ void make_simulated_data(char* buffer, int slice);
        * @details structure to contain Archon results from "FRAME" command
        */
       struct frame_data_t {
-        int      index;                       // index of newest buffer data
-        int      frame;                       // frame of newest buffer data
+        std::atomic<int>      index;          // index of newest buffer data
+        std::atomic<int>      currentframe;   // frame of newest buffer data
         int      next_index;                  // index of next buffer
         std::string timer;                    // current hex 64 bit internal timer
         int      rbuf;                        // current buffer locked for reading
@@ -1113,6 +1118,7 @@ void make_simulated_data(char* buffer, int slice);
        *  @details  the last (I.E. previous) frame number acquired
        */
       int lastframe;
+      uint64_t lasttimestamp;
 
       /**
        * rawinfo_t is a struct which contains variables specific to raw data functions
