@@ -3812,7 +3812,7 @@ logwrite(function,std::string(msg));
       //
       if (n_slices%2 == 0) {
         uint64_t dts = imagebuf->buftimestamp_slice[n_slices/2] - imagebuf->buftimestamp_slice[0];
-        double truitime = static_cast<double>(dts/100000000.0);
+        double truitime = static_cast<double>(dts)/100000000.0;
         this->cds_info.systemkeys.addkey( "TRUITIME", truitime, "True integration time in seconds (calculated)", 8 );
         this->camera_info.systemkeys.addkey( "TRUITIME", truitime, "True integration time in seconds (calculated)", 8 );
       }
@@ -4401,7 +4401,6 @@ logwrite(function,std::string(msg));
 //          << " timestamp=" << this->frame.buftimestamp[this->frame.index];
 //  logwrite(function, message.str());
 #endif
-////this->lastframe = currentframe;
 
     // On success, write the value to the log and return
     //

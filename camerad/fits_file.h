@@ -209,6 +209,8 @@ private:
    single data cube */
   int max_mex_frames;
 
+  inline static const std::string in_process = ".writing";  /// add this extension while fits writing is in process, remove on close
+
 
   /**************** FITS_file::swap ****************/
   /**
@@ -321,7 +323,7 @@ private:
     std::string function("FITS_file::open_file");
     std::stringstream message;
 
-    message << "opening FITS file image for " << _camera_info.fits_name;
+    message << "opening FITS file image for " << _camera_info.fits_name+this->in_process;
     logwrite(function, message.str());
     message.str("");
 
@@ -369,7 +371,7 @@ private:
       }
 
 
-      this->fits_name = _camera_info.fits_name;
+      this->fits_name = _camera_info.fits_name + this->in_process;
 //    auto it = _camera_info.fits_name.find_last_of("/");
 //    this->fits_name=_camera_info.fits_name.substr(0,it)+"/__"+_camera_info.fits_name.substr(it+1);
 
@@ -505,6 +507,24 @@ private:
     // Log that the file closed successfully
     message << "successfully closed FITS file " << this->fits_name;
     logwrite(function, message.str());
+
+    // Rename the file to remove the in_process extension
+    //
+    std::string finished_file { this->fits_name, 0, this->fits_name.rfind( this->in_process ) };  // remove extension
+
+    std::filesystem::path in_process_path( this->fits_name );
+    std::filesystem::path finished_path( finished_file );
+
+    try {
+      std::filesystem::rename( in_process_path, finished_path );
+      message.str(""); message << "renamed " << this->fits_name << " to " << finished_file;
+      logwrite(function, message.str());
+    }
+    catch ( const std::filesystem::filesystem_error &e ) {
+      message.str(""); message << "ERROR renaming " << this->fits_name << " to " << finished_file << ": " << e.what();
+      logwrite(function, message.str());
+    }
+
     return(NO_ERROR);
   }
   /**************** FITS_file::close_file ****************/
@@ -566,6 +586,24 @@ logwrite(function, message.str());
             << this->mex_size << " image bytes, frames waiting: "
             << this->mex_frames.size() << " " << this->mex_cache.size();
     logwrite(function, message.str());
+
+    // Rename the file to remove the in_process extension
+    //
+    std::string finished_file { this->fits_name, 0, this->fits_name.rfind( this->in_process ) };  // remove extension
+
+    std::filesystem::path in_process_path( this->fits_name );
+    std::filesystem::path finished_path( finished_file );
+
+    try {
+      std::filesystem::rename( in_process_path, finished_path );
+      message.str(""); message << "renamed " << this->fits_name << " to " << finished_file;
+      logwrite(function, message.str());
+    }
+    catch ( const std::filesystem::filesystem_error &e ) {
+      message.str(""); message << "ERROR renaming " << this->fits_name << " to " << finished_file << ": " << e.what();
+      logwrite(function, message.str());
+    }
+
     return(NO_ERROR);
   }
   /**************** FITS_file::close_mex ****************/
