@@ -866,11 +866,6 @@ logwrite(function,message.str());
       int n_hdrshift;                      //!< number of right-shift bits for Archon buffer in HDR mode
       struct timespec cal_systime;
       uint64_t cal_archontime;
-      struct timespec exposure_reference_time;
-
-      std::vector<uint64_t> buffer_timestamps;
-
-      PreciseTimer precise_timer;
 
       /** @brief FIFO queue to contain images from Archon */
       std::queue<std::shared_ptr<ImageBuffer>> imagebuf_queue;  ///< the queue itself
@@ -1024,6 +1019,7 @@ void make_simulated_data(char* buffer, int slice);
       long do_expose(std::string nseq_in);
       long wait_for_exposure();
       long wait_for_readout();
+      long wait_for_readout(int &num_missedframes);
       long get_parameter(std::string parameter, std::string &retstring);
       long get_parammap_value( std::string param_in, long& value_out );
       long set_parameter( std::string parameter, long value );

@@ -644,6 +644,9 @@ namespace Archon {
                              << " timestamp " << this->lasttimestamp;
     logwrite(function, message.str());
 
+    message.str(""); message << "backplane version " << this->backplaneversion;
+    logwrite(function, message.str());
+
     return(error);
   }
   /**************** Archon::Interface::connect_controller *********************/
@@ -813,7 +816,7 @@ namespace Archon {
 
     // For all other commands, receive the reply
     //
-    char* buffer = new char[8192]{};            // temporary buffer for holding Archon replies
+    char* buffer = new char[64*1024]{};         // temporary buffer for holding Archon replies
     reply.clear();                              // zero reply buffer
     do {
       if ( (retval=this->archon.Poll()) <= 0) {
@@ -822,8 +825,8 @@ namespace Archon {
         if ( error != NO_ERROR ) this->camera.log_error( function, message.str() );
         break;
       }
-      memset((void*)buffer, '\0', 8192);             // init temporary buffer
-      retval = this->archon.Read(buffer, 8192);      // read into temp buffer
+      memset((void*)buffer, '\0', 64*1024);          // init temporary buffer
+      retval = this->archon.Read(buffer, 64*1024);   // read into temp buffer
       if (retval <= 0) {
         this->camera.log_error( function, "reading Archon" );
         break; 
@@ -3537,18 +3540,16 @@ logwrite(function,std::string(msg));
     //
     // *** initiate the exposure here ***
     //
+    this->get_frame_status();
     error = this->prep_parameter(this->exposeparam, nseqstr);
     if (error == NO_ERROR) error = this->load_parameter(this->exposeparam, nseqstr);
     if ( error != NO_ERROR ) {
       logwrite( function, "ERROR could not initiate exposure" );
       return;
     }
-    clock_gettime(CLOCK_MONOTONIC, &this->exposure_reference_time);  // note when exposure started
     logwrite(function, "exposure started");
 
-    this->buffer_timestamps.clear();
-
-    while (error==NO_ERROR && !camera.is_aborted() && nseq-- > 0) {
+    while (error==NO_ERROR && !camera.is_aborted() && nseq > 0) {
 
       this->camera_info.ncoadd = this->camera_info.nseq - nseq;
       this->cds_info.ncoadd    = this->camera_info.nseq - nseq;
@@ -3610,7 +3611,8 @@ logwrite(function,std::string(msg));
         // If there is more than one slice, then wait for all slices (the whole cube)
         // before pushing the cube into the queue.
         //
-        for ( int slice=0; !this->camera.is_aborted() && slice < slicecounter; slice++ ) {
+        int slice=0;
+        while ( !this->camera.is_aborted() && slice < slicecounter ) {
 
           if ( this->camera_info.sampmode == SAMPMODE_SINGLE && slice==0 ) {
             logwrite( function, firstframe );
@@ -3625,7 +3627,13 @@ logwrite(function,std::string(msg));
 
           // poll for an Archon frame buffer to be ready and record the time
           //
-          if (error=this->wait_for_readout()==ERROR) break;
+          int num_missedframes = 0;
+          if ( (error=this->wait_for_readout(num_missedframes))==ERROR ) break;
+
+          // increment the slice counter by the number of missed frames
+          // BUT what to do when this wraps > slicecounter ??
+          slice += num_missedframes;
+
           this->camera_info.stop_time = get_timestamp();
           this->cds_info.stop_time = this->camera_info.stop_time;
 
@@ -3661,22 +3669,6 @@ logwrite(function,std::string(msg));
           //
           error = this->read_frame(Camera::FRAME_IMAGE, imbufptr);
 
-/***
- *  {
- *  make_simulated_data(imagebuf->rawpixels.get(), slice);
- *  std::stringstream debugstr; debugstr.str(""); debugstr << "[PIXELVALS]";
- *  int total_pixels = camera_info.detector_pixels[0] * camera_info.detector_pixels[1];
- *  uint16_t* pixel_buffer = reinterpret_cast<uint16_t*>(imagebuf->rawpixels.get());
- *  for (int frame=0; frame<this->camera_info.cubedepth; frame++) {
- *    debugstr << " frame=" << frame << " pix [" << frame*total_pixels << "]=";
- *    for (int p=0; p<10; p++) {
- *      debugstr << " " << pixel_buffer[frame*total_pixels+p];
- *    }
- *  }
- *  logwrite(function,debugstr.str());
- *  }
-  ***/
-
         // record the Archon buffer frame number and timestamp for this frame
         //
         imagebuf->bufframen_slice.push_back( this->frame.bufframen[index] );
@@ -3685,7 +3677,15 @@ logwrite(function,std::string(msg));
         SNPRINTF(message, "NSLICE:%d", slice+1);
         this->camera.async.enqueue(std::string(message));
 
+        slice += 1;
+
+        SNPRINTF(message, "[DEBUG] inside loop over slices: error=%ld slice=%d slicecounter=%d num_missedframes=%d cubedepth=%d nseq=%d",
+                          error, slice, slicecounter, num_missedframes, camera_info.cubedepth, nseq);
+        logwrite(function, std::string(message));
       } // end loop over slices in datacube
+      SNPRINTF(message, "[DEBUG] outside loop over slices: error=%ld slice=%d slicecounter=%d cubedepth=%d nseq=%d",
+                        error, slice, slicecounter, camera_info.cubedepth, nseq);
+      logwrite(function, std::string(message));
 
       // push the datacube into the queue
       {
@@ -3697,7 +3697,11 @@ logwrite(function,std::string(msg));
       // end of a sequence, broadcast the message tag
       this->camera.async.enqueue( messagetag );
 
+      nseq--;
     } // end while nseq
+    SNPRINTF(message, "[DEBUG] outside loop over nseq: error=%ld cubedepth=%d nseq=%d",
+                      error, camera_info.cubedepth, nseq);
+    logwrite(function, std::string(message));
     logwrite(function, "complete");
     is_producer_error = (error!=NO_ERROR);
   }
@@ -4254,6 +4258,10 @@ logwrite(function,std::string(msg));
    *
    */
   long Interface::wait_for_readout() {
+    int dontcare;
+    return wait_for_readout(dontcare);
+  }
+  long Interface::wait_for_readout(int &num_missedframes) {
     const std::string function("Archon::Interface::wait_for_readout");
     char message[256];
     long error = NO_ERROR;
@@ -4261,29 +4269,11 @@ logwrite(function,std::string(msg));
 
     // local copies
     int index                  = this->frame.index.load();
-    int previous_frame         = this->lastframe;  // this is the frame number coming in here, don't change this
     int latest_completed_frame = this->lastframe;
     int newframe               = this->frame.currentframe.load();
 
     SNPRINTF(message, "waiting for new frame: lastframe=%d frame.index=%d", this->lastframe, index);
     logwrite(function, std::string(message));
-
-/***** experimental
- *  // delay for readout time since the reference time
- *  //
- *  std::chrono::microseconds duration;
- *  if (this->buffer_timestamps.size()==2) {
- *  long msecdelay = (this->buffer_timestamps[1]-this->buffer_timestamps[0])/100000L;
- *  SNPRINTF(message, "[DEBUG] will delay %ul - %ul = %ld msec", this->buffer_timestamps[1], this->buffer_timestamps[0], msecdelay);
- *  logwrite(function, std::string(message));
- *  msecdelay-=5;
- *  auto start = std::chrono::high_resolution_clock::now();
- *  precise_timer.delay_until(exposure_reference_time, (long)(0.9*(float)msecdelay));
- *  auto end = std::chrono::high_resolution_clock::now();
- *  duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
- *  logwrite(function, "[DEBUG] DELAYED "+std::to_string(duration.count())+" microsec");
- *  }
- *****/
 
     // waittime is 10% over the specified readout time
     // and will be used to keep track of timeout errors
@@ -4298,6 +4288,7 @@ logwrite(function,std::string(msg));
     uint64_t timeout_ns = (uint64_t)(waittime_ms * 1e6);     // convert waittime msec to nsec
     uint32_t pollcount  = 0;
     uint32_t busycount  = 0;
+    int previous_frame  = this->lastframe;                   // initial frame number set once
 
     // Poll frame status until current frame is not the last frame and the buffer is ready to read.
     // The last frame was recorded before the readout was triggered in get_frame().
@@ -4338,8 +4329,8 @@ logwrite(function,std::string(msg));
       // latest completed frame number +1 above frame number coming in here,
       // then a new frame has arrived.
       //
-      if (latest_completed_frame == previous_frame+1) {
-        if (this->buffer_timestamps.size()<2) { this->buffer_timestamps.push_back(this->lasttimestamp); }
+      int frame_arrived = latest_completed_frame - (previous_frame+1);
+      if (frame_arrived==0) {
         done  = true;
         error = NO_ERROR;
         break;
@@ -4348,10 +4339,12 @@ logwrite(function,std::string(msg));
       // latest completed frame number more than +1 above frame number coming in here,
       // then at least one frame has been skipped.
       //
-      if ( latest_completed_frame > previous_frame+1 ) {
-        logwrite(function, "ERROR frame skipped");
-        this->abort_archon();
-        error = ERROR;
+      if ( frame_arrived > 0 ) {
+        SNPRINTF(message, "NOTICE: missed %d frame%s", frame_arrived, (frame_arrived>1?"s":""));
+        logwrite(function, std::string(message));
+        num_missedframes = frame_arrived;
+        done = true;
+        error = NO_ERROR;
         break;
       }
 
@@ -4407,9 +4400,6 @@ logwrite(function,std::string(msg));
     if ( ! this->camera.is_aborted() ) {
       logwrite(function, "received currentframe: "+std::to_string(latest_completed_frame)+
                          " at TS "+std::to_string(this->lasttimestamp));
-/*** experimental
- *    clock_gettime(CLOCK_MONOTONIC, &this->exposure_reference_time);  // update reference time
- ***/
       return NO_ERROR;
     }
     // If the wait was stopped, log a message and return NO_ERROR
