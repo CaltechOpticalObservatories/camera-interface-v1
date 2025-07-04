@@ -582,7 +582,7 @@ namespace Network {
    *
    */
   int TcpSocket::Poll( int timeout ) {   // uses timeout arg
-    std::string function = "Network::TcpSocket::Poll";
+    const std::string function("Network::TcpSocket::Poll");
     std::stringstream message;
     struct pollfd poll_struct;
     poll_struct.events = POLLIN;
@@ -658,7 +658,29 @@ namespace Network {
                            << " on fd " << this->fd << ": " << std::strerror(errno);
         logwrite(function, errstm.str());
         return (-1);
-      } else break;
+      }
+      else {
+        // Disable Nagle's algorithm to reduce latency for small control commands and frequent polling.
+        // This ensures that short messages are sent immediately, without delay.
+        //
+        int flag = 1;
+        if (setsockopt(this->fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int)) < 0) {
+        errstm << "setsockopt(TCP_NODELAY) failed on fd " << this->fd
+               << ": " << std::strerror(errno);
+        logwrite(function, errstm.str());
+        return -1;
+        }
+        int rcvbuf=0;
+        socklen_t optlen=sizeof(rcvbuf);
+        auto size = getsockopt(this->fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, &optlen);
+        logwrite(function, "rcvbuf="+std::to_string(rcvbuf)+" size="+std::to_string(size));
+        rcvbuf=1024*1024;
+        setsockopt(this->fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
+        rcvbuf=0;
+        size = getsockopt(this->fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, &optlen);
+        logwrite(function, "rcvbuf="+std::to_string(rcvbuf)+" size="+std::to_string(size));
+        break;
+      }
     }
 
     int flags;
@@ -770,7 +792,7 @@ namespace Network {
    *
    */
   int TcpSocket::Read(void* buf, size_t count) {
-    std::string function = "Network::TcpSocket::Read[cbuf]";
+    const std::string function("Network::TcpSocket::Read[cbuf]");
     std::stringstream message;
     int nread;
 
@@ -817,7 +839,7 @@ namespace Network {
    *
    */
   int TcpSocket::Read(std::string &retstring, char delim) {
-    std::string function = "Network::TcpSocket::Read[delim]";
+    const std::string function("Network::TcpSocket::Read[delim]");
     std::stringstream message;
     std::stringstream bufstream;
     int nread, bytesread=0;
@@ -882,7 +904,7 @@ namespace Network {
    *
    */
   int TcpSocket::Read(std::string &retstring, std::string endstr) {
-    std::string function = "Network::TcpSocket::Read[endstr]";
+    const std::string function("Network::TcpSocket::Read[endstr]");
     std::stringstream message;
     std::stringstream bufstream;
     int nread, bytesread=0;

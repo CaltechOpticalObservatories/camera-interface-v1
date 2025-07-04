@@ -23,6 +23,7 @@
 #include <poll.h>                      /// for pollfd
 #include <unistd.h>
 #include <fcntl.h>
+#include <netinet/tcp.h>               /// for TCP_NODELAY
 
 // for addrinfo
 #include <sys/types.h>
