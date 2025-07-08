@@ -1019,7 +1019,6 @@ void make_simulated_data(char* buffer, int slice);
       long do_expose(std::string nseq_in);
       long wait_for_exposure();
       long wait_for_readout();
-      long wait_for_readout(int &num_missedframes);
       long get_parameter(std::string parameter, std::string &retstring);
       long get_parammap_value( std::string param_in, long& value_out );
       long set_parameter( std::string parameter, long value );

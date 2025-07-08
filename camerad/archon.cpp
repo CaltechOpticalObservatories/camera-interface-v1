@@ -3627,12 +3627,7 @@ logwrite(function,std::string(msg));
 
           // poll for an Archon frame buffer to be ready and record the time
           //
-          int num_missedframes = 0;
-          if ( (error=this->wait_for_readout(num_missedframes))==ERROR ) break;
-
-          // increment the slice counter by the number of missed frames
-          // BUT what to do when this wraps > slicecounter ??
-          slice += num_missedframes;
+          if ( (error=this->wait_for_readout())==ERROR ) break;
 
           this->camera_info.stop_time = get_timestamp();
           this->cds_info.stop_time = this->camera_info.stop_time;
@@ -3679,8 +3674,8 @@ logwrite(function,std::string(msg));
 
         slice += 1;
 
-        SNPRINTF(message, "[DEBUG] inside loop over slices: error=%ld slice=%d slicecounter=%d num_missedframes=%d cubedepth=%d nseq=%d",
-                          error, slice, slicecounter, num_missedframes, camera_info.cubedepth, nseq);
+        SNPRINTF(message, "[DEBUG] inside loop over slices: error=%ld slice=%d slicecounter=%d cubedepth=%d nseq=%d",
+                          error, slice, slicecounter, camera_info.cubedepth, nseq);
         logwrite(function, std::string(message));
       } // end loop over slices in datacube
       SNPRINTF(message, "[DEBUG] outside loop over slices: error=%ld slice=%d slicecounter=%d cubedepth=%d nseq=%d",
@@ -4247,21 +4242,15 @@ logwrite(function,std::string(msg));
   /**************** Archon::Interface::wait_for_exposure **********************/
 
 
-  /**************** Archon::Interface::wait_for_readout ***********************/
+  /***** Archon::Interface::wait_for_readout **********************************/
   /**
-   * @fn     wait_for_readout
    * @brief  creates a wait until the next frame buffer is ready
-   * @param  none
    * @return ERROR or NO_ERROR
    *
    * This function polls the Archon frame status until a new frame is ready.
    *
    */
   long Interface::wait_for_readout() {
-    int dontcare;
-    return wait_for_readout(dontcare);
-  }
-  long Interface::wait_for_readout(int &num_missedframes) {
     const std::string function("Archon::Interface::wait_for_readout");
     char message[256];
     long error = NO_ERROR;
@@ -4340,11 +4329,11 @@ logwrite(function,std::string(msg));
       // then at least one frame has been skipped.
       //
       if ( frame_arrived > 0 ) {
-        SNPRINTF(message, "NOTICE: missed %d frame%s", frame_arrived, (frame_arrived>1?"s":""));
+        SNPRINTF(message, "ERROR missed %d frame%s", frame_arrived, (frame_arrived>1?"s":""));
         logwrite(function, std::string(message));
-        num_missedframes = frame_arrived;
+        this->abort();
         done = true;
-        error = NO_ERROR;
+        error = ERROR;
         break;
       }
 
@@ -4410,7 +4399,7 @@ logwrite(function,std::string(msg));
       return NO_ERROR;
     }
   }
-  /**************** Archon::Interface::wait_for_readout ***********************/
+  /***** Archon::Interface::wait_for_readout **********************************/
 
 
   /**************** Archon::Interface::get_parameter **************************/
@@ -6774,9 +6763,12 @@ logwrite(function,std::string(msg));
    *
    */
   long Interface::abort_archon() {
-    logwrite( "Archon::Interface::abort_archon", "setting Archon abort parameter" );
     long error = this->prep_parameter( this->abortparam, "1" );
     if ( error == NO_ERROR ) error = this->load_parameter( this->abortparam, "1" );
+    char message[64];
+    SNPRINTF(message, "%sArchon abort parameter %s",
+                      (error!=NO_ERROR?"ERROR ":""), (error!=NO_ERROR?"not set":"set"));
+    logwrite( "Archon::Interface::abort_archon", std::string(message) );
     return error;
   }
   /***** Archon::Interface::abort_archon **************************************/
