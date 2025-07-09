@@ -3551,8 +3551,8 @@ logwrite(function,std::string(msg));
 
     while (error==NO_ERROR && !camera.is_aborted() && nseq > 0) {
 
-      this->camera_info.ncoadd = this->camera_info.nseq - nseq;
-      this->cds_info.ncoadd    = this->camera_info.nseq - nseq;
+      this->camera_info.ncoadd = this->camera_info.nseq - nseq + 1;
+      this->cds_info.ncoadd    = this->camera_info.nseq - nseq + 1;
 
       // Read each frame into the image buffer pointed to by ptr_image.
       // For data cubes this will loop over cubedepth and all frames go into the same buffer.
