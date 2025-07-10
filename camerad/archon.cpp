@@ -3891,7 +3891,6 @@ namespace Archon {
     if (nice(-10) == -1 && errno != 0) {
         perror("nice() failed");
         logwrite(function, "\033[33m[WARNING] failed to lower niceness\033[0m");
-        return;
     } else {
         logwrite(function, "Niceness set to -10");
     }
@@ -3903,7 +3902,6 @@ namespace Archon {
     if (pthread_setschedparam(pthread_self(), SCHED_FIFO, &sch_params) != 0) {
         perror("pthread_setschedparam failed");
         logwrite(function, "\033[33m[WARNING] failed to set real-time priority\033[0m");
-        return;
     } else {
         logwrite(function, "\033[32mSet SCHED_FIFO real-time priority to 10\033[0m");
     }
