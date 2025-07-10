@@ -89,6 +89,11 @@ namespace Network {
       int Poll( int timeout );           /// polls a single file descriptor with specified timeout
       int Connect();                     /// connect to this->host on this->port
       int Close();                       /// close a socket connection
+      int ReadRetry(void* buf, size_t count, int timeout_ms); /// read data from connected socket
+      int ReadOnly(void* buf, size_t count); /// read data from connected socket
+      int ReadLine(std::string &reply, int timeout_ms);
+      int ReadPoll(void* buf, size_t count); /// read data from connected socket
+      void SetNonBlock();
       int Read(void* buf, size_t count); /// read data from connected socket
       int Read(std::string &retstring, char delim); /// read data from connected socket until delimiter found
       int Read(std::string &retstring, std::string endstr);

@@ -745,7 +745,7 @@ namespace Archon {
   }
   long Interface::archon_cmd(std::string cmd, std::string &reply) {
     const std::string function("Archon::Interface::archon_cmd");
-    std::stringstream message;
+    char message[256];
     int     retval;
     char    check[4];
     int     error = NO_ERROR;
@@ -766,8 +766,8 @@ namespace Archon {
     // Archon busy for longer than the duration of this function.
     //
     if ( this->archon_busy.test_and_set() ) {
-      message.str(""); message << "Archon busy: ignored command " << cmd;
-      this->camera.log_error( function, message.str() );
+      SNPRINTF(message, "Archon busy: ignored command %s", cmd.c_str());
+      this->camera.log_error( function, std::string(message) );
       return BUSY;
     }
 
@@ -798,9 +798,17 @@ namespace Archon {
 
     // send the command
     //
+    this->archon.SetNonBlock();
+
+char msg[128];
+auto start = std::chrono::steady_clock::now();             // start a timer now
     if ( (this->archon.Write(scmd)) == -1) {
       this->camera.log_error( function, "writing to camera socket");
     }
+auto end = std::chrono::steady_clock::now();             // start a timer now
+auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start);
+SNPRINTF(msg, "[DURATION] time to archon.Write=%ld", duration.count());
+logwrite(function,std::string(msg));
 
     // For the FETCH command we don't wait for a reply, but return immediately.
     // FETCH results in a binary response which is handled elsewhere (in read_frame).
@@ -816,25 +824,52 @@ namespace Archon {
 
     // For all other commands, receive the reply
     //
-    char* buffer = new char[64*1024]{};         // temporary buffer for holding Archon replies
+/***
+    char buffer[65536];                         // temporary buffer for holding Archon replies
     reply.clear();                              // zero reply buffer
-    do {
-      if ( (retval=this->archon.Poll()) <= 0) {
-        if (retval==0) { message.str(""); message << "Poll timeout waiting for response from Archon command (maybe unrecognized command?)"; error = TIMEOUT; }
-        if (retval<0)  { message.str(""); message << "Poll error waiting for response from Archon command";   error = ERROR;   }
-        if ( error != NO_ERROR ) this->camera.log_error( function, message.str() );
-        break;
-      }
-      memset((void*)buffer, '\0', 64*1024);          // init temporary buffer
-      retval = this->archon.Read(buffer, 64*1024);   // read into temp buffer
+    reply.reserve(8192);
+    if ( (retval=this->archon.Poll()) <= 0) {
+      if (retval==0) { SNPRINTF(message, "Poll timeout waiting for response from Archon (maybe unrecognized command?)"); error = TIMEOUT; }
+      if (retval<0)  { SNPRINTF(message, "Poll error waiting for response from Archon");   error = ERROR;   }
+      if ( error != NO_ERROR ) this->camera.log_error( function, std::string(message) );
+    }
+    while (error==NO_ERROR && retval>0) {
+      retval = this->archon.ReadOnly(buffer, sizeof(buffer));   // read into temp buffer
       if (retval <= 0) {
         this->camera.log_error( function, "reading Archon" );
         break; 
       }
-      reply.append(buffer);                          // append read buffer into the reply string
-    } while(retval>0 && reply.find("\n") == std::string::npos);
+      reply.append(buffer, retval);             // append read buffer into the reply string
+      if (memchr(buffer, '\n', retval)) break;
+    }
+***/
 
-    delete [] buffer;
+    char buffer[65536];
+    if ( (retval=this->archon.Poll()) <= 0) {
+      if (retval==0) { SNPRINTF(message, "Poll timeout waiting for response from Archon (maybe unrecognized command?)"); error = TIMEOUT; }
+      if (retval<0)  { SNPRINTF(message, "Poll error waiting for response from Archon");   error = ERROR;   }
+      if ( error != NO_ERROR ) this->camera.log_error( function, std::string(message) );
+    }
+auto endp = std::chrono::steady_clock::now();             // start a timer now
+auto durationp = std::chrono::duration_cast<std::chrono::microseconds>(endp-end);
+SNPRINTF(msg, "[DURATION] after Poll=%ld", durationp.count());
+logwrite(function,std::string(msg));
+    while (true) {
+      retval = this->archon.ReadPoll(buffer, sizeof(buffer));
+auto end2 = std::chrono::steady_clock::now();             // start a timer now
+auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2-end);
+SNPRINTF(msg, "[DURATION] in while loop=%ld", duration2.count());
+logwrite(function,std::string(msg));
+      if (retval < 0) break;
+      if (retval==0) continue;
+      reply.append(buffer, retval);
+      if (memchr(buffer, '\n', retval)) break;
+    }
+
+auto end2 = std::chrono::steady_clock::now();             // start a timer now
+auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2-end);
+SNPRINTF(msg, "[DURATION] time from archon.Write to archon.Read=%ld", duration2.count());
+logwrite(function,std::string(msg));
 
     // If there was an Archon error then clear the busy flag and get out now
     //
@@ -852,8 +887,8 @@ namespace Archon {
     // "?" means Archon experienced an error processing command
     if (!reply.empty() && reply[0]=='?') {
       error = ERROR;
-      message.str(""); message << "Archon controller returned error processing command: " << cmd;
-      this->camera.log_error( function, message.str() );
+      SNPRINTF(message, "Archon controller returned error processing command: %s", cmd.c_str());
+      this->camera.log_error( function, std::string(message) );
     }
     else
     // First 3 bytes of reply must equal checksum else reply doesn't belong to command
@@ -861,8 +896,8 @@ namespace Archon {
       error = ERROR;
       std::string hdr = reply;
       try { scmd.erase(scmd.find("\n"), 1); } catch(...) { }
-      message.str(""); message << "command-reply mismatch for command: " + scmd + ": expected " + check + " but received " + reply ;
-      this->camera.log_error( function, message.str() );
+      SNPRINTF(message, "command-reply mismatch for command: %s: expected %s but received %s", scmd.c_str(), check, reply.c_str());
+      this->camera.log_error( function, std::string(message) );
     }
     else {
     // command and reply are a matched pair
@@ -885,6 +920,10 @@ namespace Archon {
     // clear the busy flag
     //
     this->archon_busy.clear();
+auto end3 = std::chrono::steady_clock::now();             // start a timer now
+auto duration3 = std::chrono::duration_cast<std::chrono::microseconds>(end3-end2);
+SNPRINTF(msg, "[DURATION] total time for archon_cmd=%ld", duration3.count());
+logwrite(function,std::string(msg));
 
     return(error);
   }
@@ -2167,10 +2206,15 @@ namespace Archon {
 
     // send FRAME command to get frame buffer status
     //
+auto start = std::chrono::steady_clock::now();             // start a timer now
     if ( (error = this->archon_cmd(FRAME, reply)) ) {
       if ( error == ERROR ) logwrite( function, "ERROR sending FRAME command" );  // don't log here if BUSY
       return error;
     }
+auto end1 = std::chrono::steady_clock::now();             // start a timer now
+auto duration1 = std::chrono::duration_cast<std::chrono::microseconds>(end1-start);
+SNPRINTF(message, "[DURATION] time to call FRAME command=%ld", duration1.count());
+logwrite(function,std::string(message));
 
     // use direct pointer indexing for speed
     //
@@ -2258,23 +2302,26 @@ namespace Archon {
         } // end switch(suffix_len)
       } // end if BUFnXXXX pattern
     } // end looping through reply
+auto end2 = std::chrono::steady_clock::now();             // start a timer now
+auto duration2 = std::chrono::duration_cast<std::chrono::microseconds>(end2-end1);
+SNPRINTF(message, "[DURATION] from FRAME command to post-parsing=%ld", duration2.count());
+logwrite(function,std::string(message));
 
     int completed_index = -1;
     int newestframe=0, newestbuf;
-char statestr[Archon::nbufs][64];
-char framestr[Archon::nbufs][64];
+//char statestr[Archon::nbufs][64];
+//char framestr[Archon::nbufs][64];
 
     for (int i = 0; i < Archon::nbufs; ++i) {
-memset(statestr[i], '\0', sizeof(statestr[i]));
-memset(framestr[i], '\0', sizeof(framestr[i]));
-if ( (this->frame.rbuf-1) == i)   strcat(statestr[i], "R");
-if ( (this->frame.wbuf-1) == i)   strcat(statestr[i], "W");
-if ( this->frame.bufcomplete[i] ) strcat(statestr[i], "C");
-SNPRINTF(framestr[i], "%d %lu", this->frame.bufframen[i], (this->frame.bufcomplete[i]?this->frame.buftimestamp[i]:0));
-//    if (this->frame.bufcomplete[i] && this->frame.bufframen[i] > newestframe) {
-SNPRINTF(message, "[DEBUG] bufframen[%d]=%d bufcomplete[%d]=%s newestframe=%d",
-         i, frame.bufframen[i], i, frame.bufcomplete[i]?"T":"F", newestframe);
-logwrite(function, std::string(message));
+//memset(statestr[i], '\0', sizeof(statestr[i]));
+//memset(framestr[i], '\0', sizeof(framestr[i]));
+//if ( (this->frame.rbuf-1) == i)   strcat(statestr[i], "R");
+//if ( (this->frame.wbuf-1) == i)   strcat(statestr[i], "W");
+//if ( this->frame.bufcomplete[i] ) strcat(statestr[i], "C");
+//SNPRINTF(framestr[i], "%d %lu", this->frame.bufframen[i], (this->frame.bufcomplete[i]?this->frame.buftimestamp[i]:0));
+//SNPRINTF(message, "[DEBUG] bufframen[%d]=%d bufcomplete[%d]=%s newestframe=%d",
+//         i, frame.bufframen[i], i, frame.bufcomplete[i]?"T":"F", newestframe);
+//logwrite(function, std::string(message));
       if (this->frame.bufframen[i] > newestframe) {
         this->frame.currentframe.store(this->frame.bufframen[i]);
         if (this->frame.bufcomplete[i]) {
@@ -2285,85 +2332,22 @@ logwrite(function, std::string(message));
     }
     this->lastframe = newestframe;
     if (completed_index != -1) {
-SNPRINTF(message, "[DEBUG] completed_index=%d bufframen=%d lasttimestamp=%lu",
-         completed_index, frame.bufframen[completed_index], this->frame.buftimestamp[completed_index]);
-logwrite(function, std::string(message));
+//SNPRINTF(message, "[DEBUG] completed_index=%d bufframen=%d lasttimestamp=%lu",
+//         completed_index, frame.bufframen[completed_index], this->frame.buftimestamp[completed_index]);
+//logwrite(function, std::string(message));
       this->lasttimestamp = this->frame.buftimestamp[completed_index];
       this->frame.index.store(completed_index);
-//    this->frame.currentframe = this->frame.bufframen[completed_index];
       this->frame.next_index = (completed_index + 1) % this->camera_info.activebufs;
     }
-SNPRINTF(message, "     %s %s  |  %s %s  |  %s %s", framestr[0], statestr[0], framestr[1], statestr[1],framestr[2], statestr[2]);
-logwrite(function,std::string(message));
-SNPRINTF(message, "     newestframe=%d  frame.currentframe=%d", newestframe, this->frame.currentframe.load());
-logwrite(function,std::string(message));
+//SNPRINTF(message, "     %s %s  |  %s %s  |  %s %s", framestr[0], statestr[0], framestr[1], statestr[1],framestr[2], statestr[2]);
+//logwrite(function,std::string(message));
+//SNPRINTF(message, "     newestframe=%d  frame.currentframe=%d", newestframe, this->frame.currentframe.load());
+//logwrite(function,std::string(message));
 
-/*****
- *  newestbuf   = this->frame.index;
- *
- *  if (this->frame.index < (int)this->frame.bufframen.size()) {
- *    newestframe = this->frame.bufframen[this->frame.index];
- *  }
- *  else {
- *    message.str(""); message << "newest buf " << this->frame.index << " from FRAME message exceeds number of buffers " << this->frame.bufframen.size();
- *    this->camera.log_error( function, message.str() );
- *    return ERROR;
- *  }
- *
- *  // loop through the number of buffers
- *  //
- *  int num_zero = 0;
- *char statestr[Archon::nbufs][64];
- *char framestr[Archon::nbufs][64];
- *  for (int bc=0; bc<Archon::nbufs; bc++) {
- *
- *    // look for special start-up case, when all frame buffers are zero
- *    //
- *    if ( this->frame.bufframen[bc] == 0 ) num_zero++;
- *
- *    if ( (this->frame.bufframen[bc] > newestframe) &&
- *          this->frame.bufcomplete[bc] ) {
- *      newestframe = this->frame.bufframen[bc];
- *      newestbuf   = bc;
- *    }
-memset(statestr[bc], '\0', 4);
-if ( (this->frame.rbuf-1) == bc)   strcat(statestr[bc], "R");
-if ( (this->frame.wbuf-1) == bc)   strcat(statestr[bc], "W");
-if ( this->frame.bufcomplete[bc] ) strcat(statestr[bc], "C");
-SNPRINTF(framestr[bc], "%u %lu", this->frame.bufframen[bc], (this->frame.bufcomplete[bc]?this->frame.buftimestamp[bc]:0));
- *  }
-char msg[512];
-SNPRINTF(msg, "     %s %s  |  %s %s  |  %s %s", framestr[0], statestr[0], framestr[1], statestr[1],framestr[2], statestr[2]);
-logwrite(function,std::string(msg));
- *
- *  // start-up case, all frame buffers are zero
- *  //
- *  if (num_zero == Archon::nbufs) {
- *    newestframe = 0;
- *    newestbuf   = 0;
- *  }
- *
- *  **
- *   * save index of newest buffer. From this we can find the newest frame, etc.
- *   *
- *  this->frame.index = newestbuf;
- *  this->frame.currentframe = newestframe;
- *
- *  // Index of next frame is this->frame.index+1 
- *  // except for start-up case (when it is 0) and
- *  // wrapping to 0 when it reaches the maximum number of active buffers.
- *  //
- *  this->frame.next_index = this->frame.index + 1;
- *  if ( this->frame.next_index >= this->camera_info.activebufs ) {
- *    this->frame.next_index = 0;
- *  }
- *
- *  // startup condition for next_frame
- *  //
- *  if ( ( this->frame.bufframen[ this->frame.index ] ) == 1 && this->frame.bufcomplete[ this->frame.index ] == 0 ) {
- *    this->frame.next_index = 0;
- *  }
- *****/
+auto end = std::chrono::steady_clock::now();             // start a timer now
+auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end-start);
+SNPRINTF(message, "[DURATION] total time for get_frame_status=%ld", duration.count());
+logwrite(function,std::string(message));
 
     return error;
   }

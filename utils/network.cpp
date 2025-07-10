@@ -588,7 +588,10 @@ namespace Network {
     poll_struct.events = POLLIN;
     poll_struct.fd     = this->fd;
 
+auto t0 = std::chrono::steady_clock::now();
     int ret = poll( &poll_struct, 1, timeout );
+auto t1 = std::chrono::steady_clock::now();
+logwrite(function, "poll returned in " + std::to_string(std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count()) + " us");
     short revents = poll_struct.revents;
 
     if ( ( revents & POLLHUP ) || ( revents & POLLERR) || ( revents & POLLNVAL ) ) {
@@ -823,6 +826,101 @@ namespace Network {
   }
   /**************** Network::TcpSocket::Read **********************************/
 
+
+  /***** Network::TcpSocket::ReadOnly *****************************************/
+  /**
+   * @brief      read data from connected socket
+   * @param[in]  buf, pointer to buffer
+   * @param[in]  count, number of bytes to read
+   * @return     number of bytes read or -1 on error
+   *
+   */
+  int TcpSocket::ReadOnly(void* buf, size_t count) {
+    int nread = read(this->fd, buf, count);
+    if (nread < 0 && errno != EAGAIN) {
+      char message[128];
+      snprintf(message, sizeof(message), "ERROR reading data on fd %d: %s", this->fd, strerror(errno));
+      logwrite("Network::TcpSocket::ReadOnly", std::string(message));
+    }
+    return nread;
+  }
+  /***** Network::TcpSocket::ReadOnly *****************************************/
+
+
+  int TcpSocket::ReadRetry(void* buf, size_t count, int timeout_ms) {
+    std::chrono::steady_clock::time_point tstart = std::chrono::steady_clock::now();
+    while (true) {
+      int nread = read(this->fd, buf, count);
+      if (nread >= 0) return nread;
+      if (errno != EAGAIN) {
+        logwrite("Network::TcpSocket::ReadRetry", "ERROR reading data: "+std::string(strerror(errno)));
+        return -1;
+      }
+      auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now()-tstart).count();
+      if (elapsed > timeout_ms) {
+        logwrite("Network::TcpSocket::ReadRetry", "ERROR timeout waiting for data: "+std::string(strerror(errno)));
+        return -1;
+      }
+      usleep(10);
+    }
+  }
+
+  int TcpSocket::ReadLine(std::string &reply, int timeout_ms) {
+    char buffer[65536];
+    reply.clear();
+    reply.reserve(8192);
+
+    struct pollfd pfd = {this->fd, POLLIN, 0};
+    int pollret = poll(&pfd, 1, timeout_ms);
+    if (pollret <= 0) return pollret;
+    if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) return -1;
+
+    while (true) {
+      ssize_t nread = read(this->fd, buffer, sizeof(buffer));
+      if (nread > 0) {
+        char* newline_pos = static_cast<char*>(memchr(buffer, '\n', nread));
+        if (newline_pos) {
+          size_t len = newline_pos - buffer + 1;
+          reply.append(buffer, len);
+          return reply.length();
+        }
+        else {
+          reply.append(buffer, nread);
+        }
+      }
+      else
+      if (nread==0) {
+        return 0;
+      }
+      else {
+        if (errno==EAGAIN || errno==EWOULDBLOCK) {
+          if (reply.empty()) return -1;
+          else {
+            struct pollfd pfd2 = {this->fd, POLLIN, 0};
+            int pollret2 = poll(&pfd2, 1, 100);
+            if (pollret2 <=0) return reply.length();
+            continue;
+          }
+        }
+      }
+    }
+  }
+
+
+  int TcpSocket::ReadPoll(void* buf, size_t count) {
+    struct pollfd pfd = {.fd=this->fd, .events=POLLIN};
+    int pret = poll(&pfd, 1, 0);
+    if (pret==0) return 0;
+    if (pret<0) {logwrite("TcpSocket::ReadPoll", "poll failed"); return -1;}
+    int nread = recv(this->fd, buf, count, MSG_DONTWAIT );
+    if (nread<0) logwrite("TcpSocket::ReadPoll", "error reading data");
+    return nread;
+  }
+
+  void TcpSocket::SetNonBlock() {
+    int flags = fcntl(this->fd, F_GETFL, 0);
+    fcntl(this->fd, F_SETFL, flags|O_NONBLOCK);
+  }
 
   /**************** Network::TcpSocket::Read **********************************/
   /**
