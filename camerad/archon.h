@@ -24,6 +24,7 @@
 #include <string>
 #include <fstream>
 #include <inttypes.h>
+#include <chrono>
 
 // #include <Python.h>
 
@@ -73,6 +74,8 @@
 #define REV_HEATERTARGET   std::string("1.0.1087")
 #define REV_FRACTIONALPID  std::string("1.0.1054")
 #define REV_VCPU           std::string("1.0.784")
+
+using Clock = std::chrono::high_resolution_clock;
 
 namespace Archon {
 
@@ -877,10 +880,12 @@ logwrite(function,message.str());
       std::atomic<bool> is_consumer_error;
 
       void image_acquisition_loop(int nseq);
+      void autofetch_image_loop(int nseq);
       void image_processing_loop();
       void process_image(std::shared_ptr<ImageBuffer> &imagebuf);
       template<typename T> void deinterlace_queue(std::shared_ptr<ImageBuffer> imagebuf, ProcessingBuffers<T> &buffers);
       void runcds(bool is_last_coadd);
+      long read_n_bytes(char* dest, size_t nbytes, int timeout_ms);
 
       // Add any pre-exposures onto the requested number of sequences,
       // using 1 if not supplied.
@@ -936,6 +941,7 @@ logwrite(function,message.str());
       uint32_t readout_arg;
 
       bool lastmexamps;
+      bool is_autofetch;
 
       bool write_tapinfo_to_fits;            //!< set to write tapinfo (gain, offset) to FITS headers
 
@@ -1014,6 +1020,7 @@ logwrite(function,message.str());
       long tempinfo( std::string &retstring );                        /// get Archon temperature info string (all three)
       long power( std::string state_in, std::string &retstring );     /// wrapper for do_power
       long do_power( std::string state_in, std::string &retstring );  /// set/get Archon power state
+      long autofetch(std::string state_in, std::string &state_out);
       long expose( std::string nseq_in );
 void make_simulated_data(char* buffer, int slice);
       long do_expose(std::string nseq_in);

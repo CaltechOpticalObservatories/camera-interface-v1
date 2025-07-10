@@ -821,6 +821,30 @@ namespace Network {
     }
     return( nread );
   }
+  // int TcpSocket::Read(void* buf, size_t count) {
+  //   const std::string function("Network::TcpSocket::Read[poll]");
+  //   std::stringstream message;
+
+  //   struct pollfd pfd = { .fd = this->fd, .events = POLLIN };
+  //   int rv = poll(&pfd, 1, POLLTIMEOUT);
+
+  //   if (rv < 0) {
+  //     message << "poll() failed on fd " << this->fd << ": " << strerror(errno);
+  //     logwrite(function, message.str());
+  //     return -1;
+  //   } else if (rv == 0) {
+  //     message << "timeout waiting for read on fd " << this->fd;
+  //     logwrite(function, message.str());
+  //     return -1;
+  //   }
+
+  //   int nread = read(this->fd, buf, count);
+  //   if (nread < 0) {
+  //     message << "read() failed on fd " << this->fd << ": " << strerror(errno);
+  //     logwrite(function, message.str());
+  //   }
+  //   return nread;
+  // }
   /**************** Network::TcpSocket::Read **********************************/
 
 
@@ -983,20 +1007,28 @@ namespace Network {
    * @return     none
    *
    */
+  // void TcpSocket::Flush() {
+  //   struct pollfd poll_struct;
+  //   poll_struct.events = POLLIN;
+  //   poll_struct.fd     = this->fd;  // poll the current file descriptor
+
+  //   poll( &poll_struct, 1, 1000 );  // poll up to 1 sec
+
+  //   while ( true ) {
+  //     char buf[1024];
+  //     int len = recv( poll_struct.fd, buf, sizeof(buf), MSG_DONTWAIT );
+  //     if ( len == -1 ) break;
+  //   }
+  //   return;
+  // }
   void TcpSocket::Flush() {
-    struct pollfd poll_struct;
-    poll_struct.events = POLLIN;
-    poll_struct.fd     = this->fd;  // poll the current file descriptor
-
-    poll( &poll_struct, 1, 1000 );  // poll up to 1 sec
-
-    while ( true ) {
-      char buf[1024];
-      int len = recv( poll_struct.fd, buf, sizeof(buf), MSG_DONTWAIT );
-      if ( len == -1 ) break;
+    char buf[1024];
+    while (true) {
+      int n = recv(this->fd, buf, sizeof(buf), MSG_DONTWAIT);
+      if (n <= 0) break;
     }
-    return;
   }
+
   /**************** Network::TcpSocket::Flush *********************************/
 
 }
