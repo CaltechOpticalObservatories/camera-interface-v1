@@ -9,6 +9,13 @@
 
 namespace Common {
 
+  Queue::~Queue() {
+    std::string* msg = nullptr;
+    while (message_queue.pop(msg)) {
+      delete msg;
+    }
+  }
+
   /** Common::Queue::enqueue **************************************************/
   /**
    * @fn     enqueue
@@ -17,11 +24,11 @@ namespace Common {
    * @return none
    *
    */
-  void Queue::enqueue(std::string message) {
-    std::lock_guard<std::mutex> lock(queue_mutex);
-    message_queue.push(message);
-    notifier.notify_one();
-    return;
+  void Queue::enqueue(const std::string& message) {
+    std::string* msg = new std::string(message);
+    while (!message_queue.push(msg)) {
+      std::this_thread::yield(); // back off if queue is full
+    }
   }
   /** Common::Queue::enqueue **************************************************/
 
@@ -37,14 +44,15 @@ namespace Common {
    * If the queue is empty, wait untill an element is avaiable.
    *
    */
-  std::string Queue::dequeue(void) {
-    std::unique_lock<std::mutex> lock(queue_mutex);
-    while(message_queue.empty()) {
-      notifier.wait(lock);   // release lock as long as the wait and reaquire it afterwards.
+  std::string Queue::dequeue() {
+    std::string* msg = nullptr;
+    if (message_queue.pop(msg)) {
+      std::string result = *msg;
+      delete msg;
+      return result;
+    } else {
+      return ""; // or use std::optional<std::string> for better clarity
     }
-    std::string message = message_queue.front();
-    message_queue.pop();
-    return message;
   }
   /** Common::Queue::dequeue **************************************************/
 

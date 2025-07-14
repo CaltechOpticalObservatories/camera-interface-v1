@@ -11,13 +11,11 @@
 
 #include "logentry.h"
 
-std::mutex loglock;           /// mutex to protect from multiple access
 std::ofstream filestream;     /// IO stream class
 unsigned int nextday = 86410; /// number of seconds until a new day
 bool to_stderr = true;        /// write to stderr by default
 std::string tmzone_log;       /// optional time zone for logging
-std::queue<std::string> log_queue;
-std::condition_variable log_cv;
+boost::lockfree::queue<std::string*> log_queue(1024);
 std::atomic<bool> logger_running{true};
 std::thread logger_thread;
 
@@ -25,57 +23,47 @@ std::thread logger_thread;
 /**
  * @brief      Internal thread function that processes queued log messages.
  *
- * This function runs in a separate thread and waits for new log messages
- * to be pushed into the queue. It writes messages to the log file (if open)
- * and optionally to stderr, depending on configuration.
+ * This function runs in a dedicated thread and continuously attempts to
+ * pop messages from a lock-free Boost queue (`log_queue`). Each message
+ * is written to the log file if open, and optionally to stderr depending
+ * on configuration or write failure.
  *
- * The thread continues to run as long as `logger_running` is true or there
- * are messages left in the `log_queue`. Once done, it flushes the stream.
+ * The thread continues running as long as `logger_running` is true or
+ * there are pending messages in the queue. After processing all messages,
+ * it flushes the output stream.
+ *
+ * Messages are heap-allocated by the producer and must be freed after
+ * processing to avoid memory leaks.
+ *
+ * This implementation is fully non-blocking on the producer side and avoids
+ * the use of mutexes or condition variables for queue access.
  *
  */
-void logger_worker()
-{
-    while (logger_running || !log_queue.empty())
-    {
-        std::unique_lock<std::mutex> lock(loglock);
-        log_cv.wait(lock, []
-                    { return !log_queue.empty() || !logger_running; });
-
-        while (!log_queue.empty())
-        {
-            std::string msg = std::move(log_queue.front());
-            log_queue.pop();
-            lock.unlock();
-
+void logger_worker() {
+    std::string* msg;
+    while (logger_running || !log_queue.empty()) {
+        while (log_queue.pop(msg)) {
             bool write_failed = false;
 
-            if (filestream.is_open())
-            {
-                filestream << msg;
-                if (filestream.fail())
-                {
+            if (filestream.is_open()) {
+                filestream << *msg;
+                if (filestream.fail()) {
                     std::cerr << "ERROR: Failed to write to log file (disk full or I/O error)" << std::endl;
                     write_failed = true;
                 }
             }
 
-            if (to_stderr || write_failed)
-            {
-                std::cerr << msg;
+            if (to_stderr || write_failed) {
+                std::cerr << *msg;
             }
 
-            lock.lock();
+            delete msg; // avoid memory leak
         }
 
         if (filestream.is_open())
-        {
             filestream.flush();
-            if (filestream.fail())
-            {
-                std::cerr << "ERROR: Failed to flush log file (disk full or I/O error)" << std::endl;
-                logger_running = false;
-            }
-        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(5)); // slight delay to reduce CPU usage
     }
 }
 /***** logger_worker ***************************************************************/
@@ -163,20 +151,21 @@ long init_log(std::string name, std::string logpath, std::string logstderr, std:
 /**
  * @brief      Shuts down the logging system and closes the log file.
  *
- * Signals the logger thread to stop by setting `logger_running` to false
- * and notifying the condition variable. Waits for the logger thread to
- * finish processing any remaining messages. Closes the log file if open.
+ * Sets `logger_running` to false to signal the logger thread to stop.
+ * Waits for the thread to finish processing any remaining messages in
+ * the log queue. Once the logger thread has exited, the log file stream
+ * is closed if it was open.
+ * All remaining log messages in the queue are flushed before shutdown.
  *
  */
-void close_log()
-{
+void close_log() {
     logger_running = false;
-    log_cv.notify_one();
     if (logger_thread.joinable())
         logger_thread.join();
     if (filestream.is_open())
         filestream.close();
 }
+
 
 /***** close_log **************************************************************/
 
@@ -185,35 +174,36 @@ void close_log()
  * @brief      Queues a formatted log message with a timestamp and function name.
  * @param[in]  function   Name of the calling function or context.
  * @param[in]  message    Log message to record.
+ * @param[in]  level      LogLevel (e.g. ERROR, INFO, DEBUG).
  *
- * Formats the message as: "TIMESTAMP  (function) message\n" using the
- * configured time zone. Pushes the message into the logging queue in a
- * thread-safe manner and notifies the logger thread for processing.
+ * Formats the message as:
+ *   "YYYY-MM-DDTHH:MM:SS.ssssss  (function) message\n"
+ * using the configured time zone.
  *
- * Create a time-stamped entry in the log file in the form of:
- * YYYY-MM-DDTHH:MM:SS.ssssss (function) message\n
+ * Allocates the formatted string on the heap and pushes a pointer to it
+ * into a Boost lock-free queue (`log_queue`). If the queue is full,
+ * the function spin-waits briefly until the message is accepted.
  *
  */
-void logwrite(const std::string &function, const std::string &message)
-{
+void logwrite(const std::string &function, const std::string &message, LogLevel level) {
     char buffer[512];
     std::string timestamp = get_timestamp(tmzone_log);
+    const char* level_str = log_level_to_string(level);
 
-    // snprintf for speed
-    int len = snprintf(buffer, sizeof(buffer), "%s  (%s) %s\n",
-                       timestamp.c_str(), function.c_str(), message.c_str());
+    int len = snprintf(buffer, sizeof(buffer), "%s  [%s] (%s) %s\n",
+                       timestamp.c_str(), level_str, function.c_str(), message.c_str());
 
-    // but fallback to std::string for long messages
-    std::string logmsg = (len>0 && len < static_cast<int>(sizeof(buffer)))
-                       ? std::string(buffer, len)
-                       : (timestamp + "  (" + function + ") " + message + "\n");
+    std::string* logmsg = new std::string(
+        (len > 0 && len < static_cast<int>(sizeof(buffer)))
+        ? std::string(buffer, len)
+        : timestamp + "  [" + level_str + "] (" + function + ") " + message + "\n"
+    );
 
-    // push message into the queue
-    {
-        std::lock_guard<std::mutex> lock(loglock);
-        log_queue.push(logmsg);
+    while (!log_queue.push(logmsg)) {
+        std::this_thread::yield();  // brief spin-wait if queue is full
     }
-    log_cv.notify_one();
 }
-
+void logwrite(const std::string &function, const std::string &message) {
+    logwrite(function, message, LogLevel::INFO);
+}
 /***** logwrite ***************************************************************/

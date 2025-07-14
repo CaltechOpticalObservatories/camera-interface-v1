@@ -13,8 +13,9 @@
 #include <string>
 #include <mutex>
 #include <map>
-#include <condition_variable>
 #include <regex>
+#include <boost/lockfree/queue.hpp>
+#include <atomic>
 
 #include "logentry.h"
 
@@ -209,24 +210,23 @@ namespace Common {
   /**************** Common::Queue *********************************************/
   /**
    * @class  Queue
-   * @brief  provides a thread-safe messaging queue
+   * @brief  provides a thread-safe non-blokcking messaging queue
    *
    */
   class Queue {
     private:
-      std::queue<std::string> message_queue;
-      mutable std::mutex queue_mutex;
-      std::condition_variable notifier;
-      bool is_running;
+      boost::lockfree::queue<std::string*> message_queue;
+      std::atomic<bool> is_running;
+
     public:
-      Queue(void) : message_queue() , queue_mutex() , notifier() { this->is_running = false; };
-      ~Queue(void) {}
+      Queue() : message_queue(1024) { is_running = false; }
+      ~Queue();
 
-      void service_running(bool state) { this->is_running = state; };  /// set service running
-      bool service_running() { return this->is_running; };             /// is the service running?
+      void service_running(bool state) { is_running = state; }
+      bool service_running() const { return is_running; }
 
-      void enqueue(std::string message);                               /// push an element into the queue.
-      std::string dequeue(void);                                       /// pop an element from the queue
+      void enqueue(const std::string& message);
+      std::string dequeue();  // returns empty string if none available
   };
   /**************** Common::Queue *********************************************/
 
