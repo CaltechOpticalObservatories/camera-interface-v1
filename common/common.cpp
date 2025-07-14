@@ -9,17 +9,27 @@
 
 namespace Common {
 
+  /** Common::Queue::~Queue *****************************************************/
+  /**
+  * @fn     ~Queue
+  * @brief  Destructor that cleans up any remaining messages in the queue.
+  *
+  * Pops and deletes all remaining heap-allocated messages from the internal
+  * Boost lock-free queue to prevent memory leaks. Should be called only once
+  * when the queue is no longer in use.
+  */
   Queue::~Queue() {
     std::string* msg = nullptr;
     while (message_queue.pop(msg)) {
       delete msg;
     }
   }
+  /**************** Common::Queue::~Queue *************************************/
 
   /** Common::Queue::enqueue **************************************************/
   /**
    * @fn     enqueue
-   * @brief  puts a message into the queue
+   * @brief  Adds a message to the queue in a non-blocking way.
    * @param  std::string message
    * @return none
    *
@@ -36,12 +46,12 @@ namespace Common {
   /** Common::Queue::dequeue **************************************************/
   /**
    * @fn     dequeue
-   * @brief  pops the first message off the queue
+   * @brief  Retrieves and removes the next message from the queue.
    * @param  none
    * @return std::string message
    *
-   * Get the "front"-element.
-   * If the queue is empty, wait untill an element is avaiable.
+   * Pops a pointer to a message from the queue in a non-blocking way.
+   * If the queue is empty, an empty string is returned.
    *
    */
   std::string Queue::dequeue() {
@@ -51,7 +61,7 @@ namespace Common {
       delete msg;
       return result;
     } else {
-      return ""; // or use std::optional<std::string> for better clarity
+      return "";
     }
   }
   /** Common::Queue::dequeue **************************************************/
