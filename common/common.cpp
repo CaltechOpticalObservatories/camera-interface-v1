@@ -9,19 +9,36 @@
 
 namespace Common {
 
+  /** Common::Queue::~Queue *****************************************************/
+  /**
+  * @fn     ~Queue
+  * @brief  Destructor that cleans up any remaining messages in the queue.
+  *
+  * Pops and deletes all remaining heap-allocated messages from the internal
+  * Boost lock-free queue to prevent memory leaks. Should be called only once
+  * when the queue is no longer in use.
+  */
+  Queue::~Queue() {
+    std::string* msg = nullptr;
+    while (message_queue.pop(msg)) {
+      delete msg;
+    }
+  }
+  /**************** Common::Queue::~Queue *************************************/
+
   /** Common::Queue::enqueue **************************************************/
   /**
    * @fn     enqueue
-   * @brief  puts a message into the queue
+   * @brief  Adds a message to the queue in a non-blocking way.
    * @param  std::string message
    * @return none
    *
    */
-  void Queue::enqueue(std::string message) {
-    std::lock_guard<std::mutex> lock(queue_mutex);
-    message_queue.push(message);
-    notifier.notify_one();
-    return;
+  void Queue::enqueue(const std::string& message) {
+    std::string* msg = new std::string(message);
+    while (!message_queue.push(msg)) {
+      std::this_thread::yield(); // back off if queue is full
+    }
   }
   /** Common::Queue::enqueue **************************************************/
 
@@ -29,22 +46,23 @@ namespace Common {
   /** Common::Queue::dequeue **************************************************/
   /**
    * @fn     dequeue
-   * @brief  pops the first message off the queue
+   * @brief  Retrieves and removes the next message from the queue.
    * @param  none
    * @return std::string message
    *
-   * Get the "front"-element.
-   * If the queue is empty, wait untill an element is avaiable.
+   * Pops a pointer to a message from the queue in a non-blocking way.
+   * If the queue is empty, an empty string is returned.
    *
    */
-  std::string Queue::dequeue(void) {
-    std::unique_lock<std::mutex> lock(queue_mutex);
-    while(message_queue.empty()) {
-      notifier.wait(lock);   // release lock as long as the wait and reaquire it afterwards.
+  std::string Queue::dequeue() {
+    std::string* msg = nullptr;
+    if (message_queue.pop(msg)) {
+      std::string result = *msg;
+      delete msg;
+      return result;
+    } else {
+      return "";
     }
-    std::string message = message_queue.front();
-    message_queue.pop();
-    return message;
   }
   /** Common::Queue::dequeue **************************************************/
 
