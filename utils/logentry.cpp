@@ -13,9 +13,13 @@
 
 std::ofstream filestream;     /// IO stream class
 unsigned int nextday = 86410; /// number of seconds until a new day
-bool to_stderr = true;        /// write to stderr by default
+bool to_stderr = false;        /// write to stderr by default
 std::string tmzone_log;       /// optional time zone for logging
-boost::lockfree::queue<std::string*> log_queue(1024);
+struct LogItem {
+    std::string* msg;
+    LogLevel level;
+};
+boost::lockfree::queue<LogItem*> log_queue(1024);
 std::atomic<bool> logger_running{true};
 std::thread logger_thread;
 
@@ -40,24 +44,25 @@ std::thread logger_thread;
  *
  */
 void logger_worker() {
-    std::string* msg;
+    LogItem* item;
     while (logger_running || !log_queue.empty()) {
-        while (log_queue.pop(msg)) {
+        while (log_queue.pop(item)) {
             bool write_failed = false;
 
             if (filestream.is_open()) {
-                filestream << *msg;
+                filestream << *(item->msg);
                 if (filestream.fail()) {
                     std::cerr << "ERROR: Failed to write to log file (disk full or I/O error)" << std::endl;
                     write_failed = true;
                 }
             }
 
-            if (to_stderr || write_failed) {
-                std::cerr << *msg;
+            if (item->level == LogLevel::ERROR || write_failed) {
+                std::cerr << *(item->msg);
             }
 
-            delete msg; // avoid memory leak
+            delete item->msg;
+            delete item;
         }
 
         if (filestream.is_open())
@@ -194,12 +199,13 @@ void logwrite(const std::string &function, const std::string &message, LogLevel 
                        timestamp.c_str(), level_str, function.c_str(), message.c_str());
 
     std::string* logmsg = new std::string(
-        (len > 0 && len < static_cast<int>(sizeof(buffer)))
+    (len > 0 && len < static_cast<int>(sizeof(buffer)))
         ? std::string(buffer, len)
-        : timestamp + "  [" + level_str + "] (" + function + ") " + message + "\n"
-    );
+        : timestamp + "  [" + level_str + "] (" + function + ") " + message + "\n");
 
-    while (!log_queue.push(logmsg)) {
+    LogItem* item = new LogItem{ logmsg, level };
+
+    while (!log_queue.push(item)) {
         std::this_thread::yield();  // brief spin-wait if queue is full
     }
 }
