@@ -187,17 +187,13 @@ namespace Common {
         // get a vector of iterators for all the keys matching the search string
         //
         erasevec = this->FindKeys( search_for );
-#ifdef LOGLEVEL_DEBUG
-        message.str(""); message << "[DEBUG] found " << erasevec.size() << " entries matching \"" << search_for << "*\"";
-        logwrite( function, message.str() );
-#endif
+        message.str(""); message << "found " << erasevec.size() << " entries matching \"" << search_for << "*\"";
+        logwrite( function, message.str(), LogLevel::DEBUG );
 
         // loop through that vector and erase the selected iterators from the database
         //
         for ( auto vec : erasevec ) {
-#ifdef LOGLEVEL_DEBUG
-          message.str(""); message << "[DEBUG] erasing " << vec->first; logwrite( function, message.str() );
-#endif
+          message.str(""); message << "erasing " << vec->first; logwrite( function, message.str(), LogLevel::DEBUG );
           std::lock_guard<std::mutex> lock(keydb_mutex);
           this->keydb.erase( vec );
         }

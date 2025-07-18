@@ -97,12 +97,12 @@ int main(int argc, char **argv) {
     server.config.filename = std::string( argv[1] );
   }
   else {
-    logwrite(function, "ERROR: no configuration file specified");
+    logwrite(function, "ERROR: no configuration file specified", LogLevel::ERROR);
     server.exit_cleanly();
   }
 
   if ( server.config.read_config(server.config) != NO_ERROR) {  // read configuration file specified on command line
-    logwrite(function, "ERROR: unable to configure system");
+    logwrite(function, "ERROR: unable to configure system", LogLevel::ERROR);
     server.exit_cleanly();
   }
 
@@ -153,7 +153,7 @@ int main(int argc, char **argv) {
   }
 
   if (log_path.empty()) {
-    logwrite(function, "ERROR: LOGPATH not specified in configuration file");
+    logwrite(function, "ERROR: LOGPATH not specified in configuration file", LogLevel::ERROR);
     server.exit_cleanly();
   }
 
@@ -163,7 +163,7 @@ int main(int argc, char **argv) {
   else
   if ( !daemon_in.empty() ) {
     message.str(""); message << "ERROR: unrecognized argument DAEMON=" << daemon_in << ", expected { yes | no }";
-    logwrite( function, message.str() );
+    logwrite( function, message.str(), LogLevel::ERROR );
     server.exit_cleanly();
   }
 
@@ -199,12 +199,12 @@ int main(int argc, char **argv) {
   if (ret==NO_ERROR) ret=server.configure_controller();  // get needed values out of read-in configuration file for the controller
 
   if (ret != NO_ERROR) {
-    logwrite(function, "ERROR: unable to configure system");
+    logwrite(function, "ERROR: unable to configure system", LogLevel::ERROR);
     server.exit_cleanly();
   }
 
   if (server.nbport == -1 || server.blkport == -1) {
-    logwrite(function, "ERROR: server ports not configured");
+    logwrite(function, "ERROR: server ports not configured", LogLevel::ERROR);
     server.exit_cleanly();
   }
 
@@ -351,7 +351,7 @@ void async_main(Network::UdpSocket sock) {
 
   retval = sock.Create();                                   // create the UDP socket
   if (retval < 0) {
-    logwrite(function, "error creating UDP multicast socket for asynchronous messages");
+    logwrite(function, "error creating UDP multicast socket for asynchronous messages", LogLevel::ERROR);
     server.exit_cleanly();                                  // do not continue on error
   }
   if (retval==1) {                                          // exit this thread but continue with server
@@ -364,7 +364,7 @@ void async_main(Network::UdpSocket sock) {
     if (retval < 0) {
       std::stringstream errstm;
       errstm << "error sending UDP message: " << message;
-      logwrite(function, errstm.str());
+      logwrite(function, errstm.str(), LogLevel::ERROR);
     }
     if (message=="exit") {                                  // terminate this thread
       sock.Close();
@@ -400,7 +400,7 @@ void doit(Network::TcpSocket sock) {
   bool connection_open=true;
 
   message.str(""); message << "thread " << sock.id << " accepted connection on fd " << sock.getfd();
-  logwrite( function, message.str() );
+  logwrite( function, message.str(), LogLevel::DEBUG );
 
   while (connection_open) {
     memset(buf,  '\0', BUFSIZE);  // init buffers
@@ -411,11 +411,11 @@ void doit(Network::TcpSocket sock) {
     if ( ( pollret=sock.Poll() ) <= 0 ) {
       if (pollret==0) {
         message.str(""); message << "Poll timeout on fd " << sock.getfd() << " thread " << sock.id;
-        logwrite(function, message.str());
+        logwrite(function, message.str(), LogLevel::ERROR);
       }
       if (pollret <0) {
         message.str(""); message << "Poll error on fd " << sock.getfd() << " thread " << sock.id << ": " << strerror(errno);
-        logwrite(function, message.str());
+        logwrite(function, message.str(), LogLevel::ERROR);
       }
       break;                      // this will close the connection
     }
@@ -426,11 +426,11 @@ void doit(Network::TcpSocket sock) {
     char delim='\n';
     if ( ( ret=sock.Read( sbuf, delim ) ) <= 0 ) {
       if (ret<0) {                // could be an actual read error
-        message.str(""); message << "Read error on fd " << sock.getfd() << ": " << strerror(errno); logwrite(function, message.str());
+        message.str(""); message << "Read error on fd " << sock.getfd() << ": " << strerror(errno); logwrite(function, message.str(), LogLevel::ERROR);
       }
       if (ret==0) {
         message.str(""); message << "timeout reading from fd " << sock.getfd();
-        logwrite( function, message.str() );
+        logwrite( function, message.str(), LogLevel::VERBOSE );
       }
       break;                      // Breaking out of the while loop will close the connection.
                                   // This probably means that the client has terminated abruptly, 
@@ -461,17 +461,17 @@ void doit(Network::TcpSocket sock) {
       }
 
       message.str(""); message << "thread " << sock.id << " received command on fd " << sock.getfd() << ": " << cmd << " " << args;
-      logwrite(function, message.str());
+      logwrite(function, message.str(), LogLevel::DEBUG);
     }
     catch ( std::runtime_error &e ) {
       std::stringstream errstream; errstream << e.what();
       message.str(""); message << "error parsing arguments: " << errstream.str();
-      logwrite(function, message.str());
+      logwrite(function, message.str(), LogLevel::ERROR);
       ret = -1;
     }
     catch ( ... ) {
       message.str(""); message << "unknown error parsing arguments: " << args;
-      logwrite(function, message.str());
+      logwrite(function, message.str(), LogLevel::ERROR);
       ret = -1;
     }
 
@@ -706,7 +706,7 @@ void doit(Network::TcpSocket sock) {
                     //
                     if ( args.find(".") != std::string::npos ) {
                       ret = ERROR;
-                      logwrite(function, "ERROR: fractional exposure times not allowed");
+                      logwrite(function, "ERROR: fractional exposure times not allowed", LogLevel::ERROR);
                       // empty the args string so that a call to exptime returns the current exptime
                       //
                       args="";
@@ -748,7 +748,7 @@ void doit(Network::TcpSocket sock) {
         std::transform( args.begin(), args.end(), args.begin(), ::toupper );    // make uppercase
       }
       catch (...) {
-        logwrite(function, "error converting command to uppercase");
+        logwrite(function, "error converting command to uppercase", LogLevel::ERROR);
         ret=ERROR;
       }
       ret = server.native(args);
@@ -756,7 +756,7 @@ void doit(Network::TcpSocket sock) {
 #endif
     else {  // if no matching command found
       message.str(""); message << "ERROR unrecognized command: " << cmd;
-      logwrite( function, message.str() );
+      logwrite( function, message.str(), LogLevel::ERROR );
       ret=ERROR;
     }
 

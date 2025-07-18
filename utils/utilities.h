@@ -123,6 +123,30 @@ inline bool caseCompareChar( char a, char b ) { return ( std::toupper(a) == std:
 inline bool caseCompareString( const std::string &s1, const std::string &s2 ) {
   return( (s1.size()==s2.size() ) && std::equal( s1.begin(), s1.end(), s2.begin(), caseCompareChar) ); }
 
+inline double timespec_to_us(const timespec &ts) {
+  return static_cast<double>(ts.tv_sec)*1000000.0+static_cast<double>(ts.tv_nsec)/1000.0;
+}
+
+inline timespec us_to_timespec(double usec) {
+  timespec ts;
+  ts.tv_sec  = static_cast<time_t>(usec / 1000000.0);
+  double fractional_us = usec - static_cast<double>(ts.tv_sec)*1000000.0;
+  ts.tv_nsec = static_cast<long>(fractional_us * 1000.0);
+  return ts;
+}
+
+inline timespec timespec_avg(const timespec &t1, const timespec &t2) {
+  double t1_us = timespec_to_us(t1);
+  double t2_us = timespec_to_us(t2);
+  double avg_us = 0.5 * (t1_us+t2_us);
+  return us_to_timespec(avg_us);
+}
+
+inline timespec timespec_diff(const timespec &t1, const timespec &t2) {
+  double t1_us = timespec_to_us(t1);
+  double t2_us = timespec_to_us(t2);
+  return us_to_timespec(t1_us-t2_us);
+}
 
 /***** to_string_prec *******************************************************/
 /**

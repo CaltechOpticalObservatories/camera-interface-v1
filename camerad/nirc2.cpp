@@ -376,14 +376,13 @@ namespace Archon {
         //
         long retval = this->exptime( this->camera_info.requested_exptime );
 
-#ifdef LOGLEVEL_DEBUG
-        message.str(""); message << "[DEBUG] frame_overhead=" << frame_ohead << " pixel=" << pixeltime
+        message.str(""); message << "frame_overhead=" << frame_ohead << " pixel=" << pixeltime
                                  << " pixel_skip=" << pixelskip << " row_overhead=" << row_ohead
                                  << " row_skip=" << rowskip << " total row time=" << rowtime << " usec."
                                  << " frame readouttime=" << readouttime
                                  << " total readouttime=" << this->camera_info.readouttime << " msec";
-        logwrite( function, message.str() );
-#endif
+        logwrite( function, message.str(), LogLevel::DEBUG );
+
         return( retval );
       }
       /***** Archon::Interface::calc_readouttime ******************************/
@@ -428,9 +427,7 @@ namespace Archon {
         long error = NO_ERROR;
         int trywidth=0, tryheight=0;
 
-#ifdef LOGLEVEL_DEBUG
-        message.str(""); message << "[DEBUG] args=" << args; logwrite( function, message.str() );
-#endif
+        message.str(""); message << "args=" << args; logwrite( function, message.str(), LogLevel::DEBUG );
 
         // Cannot change ROI while exposing
         //
@@ -636,9 +633,7 @@ namespace Archon {
         std::vector<std::string> tokens;
         long error = NO_ERROR;
 
-#ifdef LOGLEVEL_DEBUG
-        message.str(""); message << "[DEBUG] args=" << args; logwrite( function, message.str() );
-#endif
+        message.str(""); message << "args=" << args; logwrite( function, message.str(), LogLevel::DEBUG );
 
         // Cannot change while exposure in progress
         //
@@ -955,14 +950,12 @@ namespace Archon {
           if (error==NO_ERROR) error = this->recalc_geometry();
         }
 
-#ifdef LOGLEVEL_DEBUG
-        message.str(""); message << "[DEBUG] sampmode=" << this->camera_info.sampmode
+        message.str(""); message << "sampmode=" << this->camera_info.sampmode
                                  << " sampmode_ext=" << this->camera_info.sampmode_ext
                                  << " sampmode_frames=" << this->camera_info.sampmode_frames
                                  << " nexp=" << this->camera_info.nexp
                                  << " mex=" << ( this->camera.mex() ? true : false );
-        logwrite( function, message.str() );
-#endif
+        logwrite( function, message.str(), LogLevel::DEBUG );
 
         // The return message has to be manipulated because the NIRC2 user wants to know frames
         // for some modes, pairs for others. So for CDS||MCDS return pairs, all else return frames.

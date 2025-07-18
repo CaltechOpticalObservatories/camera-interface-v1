@@ -68,7 +68,7 @@ namespace Camera {
 
     // Log and send to async port in the usual ways
     //
-    logwrite( function, err.str() );
+    logwrite( function, err.str(), LogLevel::ERROR );
     this->async.enqueue( err.str() );
   }
   /** Camera::Camera::log_error ***********************************************/

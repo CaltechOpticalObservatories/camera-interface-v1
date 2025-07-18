@@ -108,19 +108,19 @@ namespace Network {
    */
   int UdpSocket::Create() {
     std::string function = "Network::UdpSocket::Create";
-    std::stringstream errstm;
+    char errstm[256];
 
     // don't create more than one UDP multicast socket
     //
     if (this->service_running) {
-      logwrite(function, "ERROR: service already running");
+      logwrite(function, "service already running", LogLevel::ERROR);
       return -1;
     }
 
     // don't do anything if the ASYNCGROUP is not initialized
     //
     if (this->group.empty()) {
-      logwrite(function, "ERROR: ASYNCGROUP not initialized. Cannot create socket");
+      logwrite(function, "ASYNCGROUP not initialized. Cannot create socket", LogLevel::ERROR);
       return -1;
     }
 
@@ -130,7 +130,7 @@ namespace Network {
       std::transform( this->group.begin(), this->group.end(), this->group.begin(), ::toupper );    // make uppercase
     }
     catch (...) {
-      logwrite(function, "error converting ASYNCGROUP to uppercase");
+      logwrite(function, "error converting ASYNCGROUP to uppercase", LogLevel::ERROR);
       return -1;
     }
     if (this->group == "NONE") {
@@ -141,15 +141,15 @@ namespace Network {
     // now that there is a group, check that the port is initialized
     //
     if (this->port < 0) {
-      logwrite(function, "ERROR: ASYNCPORT not initialized. Cannot create socket");
+      logwrite(function, "ASYNCPORT not initialized. Cannot create socket", LogLevel::ERROR);
       return -1;
     }
 
     // now that there is a group and port, create the socket
     //
     if ( (this->fd = socket(AF_INET, SOCK_DGRAM, 0)) == -1 ) {
-      errstm << "error " << errno << " creating socket: " << strerror(errno);
-      logwrite(function, errstm.str());
+      SNPRINTF(errstm, "error %d creating socket: %s", errno, strerror(errno));
+      logwrite(function, std::string(errstm), LogLevel::ERROR);
       return(-1);
     }
 
@@ -188,15 +188,15 @@ namespace Network {
    */
   int UdpSocket::Send(std::string message) {
     std::string function = "Network::UdpSocket::Send";
-    std::stringstream errstm;
+    char errstm[256];
     int nbytes;
 
     if ( !this->is_running() ) return 0;  // silently do nothing if the UDP multicast socket isn't running
 
     if ( ( nbytes = sendto( this->fd, message.c_str(), (size_t)message.length(), 0, 
                             (struct sockaddr*) &this->addr, (socklen_t)sizeof(this->addr) ) ) < 0 ) {
-      errstm << "error " << errno << " calling sendto: " << strerror(errno);
-      logwrite(function, errstm.str());
+      SNPRINTF(errstm, "error %d calling sendto: %s", errno, strerror(errno));
+      logwrite(function, std::string(errstm), LogLevel::ERROR);
       return -1;
     }
 
@@ -215,19 +215,19 @@ namespace Network {
    */
   int UdpSocket::Listener( ) {
     std::string function = "Network::UdpSocket::Listener";
-    std::stringstream message;
+    char message[256];
 
     // don't create more than one UDP multicast socket
     //
     if ( this->service_running ) {
-      logwrite( function, "ERROR: service already running" );
+      logwrite( function, "service already running", LogLevel::ERROR );
       return -1;
     }
 
     // don't do anything if the ASYNCGROUP is not initialized
     //
     if ( this->group.empty() ) {
-      logwrite( function, "ERROR: ASYNCGROUP not initialized. Cannot create socket" );
+      logwrite( function, "ASYNCGROUP not initialized. Cannot create socket", LogLevel::ERROR );
       return -1;
     }
 
@@ -237,7 +237,7 @@ namespace Network {
       std::transform( this->group.begin(), this->group.end(), this->group.begin(), ::toupper );    // make uppercase
     }
     catch (...) {
-      logwrite( function, "error converting ASYNCGROUP to uppercase" );
+      logwrite( function, "error converting ASYNCGROUP to uppercase", LogLevel::ERROR );
       return -1;
     }
     if ( this->group == "NONE" ) {
@@ -248,15 +248,15 @@ namespace Network {
     // now that there is a group, check that the port is initialized
     //
     if ( this->port < 0 ) {
-      logwrite( function, "ERROR: ASYNCPORT not initialized. Cannot create socket" );
+      logwrite( function, "ASYNCPORT not initialized. Cannot create socket", LogLevel::ERROR );
       return -1;
     }
 
     // now that there is a group and port, create the socket
     //
     if ( ( this->fd = socket( AF_INET, SOCK_DGRAM, 0 ) ) < 0 ) {
-      message << "error " << errno << " creating socket: " << strerror( errno );
-      logwrite(function, message.str());
+      SNPRINTF(message, "error %d creating socket: %s", errno, strerror( errno ));
+      logwrite(function, std::string(message), LogLevel::ERROR);
       return(-1);
     }
 
@@ -264,8 +264,8 @@ namespace Network {
     //
     u_int yes = 1;
     if ( setsockopt( fd, SOL_SOCKET, SO_REUSEADDR, (char*) &yes, sizeof(yes) ) < 0 ) {
-      message << "ERROR: reusing ADDR failed: " << strerror( errno );
-      logwrite( function, message.str() );
+      SNPRINTF(message, "reusing ADDR failed: %s", strerror( errno ));
+      logwrite( function, std::string(message), LogLevel::ERROR );
       return -1;
     }
 
@@ -279,8 +279,8 @@ namespace Network {
     // bind to receive address
     //
     if ( bind( this->fd, (struct sockaddr*) &this->addr, sizeof(this->addr) ) < 0 ) {
-      message << "ERROR binding to receive address: " << strerror( errno );
-      logwrite( function, message.str() );
+      SNPRINTF(message, "binding to receive address: %s", strerror( errno ));
+      logwrite( function, std::string(message), LogLevel::DEBUG );
       return -1;
     }
 
@@ -289,15 +289,13 @@ namespace Network {
     this->mreq.imr_multiaddr.s_addr = inet_addr( this->group.c_str() );
     this->mreq.imr_interface.s_addr = htonl(INADDR_ANY);
     if ( setsockopt( fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, (char*) &this->mreq, sizeof(this->mreq) ) < 0 ) {
-      message << "ERROR joining multicast group: " << strerror( errno );
-      logwrite( function, message.str() );
+      SNPRINTF(message, "joining multicast group: %s", strerror( errno ));
+      logwrite( function, std::string(message), LogLevel::DEBUG );
       return -1;
     }
 
-#ifdef LOGLEVEL_DEBUG
-    message << "created UDP listening socket on fd " << this->fd;
-    logwrite( function, message.str() );
-#endif
+    SNPRINTF(message, "created UDP listening socket on fd %d", this->fd);
+    logwrite( function, std::string(message), LogLevel::DEBUG );
 
     return( this->fd );
   }
@@ -501,13 +499,13 @@ namespace Network {
    */
   int  TcpSocket::Listen() {
     std::string function = "Network::TcpSocket::Listen";
-    std::stringstream errstm;
+    char errstm[256];
 
     // create the socket
     //
     if ( (this->listenfd = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1 ) {
-      errstm << "error " << errno << " creating socket: " << strerror(errno);
-      logwrite(function, errstm.str());
+      SNPRINTF(errstm, "error %d creating socket: %s", errno, strerror(errno));
+      logwrite(function, std::string(errstm), LogLevel::ERROR);
       return(-1);
     }
 
@@ -533,16 +531,16 @@ namespace Network {
     servaddr.sin_port        = htons(this->port);
 
     if ( bind(this->listenfd, (struct sockaddr *) &servaddr, sizeof(servaddr)) < 0 ) {
-      errstm << "error " << errno << " binding to fd " << this->listenfd << " on port " << this->port << ": " << strerror(errno);
-      logwrite(function, errstm.str());
+      SNPRINTF(errstm, "error %d binding to fd %d on port %d: %s", errno, this->listenfd, this->port, strerror(errno));
+      logwrite(function, std::string(errstm), LogLevel::ERROR);
       return(-1);
     }
 
     // start listening
     //
     if (listen(this->listenfd, LISTENQ)!=0) {
-      errstm << "error " << errno << " listening to fd " << this->listenfd << " on port " << this->port << ": " << strerror(errno);
-      logwrite(function, errstm.str());
+      SNPRINTF(errstm, "error %d listening to fd %d on port %d: %s", errno, this->listenfd, this->port, strerror(errno));
+      logwrite(function, std::string(errstm), LogLevel::ERROR);
       return(-1);
     }
 
@@ -583,7 +581,7 @@ namespace Network {
    */
   int TcpSocket::Poll( int timeout ) {   // uses timeout arg
     const std::string function("Network::TcpSocket::Poll");
-    std::stringstream message;
+    char message[256];
     struct pollfd poll_struct;
     poll_struct.events = POLLIN;
     poll_struct.fd     = this->fd;
@@ -592,11 +590,12 @@ namespace Network {
     short revents = poll_struct.revents;
 
     if ( ( revents & POLLHUP ) || ( revents & POLLERR) || ( revents & POLLNVAL ) ) {
-      message.str(""); message << ( revents & POLLHUP  ? "POLLHUP "  : "" )
-                               << ( revents & POLLERR  ? "POLLERR "  : "" )
-                               << ( revents & POLLNVAL ? "POLLNVAL " : "" )
-                               << "recevied: closing socket " << this->host << "/" << this->port << " on fd " << this->fd;
-      logwrite( function, message.str() );
+      SNPRINTF(message, "%s%s%s received: closing socket %s/%d on fd %d",
+                        ( revents & POLLHUP  ? "POLLHUP"  : "" ),
+                        ( revents & POLLERR  ? "POLLERR"  : "" ),
+                        ( revents & POLLNVAL ? "POLLNVAL" : "" ),
+                        this->host.c_str(), this->port, this->fd);
+      logwrite( function, std::string(message), LogLevel::ERROR );
       this->Close();
     }
 
@@ -620,7 +619,7 @@ namespace Network {
    */
   int TcpSocket::Connect() {
     std::string function = "Network::TcpSocket::Connect";
-    std::stringstream errstm;
+    char errstm[256];
 
     struct addrinfo hints = {0};       /// destination for getaddrinfo
 
@@ -635,9 +634,8 @@ namespace Network {
     int status = getaddrinfo(this->host.c_str(), std::to_string(this->port).c_str(), &hints, &this->addrs);
 
     if ( status != 0 ) {
-      errstm << "error " << errno << " connecting to " << this->host << "/" << this->port
-                         << " : " << gai_strerror(status);
-      logwrite(function, errstm.str());
+      SNPRINTF(errstm, "error %d connecting to %s/%d: %s", errno, this->host.c_str(), this->port, gai_strerror(status));
+      logwrite(function, std::string(errstm), LogLevel::ERROR);
       return(-1);
     }
 
@@ -654,9 +652,9 @@ namespace Network {
       // connect to the socket file descriptor
       //
       if ( connect( this->fd, sa->ai_addr, sa->ai_addrlen ) == -1 ) {
-        errstm << "error " << errno << " connecting to " << this->host << "/" << this->port 
-                           << " on fd " << this->fd << ": " << std::strerror(errno);
-        logwrite(function, errstm.str());
+        SNPRINTF(errstm, "error %d connecting to %s/%d on fd %d: %s",
+                          errno, this->host.c_str(), this->port, this->fd, std::strerror(errno));
+        logwrite(function, std::string(errstm), LogLevel::ERROR);
         return (-1);
       }
       else {
@@ -665,36 +663,35 @@ namespace Network {
         //
         int flag = 1;
         if (setsockopt(this->fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int)) < 0) {
-        errstm << "setsockopt(TCP_NODELAY) failed on fd " << this->fd
-               << ": " << std::strerror(errno);
-        logwrite(function, errstm.str());
+        SNPRINTF(errstm, "setsockopt(TCP_NODELAY) failed on fd %d: %s", this->fd, std::strerror(errno));
+        logwrite(function, std::string(errstm), LogLevel::ERROR);
         return -1;
         }
         int rcvbuf=0;
         socklen_t optlen=sizeof(rcvbuf);
         auto size = getsockopt(this->fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, &optlen);
-        logwrite(function, "rcvbuf="+std::to_string(rcvbuf)+" size="+std::to_string(size));
+        logwrite(function, "rcvbuf="+std::to_string(rcvbuf)+" size="+std::to_string(size), LogLevel::DEBUG);
         rcvbuf=1024*1024;
         setsockopt(this->fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof(rcvbuf));
         rcvbuf=0;
         size = getsockopt(this->fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, &optlen);
-        logwrite(function, "rcvbuf="+std::to_string(rcvbuf)+" size="+std::to_string(size));
+        logwrite(function, "rcvbuf="+std::to_string(rcvbuf)+" size="+std::to_string(size), LogLevel::DEBUG);
         break;
       }
     }
 
     int flags;
     if ((flags = fcntl(this->fd, F_GETFL, 0)) < 0) {
-      errstm << "error " << errno << " getting socket file descriptor flags: " << std::strerror(errno);
-      logwrite(function, errstm.str());
+      SNPRINTF(errstm, "error %d getting socket file descriptor flags: %s", errno, std::strerror(errno));
+      logwrite(function, std::string(errstm), LogLevel::ERROR);
       return(-1);
     }
 
 //  flags |= O_NONBLOCK;
 
     if (fcntl(this->fd, F_SETFL, flags) < 0) {
-      errstm << "error " << errno << " setting socket file descriptor flags: " << std::strerror(errno);
-      logwrite(function, errstm.str());
+      SNPRINTF(errstm, "error %d setting socket file descriptor flags: %s", errno, std::strerror(errno));
+      logwrite(function, std::string(errstm), LogLevel::ERROR);
       return(-1);
     }
 
@@ -715,9 +712,7 @@ namespace Network {
    */
   int TcpSocket::Close() {
     int error = -1;
-#ifdef LOGLEVEL_DEBUG
     int oldfd = this->fd;
-#endif
 
     if (this->fd >= 0) {               // if the file descriptor is valid
       if (close(this->fd) == 0) {      // then close it
@@ -739,11 +734,9 @@ namespace Network {
 
     this->connection_open = false;     // clear the connection_open flag
 
-#ifdef LOGLEVEL_DEBUG
-    std::stringstream message;
-    message << "[DEBUG] closed socket " << this->host << "/" << this->port << " connection to fd " << oldfd;
-    if ( oldfd >= 0 ) logwrite( "Network::TcpSocket::Close", message.str() );
-#endif
+    char message[256];
+    SNPRINTF(message, "closed socket %s / %d connection to fd %d", this->host.c_str(), this->port, oldfd);
+    if ( oldfd >= 0 ) logwrite( "Network::TcpSocket::Close", std::string(message), LogLevel::DEBUG );
 
     return (error);
   }
@@ -793,7 +786,7 @@ namespace Network {
    */
   int TcpSocket::Read(void* buf, size_t count) {
     const std::string function("Network::TcpSocket::Read[cbuf]");
-    std::stringstream message;
+    char message[256];
     int nread;
 
     // get the time now for timeout purposes
@@ -802,8 +795,8 @@ namespace Network {
 
     while ( ( nread = read( this->fd, buf, count ) ) < 0 ) {
       if ( errno != EAGAIN ) {
-        message << "ERROR reading data on fd " << this->fd << ": " << strerror(errno);
-        logwrite( function, message.str() );
+        SNPRINTF(message, "reading data on fd %d: %s", this->fd, strerror(errno));
+        logwrite( function, std::string(message), LogLevel::ERROR );
         break;
       }
 
@@ -814,8 +807,8 @@ namespace Network {
       auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(tnow - tstart).count();
 
       if ( elapsed > POLLTIMEOUT ) {
-        message << "ERROR: timeout waiting for data on fd " << this->fd;
-        logwrite( function, message.str() );
+        SNPRINTF(message, "timeout waiting for data on fd %d", this->fd);
+        logwrite( function, std::string(message), LogLevel::ERROR );
         break;
       }
     }
@@ -840,7 +833,7 @@ namespace Network {
    */
   int TcpSocket::Read(std::string &retstring, char delim) {
     const std::string function("Network::TcpSocket::Read[delim]");
-    std::stringstream message;
+    char message[256];
     std::stringstream bufstream;
     int nread, bytesread=0;
     char buf[2];
@@ -853,13 +846,13 @@ namespace Network {
     while ( 1 ) {
       nread = read( this->fd, buf, 1 );  // read a byte at a time
       if ( nread<0 ) {
-        message << "ERROR reading data on fd " << this->fd << ": " << strerror(errno);
-        logwrite( function, message.str() );
+        SNPRINTF(message, "ERROR reading data on fd %d: %s", this->fd, strerror(errno));
+        logwrite( function, std::string(message), LogLevel::ERROR );
         break;
       }
       if ( nread == 0 ) {
-        message << "no data on socket " << this->host << "/" << this->port << " fd " << this->fd << ": closing connection";
-        logwrite( function, message.str() );
+        SNPRINTF(message, "no data on socket %s/%d fd %d: closing connection", this->host.c_str(), this->port, this->fd);
+        logwrite( function, std::string(message), LogLevel::DEBUG );
         this->Close();
         break;
       }
@@ -873,8 +866,8 @@ namespace Network {
       auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(tnow - tstart).count();
 
       if ( elapsed > POLLTIMEOUT ) {
-        message << "ERROR: timeout waiting for data on fd " << this->fd;
-        logwrite( function, message.str() );
+        SNPRINTF(message, "timeout waiting for data on fd %d", this->fd);
+        logwrite( function, std::string(message), LogLevel::ERROR );
         break;
       }
 
@@ -905,7 +898,7 @@ namespace Network {
    */
   int TcpSocket::Read(std::string &retstring, std::string endstr) {
     const std::string function("Network::TcpSocket::Read[endstr]");
-    std::stringstream message;
+    char message[256];
     std::stringstream bufstream;
     int nread, bytesread=0;
     const int bufsz=8192;                // read buffer in chunks
@@ -919,13 +912,13 @@ namespace Network {
     while ( 1 ) {
       nread = read( this->fd, buf, bufsz );
       if ( nread<0 ) {
-        message << "ERROR reading socket " << this->host << "/" << this->port << " on fd " << this->fd << ": " << strerror(errno);
-        logwrite( function, message.str() );
+        SNPRINTF(message, "ERROR reading socket %s/%d on fd %d: %s", this->host.c_str(), this->port, this->fd, strerror(errno));
+        logwrite( function, std::string(message), LogLevel::ERROR );
         break;
       }
       if ( nread == 0 ) {
-        message << "ERROR no data from socket " << this->host << "/" << this->port << " on fd " << this->fd << ": closing connection";
-        logwrite( function, message.str() );
+        SNPRINTF(message, "ERROR no data from socket %s/%d on fd %d: closing connection", this->host.c_str(), this->port, this->fd);
+        logwrite( function, std::string(message), LogLevel::ERROR );
         this->Close();
         break;
       }
@@ -939,8 +932,8 @@ namespace Network {
       auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(tnow - tstart).count();
 
       if ( elapsed > POLLTIMEOUT ) {
-        message << "ERROR: timeout waiting for data on fd " << this->fd;
-        logwrite( function, message.str() );
+        SNPRINTF(message, "ERROR: timeout waiting for data on fd %d", this->fd);
+        logwrite( function, std::string(message), LogLevel::ERROR );
         break;
       }
 

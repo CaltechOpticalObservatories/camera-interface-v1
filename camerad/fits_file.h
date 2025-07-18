@@ -82,7 +82,7 @@ public:
   FITS_mex_frame(T * data, int size, std::string timestamp_in, int sequence_in,
                   Camera::Information camera_info_in): array(data, size)
   {
-    logwrite("FITS_file::FITS_mex_frame", "[DEBUG] constructed with type "+demangle(typeid(T).name()));
+    logwrite("FITS_file::FITS_mex_frame", "constructed with type "+demangle(typeid(T).name()), LogLevel::DEBUG);
 // std::cout << "(FITS_mex_frame) constructing FITS_mex_frame. camera_info_in.extension=" << camera_info_in.extension.load() << "\n";
     // Copy the camera info from the input
     this->camera_info = camera_info_in;
@@ -327,8 +327,8 @@ private:
     logwrite(function, message.str());
     message.str("");
 
-    message << "[DEBUG] cubedepth=" << _camera_info.cubedepth << " fitscubed=" << _camera_info.fitscubed;
-    logwrite(function, message.str());
+    message << "cubedepth=" << _camera_info.cubedepth << " fitscubed=" << _camera_info.fitscubed;
+    logwrite(function, message.str(), LogLevel::DEBUG);
     message.str("");
 //  int num_axis = ( _camera_info.cubedepth > 1 ? 3 : 2 );  // local variable for number of axes   CHECK
     int num_axis = ( _camera_info.fitscubed > 1 ? 3 : 2 );  // local variable for number of axes
@@ -549,10 +549,10 @@ private:
     message << "closing FITS data cube " << this->fits_name;
     logwrite(function, message.str());
 
-message.str(""); message << "[DEBUG] last_image=" << (this->last_image?"T":"F")
-                         << " mex_frames.size=" << this->mex_frames.size()
-                         << " mex_cache.size=" << this->mex_cache.size();
-logwrite(function, message.str());
+    message.str(""); message << "last_image=" << (this->last_image?"T":"F")
+                             << " mex_frames.size=" << this->mex_frames.size()
+                             << " mex_cache.size=" << this->mex_cache.size();
+    logwrite(function, message.str(), LogLevel::DEBUG);
     // Stop the mex writing thread only after the final image is received and
     // processed
     if (this->last_image == true && this->mex_frames.size() == 0 &&
@@ -626,7 +626,7 @@ logwrite(function, message.str());
     // Set the function information for logging
     std::string function("FITS_file::write_single_image");
     std::stringstream message;
-    logwrite(function, "[DEBUG] writing type "+demangle(typeid(T).name()));
+    logwrite(function, "writing type "+demangle(typeid(T).name()), LogLevel::DEBUG);
 
     // Set the FITS system to verbose mode so it writes error messages
     CCfits::FITS::setVerboseMode(true);
@@ -717,7 +717,7 @@ logwrite(function, message.str());
     this->total_frames = 0;
 
     // Loop until the flag to finish processing is set
-logwrite(function, "[DEBUG] enter Loop until the flag to finish processing is set");
+    logwrite(function, "enter Loop until the flag to finish processing is set", LogLevel::DEBUG);
     while (this->run_mex_thread == true && finished == false){
 
       // Pull data out of the cube cache if there is something in it.  This is
@@ -822,10 +822,8 @@ logwrite(function, "[DEBUG] enter Loop until the flag to finish processing is se
         // Flush the FITS container to make sure the image is written to disk
         this->pFits->flush();
 
-        #ifdef LOGLEVEL_DEBUG
-        message << "[DEBUG] wrote extension " << this->mex_frames[0].camera_info.extension;
-        logwrite( function, message.str() ); message.str("");
-        #endif
+        message << "wrote extension " << this->mex_frames[0].camera_info.extension;
+        logwrite( function, message.str(), LogLevel::DEBUG ); message.str("");
 
         // Increment the frame counter
         this->num_frames++;
@@ -892,7 +890,7 @@ logwrite(function, "[DEBUG] enter Loop until the flag to finish processing is se
         logwrite(function, "flag set to finish writing the data mex");
       }
     }
-logwrite(function, "[DEBUG] exit Loop until the flag to finish processing is set");
+    logwrite(function, "exit Loop until the flag to finish processing is set", LogLevel::DEBUG);
 
     // Close the final cube
     error = this->close_mex(_camera_info);
@@ -1316,7 +1314,7 @@ public:
     int error;
 // std::cout << "*** sequence="<<sequence << " *** extension=" << camera_info.extension << "\n";
     // Write into the data cube
-    logwrite(function, "[DEBUG] writing type "+demangle(typeid(T).name()));
+    logwrite(function, "writing type "+demangle(typeid(T).name()), LogLevel::DEBUG);
     if (this->ismex == true){
 
       // Open the file if it's not already open

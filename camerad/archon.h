@@ -132,8 +132,8 @@ namespace Archon {
       potential_min = cv::saturate_cast<T>(min_dest + min_src);
     } catch ( const std::exception &e ) {
       std::stringstream message;
-      message << "ERROR calculating potential min/max values: " << e.what();
-      logwrite( "Archon::mat_add_will_overflow", message.str() );
+      logwrite("Archon::mat_add_will_overflow",
+               "calculating potential min/max values: "+std::string(e.what()), LogLevel::ERROR);
       return true;
     }
 
@@ -332,7 +332,7 @@ namespace Archon {
 
         uint64_t workindex=0;
         SNPRINTF(message, "workindex=%lu prior to calling nirc2(workindex, image, work)", workindex);
-        logwrite( "Archon::DeInterlace::nirc2", std::string(message) );
+        logwrite( "Archon::DeInterlace::nirc2", std::string(message), LogLevel::DEBUG );
         this->nirc2( workindex, image, work );  // this is where the actual deinterlacing takes place
 
         return;
@@ -555,8 +555,8 @@ namespace Archon {
 
           // For CDS mode, copy the work buffer to the appropriate frame buffer
           //
-message.str(""); message << "[DEBUG] iscds=" << this->iscds << " nmcds=" << this->nmcds << " slicen=" << slicen;
-logwrite(function,message.str());
+          message.str(""); message << "iscds=" << this->iscds << " nmcds=" << this->nmcds << " slicen=" << slicen;
+          logwrite(function,message.str(), LogLevel::DEBUG);
           if ( this->iscds && this->nmcds==0 && slicen==0 ) {
             work.copyTo( this->resetframe );  // this is the reset frame
 //message.str(""); message << "[PIXELVALS] resetframe=" << std::dec;
@@ -576,17 +576,15 @@ logwrite(function,message.str());
             // For the first half of num MCDS point to buffer0, second half point to buffer1
             //
             int32_t* ptr = ( (slicen < this->nmcds/2) ? this->mcdsbuf_0 : this->mcdsbuf_1 );
-#ifdef LOGLEVEL_DEBUG
-            message.str(""); message << "[DEBUG] ptr=" << std::hex << static_cast<void*>(ptr);
-            logwrite(function,message.str());
-#endif
+            message.str(""); message << "ptr=" << std::hex << static_cast<void*>(ptr);
+            logwrite(function,message.str(), LogLevel::DEBUG);
             // Create openCV image from the coadd buffer pointed above
             // and add the work buffer to it. The coadd Mat array doesn't
             // own the memory, it still points back to the buffer at ptr, so
             // the add operation modifies that memory.
             //
             if ( ptr == nullptr ) {
-              logwrite( function, "ERROR: invalid buffer allocation" );
+              logwrite( function, "ERROR: invalid buffer allocation", LogLevel::ERROR );
               return;
             }
             cv::Mat coadd = cv::Mat( this->frame_rows, this->frame_cols, CV_32S, ptr );
@@ -600,11 +598,11 @@ logwrite(function,message.str());
         }
         catch ( const std::exception &ex ) {
           message.str(""); message << "ERROR deinterlacing slicen=" << slicen << " nmcds=" << this->nmcds << ": " << ex.what();
-          logwrite( function, message.str() );
+          logwrite( function, message.str(), LogLevel::ERROR );
           return;
         }
         catch ( ... ) {
-          logwrite( function, "unknown exception in deinterlacing" );
+          logwrite( function, "unknown exception in deinterlacing", LogLevel::ERROR );
           return;
         }
 
@@ -615,7 +613,7 @@ logwrite(function,message.str());
         // so that it can't be negative). Then add that result to the coadd buffer.
 
         if ( this->cdsbuf == NULL || this->coaddbuf == NULL ) {
-          logwrite( "Archon::DeInterlace::nirc2", "ERROR: no memory allocated for cds buffers" );
+          logwrite( "Archon::DeInterlace::nirc2", "ERROR: no memory allocated for cds buffers", LogLevel::ERROR );
           return;
         }
 
@@ -628,15 +626,15 @@ logwrite(function,message.str());
         }
         catch ( const std::exception& ex ) {
           message.str(""); message << "ERROR subtracting readframe-resetframe: " << ex.what();
-          logwrite( function, message.str() );
+          logwrite( function, message.str(), LogLevel::ERROR );
           message.str(""); message << "ERROR readframe.rows=" << this->readframe.rows << " .cols=" << this->readframe.cols
                                    << " resetframe.rows=" << this->resetframe.rows << " .cols=" << this->resetframe.cols
                                    << " iscds=" << this->iscds << " nmcds=" << this->nmcds << " workbuf=" << std::hex << this->workbuf;
-          logwrite( function, message.str() );
+          logwrite( function, message.str(), LogLevel::ERROR );
           return;
         }
         catch ( ... ) {
-          logwrite( function, "unknown exception subtracting readframe-resetframe" );
+          logwrite( function, "unknown exception subtracting readframe-resetframe", LogLevel::ERROR );
           return;
         }
 
@@ -657,18 +655,18 @@ logwrite(function,message.str());
         //
         try {
           if ( mat_add_will_overflow<int32_t>( coadd, diff ) ) {
-            logwrite( function, "ERROR coadd would overflow datatype" );
+            logwrite( function, "ERROR coadd would overflow datatype", LogLevel::ERROR );
             return;
           }
           cv::add( coadd, diff, coadd, cv::noArray(), coadd.type() );
         }
         catch ( const std::exception& ex ) {
           message.str(""); message << "ERROR coadding CDS frame: " << ex.what();
-          logwrite( function, message.str() );
+          logwrite( function, message.str(), LogLevel::ERROR );
           return;
         }
         catch ( ... ) {
-          logwrite( function, "unknown exception coadding CDS frame" );
+          logwrite( function, "unknown exception coadding CDS frame", LogLevel::ERROR );
           return;
         }
 
@@ -815,7 +813,7 @@ logwrite(function,message.str());
             break;
           default:
             logwrite( "Archon::DeInterlace::do_deinterlace",
-                      "ERROR unknown readout type: " +std::to_string(this->readout_type) );
+                      "ERROR unknown readout type: " +std::to_string(this->readout_type), LogLevel::ERROR );
         }
 
         return;

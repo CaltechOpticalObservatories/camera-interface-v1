@@ -38,6 +38,9 @@
 #define LISTENQ 64                     /// listen(3n) backlog 
 #define UDPMSGLEN 256                  /// UDP message length
 
+// handy snprintf shortcut
+#define SNPRINTF(VAR, ...) { snprintf(VAR, sizeof(VAR), __VA_ARGS__); }
+
 namespace Network {
 
   /** TcpSocket ***************************************************************/

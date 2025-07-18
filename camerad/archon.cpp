@@ -15,6 +15,8 @@ namespace Archon {
    *
    */
   Interface::Interface() {
+    this->cal_systime={0};
+    this->cal_archontime=0;
     this->modeselected = false;
     this->firmwareloaded = false;
     this->msgref = 0;
@@ -745,7 +747,7 @@ namespace Archon {
   }
   long Interface::archon_cmd(std::string cmd, std::string &reply) {
     const std::string function("Archon::Interface::archon_cmd");
-    std::stringstream message;
+    char message[256];
     int     retval;
     char    check[4];
     int     error = NO_ERROR;
@@ -766,8 +768,8 @@ namespace Archon {
     // Archon busy for longer than the duration of this function.
     //
     if ( this->archon_busy.test_and_set() ) {
-      message.str(""); message << "Archon busy: ignored command " << cmd;
-      this->camera.log_error( function, message.str() );
+      SNPRINTF(message, "ERROR Archon busy: ignored command \"%s\"", cmd.c_str());
+      this->camera.log_error( function, std::string(message) );
       return BUSY;
     }
 
@@ -791,8 +793,8 @@ namespace Archon {
  *       (cmd.compare(0,5,"FRAME") != 0) ) {
  *    // erase newline for logging purposes
  *    std::string fcmd = scmd; try { fcmd.erase(fcmd.find("\n"), 1); } catch(...) { }
- *    message.str(""); message << "sending command: " << fcmd;
- *    logwrite(function, message.str());
+ *    SNPRINTF(message, "sending command: %s", fcmd.c_str());
+ *    logwrite(function, std::string(message));
  *  }
  ***/
 
@@ -816,23 +818,24 @@ namespace Archon {
 
     // For all other commands, receive the reply
     //
-    char* buffer = new char[64*1024]{};         // temporary buffer for holding Archon replies
+    char* buffer = new char[64*1024+1]{};       // temporary buffer for holding Archon replies
     reply.clear();                              // zero reply buffer
     do {
       if ( (retval=this->archon.Poll()) <= 0) {
-        if (retval==0) { message.str(""); message << "Poll timeout waiting for response from Archon command (maybe unrecognized command?)"; error = TIMEOUT; }
-        if (retval<0)  { message.str(""); message << "Poll error waiting for response from Archon command";   error = ERROR;   }
-        if ( error != NO_ERROR ) this->camera.log_error( function, message.str() );
+        if (retval==0) { SNPRINTF(message, "Poll timeout waiting for response from Archon command (maybe unrecognized command?)"); error = TIMEOUT; }
+        if (retval<0)  { SNPRINTF(message, "Poll error waiting for response from Archon command");   error = ERROR;   }
+        if ( error != NO_ERROR ) this->camera.log_error( function, std::string(message) );
         break;
       }
-      memset((void*)buffer, '\0', 64*1024);          // init temporary buffer
       retval = this->archon.Read(buffer, 64*1024);   // read into temp buffer
       if (retval <= 0) {
         this->camera.log_error( function, "reading Archon" );
         break; 
       }
+      buffer[retval] = '\0';                         // null-terminate bytes read
       reply.append(buffer);                          // append read buffer into the reply string
-    } while(retval>0 && reply.find("\n") == std::string::npos);
+      if (strchr(buffer, '\n') != nullptr) break;    // exit on newline
+    } while(retval>0);
 
     delete [] buffer;
 
@@ -852,8 +855,8 @@ namespace Archon {
     // "?" means Archon experienced an error processing command
     if (!reply.empty() && reply[0]=='?') {
       error = ERROR;
-      message.str(""); message << "Archon controller returned error processing command: " << cmd;
-      this->camera.log_error( function, message.str() );
+      SNPRINTF(message, "Archon controller returned error processing command: %s", cmd.c_str());
+      this->camera.log_error( function, std::string(message) );
     }
     else
     // First 3 bytes of reply must equal checksum else reply doesn't belong to command
@@ -861,8 +864,8 @@ namespace Archon {
       error = ERROR;
       std::string hdr = reply;
       try { scmd.erase(scmd.find("\n"), 1); } catch(...) { }
-      message.str(""); message << "command-reply mismatch for command: " + scmd + ": expected " + check + " but received " + reply ;
-      this->camera.log_error( function, message.str() );
+      SNPRINTF(message, "command-reply mismatch for command: %s: expected %s but received %s", scmd.c_str(), check, reply.c_str());
+      this->camera.log_error( function, std::string(message) );
     }
     else {
     // command and reply are a matched pair
@@ -874,8 +877,8 @@ namespace Archon {
  *         (cmd.compare(0,5,"TIMER") != 0)   &&
  *         (cmd.compare(0,6,"STATUS") != 0)  &&
  *         (cmd.compare(0,5,"FRAME") != 0) ) {
- *      message.str(""); message << "command 0x" << std::setfill('0') << std::setw(2) << std::uppercase << std::hex << this->msgref << " success";
- *      logwrite(function, message.str());
+ *      SNPRINTF(message, "command 0x%02X success", this->msgref);
+ *      logwrite(function, std::string(message));
  *    }
  ***/
 
@@ -1724,10 +1727,10 @@ namespace Archon {
     if (error==NO_ERROR) error = get_configmap_value("RAWSAMPLES", this->rawinfo.rawsamples);
     if (error==NO_ERROR) error = get_configmap_value("RAWENDLINE", this->rawinfo.rawlines);
 #ifdef LOGLEVEL_DEBUG
-    message.str(""); 
-    message << "[DEBUG] mode=" << mode << " RAWENABLE=" << this->modemap[mode].rawenable 
+    message.str("");
+    message << "mode=" << mode << " RAWENABLE=" << this->modemap[mode].rawenable
             << " RAWSAMPLES=" << this->rawinfo.rawsamples << " RAWLINES=" << this->rawinfo.rawlines;
-    logwrite(function, message.str());
+    logwrite(function, message.str(), LogLevel::DEBUG);
 #endif
 
     // get out if any errors at this point
@@ -1760,10 +1763,10 @@ namespace Archon {
       this->camera_info.binning[0] = 1;
       this->camera_info.binning[1] = 1;
 #ifdef LOGLEVEL_DEBUG
-      message.str(""); message << "[DEBUG] this->camera_info.detector_pixels[0] (RAWSAMPLES) = " << this->camera_info.detector_pixels[0];
-      logwrite(function, message.str());
-      message.str(""); message << "[DEBUG] this->camera_info.detector_pixels[1] (RAWENDLINE) = " << this->camera_info.detector_pixels[1];
-      logwrite(function, message.str());
+      message.str(""); message << "this->camera_info.detector_pixels[0] (RAWSAMPLES) = " << this->camera_info.detector_pixels[0];
+      logwrite(function, message.str(), LogLevel::DEBUG);
+      message.str(""); message << "this->camera_info.detector_pixels[1] (RAWENDLINE) = " << this->camera_info.detector_pixels[1];
+      logwrite(function, message.str(), LogLevel::DEBUG);
 #endif
     }
 
@@ -1773,13 +1776,13 @@ namespace Archon {
       if (error==NO_ERROR) error = get_configmap_value("PIXELCOUNT", this->camera_info.detector_pixels[0]);
       if (error==NO_ERROR) error = get_configmap_value("LINECOUNT", this->camera_info.detector_pixels[1]);
 #ifdef LOGLEVEL_DEBUG
-      message.str(""); message << "[DEBUG] mode=" << mode; logwrite(function, message.str());
-      message.str(""); message << "[DEBUG] this->camera_info.detector_pixels[0] (PIXELCOUNT) = " << this->camera_info.detector_pixels[0]
+      message.str(""); message << "mode=" << mode; logwrite(function, message.str(), LogLevel::DEBUG);
+      message.str(""); message << "this->camera_info.detector_pixels[0] (PIXELCOUNT) = " << this->camera_info.detector_pixels[0]
                                << " amps[0] = " << this->modemap[mode].geometry.amps[0];
-      logwrite(function, message.str());
-      message.str(""); message << "[DEBUG] this->camera_info.detector_pixels[1] (LINECOUNT) = " << this->camera_info.detector_pixels[1]
+      logwrite(function, message.str(), LogLevel::DEBUG);
+      message.str(""); message << "this->camera_info.detector_pixels[1] (LINECOUNT) = " << this->camera_info.detector_pixels[1]
                                << " amps[1] = " << this->modemap[mode].geometry.amps[1];
-      logwrite(function, message.str());
+      logwrite(function, message.str(), LogLevel::DEBUG);
 #endif
       this->camera_info.detector_pixels[0] *= this->modemap[mode].geometry.amps[0];
       this->camera_info.detector_pixels[1] *= this->modemap[mode].geometry.amps[1];
@@ -1793,10 +1796,10 @@ namespace Archon {
       this->camera_info.binning[0] = 1;
       this->camera_info.binning[1] = 1;
 #ifdef LOGLEVEL_DEBUG
-      message.str(""); message << "[DEBUG] this->camera_info.detector_pixels[0] (PIXELCOUNT) = " << this->camera_info.detector_pixels[0];
-      logwrite(function, message.str());
-      message.str(""); message << "[DEBUG] this->camera_info.detector_pixels[1] (LINECOUNT) = " << this->camera_info.detector_pixels[1];
-      logwrite(function, message.str());
+      message.str(""); message << "this->camera_info.detector_pixels[0] (PIXELCOUNT) = " << this->camera_info.detector_pixels[0];
+      logwrite(function, message.str(), LogLevel::DEBUG);
+      message.str(""); message << "this->camera_info.detector_pixels[1] (LINECOUNT) = " << this->camera_info.detector_pixels[1];
+      logwrite(function, message.str(), LogLevel::DEBUG);
 #endif
       if ( error != NO_ERROR ) { logwrite( function, "ERROR: unable to get PIXELCOUNT,LINECOUNT from ACF" ); return error; }
     }
@@ -1903,11 +1906,11 @@ namespace Archon {
 #ifdef LOGLEVEL_DEBUG
     int ext=0;
     for ( auto sec : this->camera_info.amp_section ) {
-      message.str(""); message << "[DEBUG] extension " << ext++ << ":";
+      message.str(""); message << "extension " << ext++ << ":";
       for ( auto xy : sec ) {
         message << " " << xy;
       }
-      logwrite( function, message.str() );
+      logwrite( function, message.str(), LogLevel::DEBUG );
     }
 #endif
 
@@ -2261,20 +2264,8 @@ namespace Archon {
 
     int completed_index = -1;
     int newestframe=0, newestbuf;
-char statestr[Archon::nbufs][64];
-char framestr[Archon::nbufs][64];
 
     for (int i = 0; i < Archon::nbufs; ++i) {
-memset(statestr[i], '\0', sizeof(statestr[i]));
-memset(framestr[i], '\0', sizeof(framestr[i]));
-if ( (this->frame.rbuf-1) == i)   strcat(statestr[i], "R");
-if ( (this->frame.wbuf-1) == i)   strcat(statestr[i], "W");
-if ( this->frame.bufcomplete[i] ) strcat(statestr[i], "C");
-SNPRINTF(framestr[i], "%d %lu", this->frame.bufframen[i], (this->frame.bufcomplete[i]?this->frame.buftimestamp[i]:0));
-//    if (this->frame.bufcomplete[i] && this->frame.bufframen[i] > newestframe) {
-SNPRINTF(message, "[DEBUG] bufframen[%d]=%d bufcomplete[%d]=%s newestframe=%d",
-         i, frame.bufframen[i], i, frame.bufcomplete[i]?"T":"F", newestframe);
-logwrite(function, std::string(message));
       if (this->frame.bufframen[i] > newestframe) {
         this->frame.currentframe.store(this->frame.bufframen[i]);
         if (this->frame.bufcomplete[i]) {
@@ -2283,87 +2274,40 @@ logwrite(function, std::string(message));
         }
       }
     }
+
     this->lastframe = newestframe;
+
     if (completed_index != -1) {
-SNPRINTF(message, "[DEBUG] completed_index=%d bufframen=%d lasttimestamp=%lu",
-         completed_index, frame.bufframen[completed_index], this->frame.buftimestamp[completed_index]);
-logwrite(function, std::string(message));
       this->lasttimestamp = this->frame.buftimestamp[completed_index];
       this->frame.index.store(completed_index);
-//    this->frame.currentframe = this->frame.bufframen[completed_index];
       this->frame.next_index = (completed_index + 1) % this->camera_info.activebufs;
     }
-SNPRINTF(message, "     %s %s  |  %s %s  |  %s %s", framestr[0], statestr[0], framestr[1], statestr[1],framestr[2], statestr[2]);
-logwrite(function,std::string(message));
-SNPRINTF(message, "     newestframe=%d  frame.currentframe=%d", newestframe, this->frame.currentframe.load());
-logwrite(function,std::string(message));
 
-/*****
- *  newestbuf   = this->frame.index;
- *
- *  if (this->frame.index < (int)this->frame.bufframen.size()) {
- *    newestframe = this->frame.bufframen[this->frame.index];
- *  }
- *  else {
- *    message.str(""); message << "newest buf " << this->frame.index << " from FRAME message exceeds number of buffers " << this->frame.bufframen.size();
- *    this->camera.log_error( function, message.str() );
- *    return ERROR;
- *  }
- *
- *  // loop through the number of buffers
- *  //
- *  int num_zero = 0;
- *char statestr[Archon::nbufs][64];
- *char framestr[Archon::nbufs][64];
- *  for (int bc=0; bc<Archon::nbufs; bc++) {
- *
- *    // look for special start-up case, when all frame buffers are zero
- *    //
- *    if ( this->frame.bufframen[bc] == 0 ) num_zero++;
- *
- *    if ( (this->frame.bufframen[bc] > newestframe) &&
- *          this->frame.bufcomplete[bc] ) {
- *      newestframe = this->frame.bufframen[bc];
- *      newestbuf   = bc;
- *    }
-memset(statestr[bc], '\0', 4);
-if ( (this->frame.rbuf-1) == bc)   strcat(statestr[bc], "R");
-if ( (this->frame.wbuf-1) == bc)   strcat(statestr[bc], "W");
-if ( this->frame.bufcomplete[bc] ) strcat(statestr[bc], "C");
-SNPRINTF(framestr[bc], "%u %lu", this->frame.bufframen[bc], (this->frame.bufcomplete[bc]?this->frame.buftimestamp[bc]:0));
- *  }
-char msg[512];
-SNPRINTF(msg, "     %s %s  |  %s %s  |  %s %s", framestr[0], statestr[0], framestr[1], statestr[1],framestr[2], statestr[2]);
-logwrite(function,std::string(msg));
- *
- *  // start-up case, all frame buffers are zero
- *  //
- *  if (num_zero == Archon::nbufs) {
- *    newestframe = 0;
- *    newestbuf   = 0;
- *  }
- *
- *  **
- *   * save index of newest buffer. From this we can find the newest frame, etc.
- *   *
- *  this->frame.index = newestbuf;
- *  this->frame.currentframe = newestframe;
- *
- *  // Index of next frame is this->frame.index+1 
- *  // except for start-up case (when it is 0) and
- *  // wrapping to 0 when it reaches the maximum number of active buffers.
- *  //
- *  this->frame.next_index = this->frame.index + 1;
- *  if ( this->frame.next_index >= this->camera_info.activebufs ) {
- *    this->frame.next_index = 0;
- *  }
- *
- *  // startup condition for next_frame
- *  //
- *  if ( ( this->frame.bufframen[ this->frame.index ] ) == 1 && this->frame.bufcomplete[ this->frame.index ] == 0 ) {
- *    this->frame.next_index = 0;
- *  }
- *****/
+#ifdef LOGLEVEL_DEBUG
+    char statestr[Archon::nbufs][64];
+    char framestr[Archon::nbufs][64];
+    for (int i = 0; i < Archon::nbufs; ++i) {
+      memset(statestr[i], '\0', sizeof(statestr[i]));
+      memset(framestr[i], '\0', sizeof(framestr[i]));
+      if ( (this->frame.rbuf-1) == i)   strcat(statestr[i], "R");
+      if ( (this->frame.wbuf-1) == i)   strcat(statestr[i], "W");
+      if ( this->frame.bufcomplete[i] ) strcat(statestr[i], "C");
+      SNPRINTF(framestr[i], "%d %lu", this->frame.bufframen[i], (this->frame.bufcomplete[i]?this->frame.buftimestamp[i]:0));
+      SNPRINTF(message, "bufframen[%d]=%d bufcomplete[%d]=%s newestframe=%d",
+                        i, frame.bufframen[i], i, frame.bufcomplete[i]?"T":"F", newestframe);
+      logwrite(function, std::string(message), LogLevel::DEBUG);
+    }
+    if (completed_index != -1) {
+      SNPRINTF(message, "completed_index=%d bufframen=%d lasttimestamp=%lu",
+                         completed_index, frame.bufframen[completed_index],
+                         this->frame.buftimestamp[completed_index]);
+      logwrite(function, std::string(message), LogLevel::DEBUG);
+    }
+    SNPRINTF(message, "     %s %s  |  %s %s  |  %s %s", framestr[0], statestr[0], framestr[1], statestr[1],framestr[2], statestr[2]);
+    logwrite(function, std::string(message), LogLevel::DEBUG);
+    SNPRINTF(message, "     newestframe=%d  frame.currentframe=%d", newestframe, this->frame.currentframe.load());
+    logwrite(function, std::string(message), LogLevel::DEBUG);
+#endif
 
     return error;
   }
@@ -2425,29 +2369,23 @@ logwrite(function,std::string(msg));
   /**************** Archon::Interface::print_frame_status *********************/
 
 
-  /**************** Archon::Interface::lock_buffer ****************************/
+  /***** Archon::Interface::lock_buffer ***************************************/
   /**
-   * @fn     lock_buffer
    * @brief  lock Archon frame buffer
    * @param  int frame buffer to lock
-   * @return 
+   * @return ERROR|NO_ERROR
    *
    */
   long Interface::lock_buffer(int buffer) {
-    const std::string function("Archon::Interface::lock_buffer");
-    std::stringstream message;
-    std::stringstream sscmd;
-
-    sscmd.str("");
-    sscmd << "LOCK" << buffer;
-    if ( this->archon_cmd(sscmd.str()) ) {
-      message.str(""); message << "ERROR: sending Archon command to lock frame buffer " << buffer;
-      logwrite( function, message.str() );
-      return(ERROR);
+    char cmd[8];
+    SNPRINTF(cmd, "LOCK%d", buffer);
+    if ( this->archon_cmd(std::string(cmd)) ) {
+      logwrite("Archon::Interface::lock_buffer", "ERROR sending Archon command "+std::string(cmd));
+      return ERROR;
     }
-    return (NO_ERROR);
+    return NO_ERROR;
   }
-  /**************** Archon::Interface::lock_buffer ****************************/
+  /***** Archon::Interface::lock_buffer ***************************************/
 
 
   /**************** Archon::Interface::get_timer ******************************/
@@ -2516,32 +2454,31 @@ logwrite(function,std::string(msg));
    */
   long Interface::fetch(uint64_t bufaddr, uint32_t bufblocks) {
     const std::string function("Archon::Interface::fetch");
-    std::stringstream message;
+    char message[256];
     auto index = this->frame.index.load();
     uint32_t maxblocks = (uint32_t)(1.5E9 / this->camera_info.activebufs / 1024 );
     uint64_t maxoffset = this->frame.bufbase[index];
     uint64_t maxaddr = maxoffset + maxblocks;
 
     if ( bufaddr > maxaddr ) {
-      message.str(""); message << "fetch Archon buffer requested address 0x" << std::hex << bufaddr << " exceeds 0x" << maxaddr;
-      this->camera.log_error( function, message.str() );
+      SNPRINTF(message, "fetch Archon buffer requested address 0x%0lX exceeds 0x%0lX", bufaddr, maxaddr);
+      this->camera.log_error( function, std::string(message) );
       return ERROR;
     }
     if ( bufblocks > maxblocks ) {
-      message.str(""); message << "fetch Archon buffer requested blocks 0x" << std::hex << bufblocks << " exceeds 0x" << maxblocks;
-      this->camera.log_error( function, message.str() );
+      SNPRINTF(message, "fetch Archon buffer requested blocks 0x%0X exceeds 0x%0X", bufblocks, maxblocks);
+      this->camera.log_error( function, std::string(message) );
       return ERROR;
     }
 
     char buf[32];
-    std::snprintf(buf, sizeof(buf), "FETCH%08" PRIX64 "%08" PRIX32, bufaddr, bufblocks);
-    std::string scmd(buf);
+    SNPRINTF(buf, "FETCH%08" PRIX64 "%08" PRIX32, bufaddr, bufblocks);
 
     // Sending archon_cmd( FETCH ) will set the archon busy flag and not clear it.
     // If there's an error then archon_cmd() probably cleared it but it's OK to
     // make sure that it's cleared here.
     //
-    if ( this->archon_cmd( scmd ) == ERROR ) {
+    if ( this->archon_cmd( std::string(buf) ) == ERROR ) {
       logwrite( function, "ERROR: sending FETCH command. Aborting read." );
       this->archon_busy.clear();                                            // clear busy flag
       this->archon_cmd(UNLOCK);                                             // unlock all buffers
@@ -2564,7 +2501,7 @@ logwrite(function,std::string(msg));
    */
   long Interface::read_frame( Camera::frame_type_t frame_type, char* &ptr_in ) {
     const std::string function("Archon::Interface::read_frame");
-    std::stringstream message;
+    char message[256];
     int retval;
     int bufready;
     char check[5], header[5];
@@ -2582,8 +2519,8 @@ logwrite(function,std::string(msg));
     bufready = index + 1;
 
     if (bufready < 1 || bufready > this->camera_info.activebufs) {
-      message.str(""); message << "invalid Archon buffer " << bufready << " requested. Expected {1:" << this->camera_info.activebufs << "}";
-      this->camera.log_error( function, message.str() );
+      SNPRINTF(message, "invalid Archon buffer %d requested. Expected {1:%d}", bufready, this->camera_info.activebufs);
+      this->camera.log_error( function, std::string(message) );
       return ERROR;
     }
 
@@ -2614,8 +2551,8 @@ logwrite(function,std::string(msg));
         break;
 
       default:  // should be impossible
-        message.str(""); message << "unknown frame type specified: " << frame_type << ": expected FRAME_RAW | FRAME_IMAGE";
-        this->camera.log_error( function, message.str() );
+        SNPRINTF(message, "unknown frame type specified: %d: expected FRAME_RAW | FRAME_IMAGE", frame_type);
+        this->camera.log_error( function, std::string(message) );
         return(ERROR);
         break;
     }
@@ -2637,9 +2574,9 @@ logwrite(function,std::string(msg));
 
       // Are there data to read?
       if ( (retval=this->archon.Poll()) <= 0) {
-        if (retval==0) { message.str(""); message << "Poll timeout waiting for Archon frame data"; error = ERROR;   }  // TODO should error=TIMEOUT?
-        if (retval<0)  { message.str(""); message << "Poll error waiting for Archon frame data";   error = ERROR;   }
-        if ( error != NO_ERROR ) this->camera.log_error( function, message.str() );
+        if (retval==0) { SNPRINTF(message, "Poll timeout waiting for Archon frame data"); error = ERROR;   }  // TODO should error=TIMEOUT?
+        if (retval<0)  { SNPRINTF(message, "Poll error waiting for Archon frame data");   error = ERROR;   }
+        if ( error != NO_ERROR ) this->camera.log_error( function, std::string(message) );
         break;                         // breaks out of for loop
       }
 
@@ -2663,23 +2600,23 @@ logwrite(function,std::string(msg));
       //
       SNPRINTF(check, "<%02X:", this->msgref);
       if ( (retval=this->archon.Read(header, 4)) != 4 ) {
-        message.str(""); message << "code " << retval << " reading Archon frame header";
-        this->camera.log_error( function, message.str() );
+        SNPRINTF(message, "code %d reading Archon frame header", retval);
+        this->camera.log_error( function, std::string(message) );
         error = ERROR;
         break;                         // break out of for loop
       }
 
       if (header[0] == '?') {  // Archon retured an error
-        message.str(""); message << "Archon returned \'?\' reading " << (frame_type==Camera::FRAME_RAW?"raw ":"image ") << " data";
-        this->camera.log_error( function, message.str() );
+        SNPRINTF(message, "Archon returned \'?\' reading %s data", (frame_type==Camera::FRAME_RAW?"raw ":"image "));
+        this->camera.log_error( function, std::string(message) );
         this->fetchlog();      // check the Archon log for error messages
         error = ERROR;
         break;                         // break out of for loop
       }
       else if (strncmp(header, check, 4) != 0) {
-        message.str(""); message << "Archon command-reply mismatch reading " << (frame_type==Camera::FRAME_RAW?"raw ":"image ")
-                                 << " data. header=" << header << " check=" << check;
-        this->camera.log_error( function, message.str() );
+        SNPRINTF(message, "Archon command-reply mismatch reading %s data. header=%s check=%s",
+                          (frame_type==Camera::FRAME_RAW?"raw ":"image "), header, check);
+        this->camera.log_error( function, std::string(message) );
         error = ERROR;
         break;                         // break out of for loop
       }
@@ -2706,9 +2643,9 @@ logwrite(function,std::string(msg));
     // If we broke out of the for loop for an error then report incomplete read
     //
     if ( error==ERROR || block < bufblocks) {
-      message.str(""); message << "incomplete frame read " << std::dec 
-                               << totalbytesread << " bytes: " << block << " of " << bufblocks << " 1024-byte blocks";
-      logwrite( function, message.str() );
+      SNPRINTF(message, "incomplete frame read %d bytes: %d of %d 1024-byte blocks",
+                        totalbytesread, block, bufblocks);
+      logwrite( function, std::string(message) );
       this->print_frame_status();
     }
 
@@ -2812,8 +2749,8 @@ logwrite(function,std::string(msg));
     long error=NO_ERROR;
 
 #ifdef LOGLEVEL_DEBUG
-    message.str(""); message << "[DEBUG] paramname=" << paramname << " value=" << newvalue;
-    logwrite( function, message.str() );
+    message.str(""); message << "paramname=" << paramname << " value=" << newvalue;
+    logwrite( function, message.str(), LogLevel::DEBUG );
 #endif
 
     if ( paramname==NULL || newvalue==NULL ) {
@@ -2949,8 +2886,8 @@ logwrite(function,std::string(msg));
     if ( this->configmap.find(key_in) != this->configmap.end() ) {
       std::istringstream( this->configmap[key_in].value  ) >> value_out;
 #ifdef LOGLEVEL_DEBUG
-      message.str(""); message << "[DEBUG] key=" << key_in << " value=" << value_out << " line=" << this->configmap[key_in].line;
-      logwrite(function, message.str());
+      message.str(""); message << "key=" << key_in << " value=" << value_out << " line=" << this->configmap[key_in].line;
+      logwrite(function, message.str(), LogLevel::DEBUG);
 #endif
       return NO_ERROR;
     }
@@ -3501,7 +3438,7 @@ logwrite(function,std::string(msg));
     //
     this->camera_info.start_time = get_timestamp();                 // current system time formatted as YYYY-MM-DDTHH:MM:SS.sss
     if ( this->get_timer(&this->start_timer) != NO_ERROR ) {        // Archon internal timer (one tick=10 nsec)
-      logwrite( function, "ERROR could not get start time" );
+      logwrite( function, "could not get start time", LogLevel::ERROR );
       return;
     }
     this->last_frame_timer = this->start_timer;                             // initialize timer, used as reference for wait_for_exposure
@@ -3509,7 +3446,7 @@ logwrite(function,std::string(msg));
     error=this->camera.get_fitsname( "_unp", this->camera_info.fits_name);  // assemble the FITS filename with added "raw"tag
     logwrite(function, "camera_info.fitsname="+this->camera_info.fits_name);
     if ( error != NO_ERROR ) {
-      logwrite( function, "ERROR validating FITS filename "+this->camera_info.fits_name );
+      logwrite( function, "validating FITS filename "+this->camera_info.fits_name, LogLevel::ERROR );
       return;
     }
 
@@ -3524,7 +3461,7 @@ logwrite(function,std::string(msg));
       this->cds_info.start_time = this->camera_info.start_time;     // start time is the same
       error=this->camera.get_fitsname( this->cds_info.fits_name);   // assemble the FITS filename
       if ( error != NO_ERROR ) {
-        logwrite( function, "ERROR validating FITS filename "+this->cds_info.fits_name );
+        logwrite( function, "validating FITS filename "+this->cds_info.fits_name, LogLevel::ERROR );
         return;
       }
       this->add_filename_key( this->cds_info );                     // add filename to cds system keys database
@@ -3544,7 +3481,7 @@ logwrite(function,std::string(msg));
     error = this->prep_parameter(this->exposeparam, nseqstr);
     if (error == NO_ERROR) error = this->load_parameter(this->exposeparam, nseqstr);
     if ( error != NO_ERROR ) {
-      logwrite( function, "ERROR could not initiate exposure" );
+      logwrite( function, "could not initiate exposure", LogLevel::ERROR );
       return;
     }
     logwrite(function, "exposure started");
@@ -3593,8 +3530,8 @@ logwrite(function,std::string(msg));
         imagebuf->rawpixels = std::shared_ptr<char[]>(new char[bufferbytes]);
       }
       catch (const std::bad_alloc &e) {
-        SNPRINTF(message, "ERROR memory allocation failed: %s", e.what());
-        logwrite(function, std::string(message));
+        SNPRINTF(message, "memory allocation failed: %s", e.what());
+        logwrite(function, std::string(message), LogLevel::ERROR);
         error=ERROR;
         break;
       }
@@ -3604,65 +3541,71 @@ logwrite(function,std::string(msg));
       imagebuf->n_slices  = slicecounter;
       imagebuf->ncoadd = this->camera_info.ncoadd;
 
-        const std::string firstframe("waiting for first frame (discarded)");
-        const std::string firstslice("waiting for slice 1 of 1");
+      const std::string firstframe("waiting for first frame (discarded)");
+      const std::string firstslice("waiting for slice 1 of 1");
 
-        // Loop over the number of slices in this datacube.
-        // If there is more than one slice, then wait for all slices (the whole cube)
-        // before pushing the cube into the queue.
+      // Loop over the number of slices in this datacube.
+      // If there is more than one slice, then wait for all slices (the whole cube)
+      // before pushing the cube into the queue.
+      //
+      int slice=0;
+      while ( !this->camera.is_aborted() && slice < slicecounter ) {
+
+        if ( this->camera_info.sampmode == SAMPMODE_SINGLE && slice==0 ) {
+          logwrite( function, firstframe, LogLevel::VERBOSE );
+        }
+        else if ( this->camera_info.sampmode == SAMPMODE_SINGLE && slice==1 ) {
+          logwrite( function, firstslice, LogLevel::VERBOSE );
+        }
+        else {
+          SNPRINTF(message, "waiting for slice %d of %d for coadd %d", slice+1, slicecounter, imagebuf->ncoadd);
+          logwrite( function, std::string(message), LogLevel::VERBOSE );
+        }
+
+        // poll for an Archon frame buffer to be ready and record the time
         //
-        int slice=0;
-        while ( !this->camera.is_aborted() && slice < slicecounter ) {
+        if ( (error=this->wait_for_readout())==ERROR ) break;
 
-          if ( this->camera_info.sampmode == SAMPMODE_SINGLE && slice==0 ) {
-            logwrite( function, firstframe );
-          }
-          else if ( this->camera_info.sampmode == SAMPMODE_SINGLE && slice==1 ) {
-            logwrite( function, firstslice );
-          }
-          else {
-            SNPRINTF(message, "waiting for slice %d of %d for coadd %d", slice+1, slicecounter, imagebuf->ncoadd);
-            logwrite( function, std::string(message) );
-          }
+        this->camera_info.stop_time = get_timestamp();
+        this->cds_info.stop_time = this->camera_info.stop_time;
 
-          // poll for an Archon frame buffer to be ready and record the time
-          //
-          if ( (error=this->wait_for_readout())==ERROR ) break;
+        // exposure delay is applicable to certain frames
+        //
+        bool exposure_delay_eligible=false;
 
-          this->camera_info.stop_time = get_timestamp();
-          this->cds_info.stop_time = this->camera_info.stop_time;
+        if ( camera_info.sampmode == SAMPMODE_CDS||camera_info.sampmode==SAMPMODE_MCDS ) {
+          exposure_delay_eligible = ((slice+1)==camera_info.cubedepth/2);
+        }
+        else
+        if ( camera_info.sampmode == SAMPMODE_UTR ) {
+          exposure_delay_eligible = ((slice+1) < camera_info.cubedepth);
+        }
+        else
+        if ( camera_info.sampmode == SAMPMODE_SINGLE ) {
+          exposure_delay_eligible = (slice==0);
+        }
 
-          bool needs_exposure_delay=false;
+        auto index = frame.index.load();
 
-          if ( camera_info.sampmode == SAMPMODE_CDS||camera_info.sampmode==SAMPMODE_MCDS ) {
-            needs_exposure_delay = ((slice+1)==camera_info.cubedepth/2);
-          }
-          else
-          if ( camera_info.sampmode == SAMPMODE_UTR ) {
-            needs_exposure_delay = ((slice+1) < camera_info.cubedepth);
-          }
-          else
-          if ( camera_info.sampmode == SAMPMODE_SINGLE ) {
-            needs_exposure_delay = (slice==0);
-          }
-
-          auto index = frame.index.load();
-
-          if ( needs_exposure_delay ) {
-            last_frame_timer = frame.buftimestamp[index];
-            if (camera_info.exposure_delay > 3000) {
-              error=wait_for_exposure();
-              if (error!=NO_ERROR) {
-                logwrite(function, "ERROR");
-                return;
-              }
+        if ( exposure_delay_eligible ) {
+          last_frame_timer = frame.buftimestamp[index];
+          // insert a delay if the wait will be more than 3s
+          if (camera_info.exposure_delay > 3000) {
+            error=wait_for_exposure();
+            if (error!=NO_ERROR) {
+              logwrite(function, "waiting for exposure", LogLevel::ERROR);
+              return;
             }
-            if (camera_info.sampmode==SAMPMODE_SINGLE) continue;
           }
+          if (camera_info.sampmode==SAMPMODE_SINGLE) {
+            slice += 1;
+            continue;
+          }
+        }
 
-          // read that Archon frame buffer into the rawpixel image buffer
-          //
-          error = this->read_frame(Camera::FRAME_IMAGE, imbufptr);
+        // read that Archon frame buffer into the rawpixel image buffer
+        //
+        error = this->read_frame(Camera::FRAME_IMAGE, imbufptr);
 
         // record the Archon buffer frame number and timestamp for this frame
         //
@@ -3674,13 +3617,13 @@ logwrite(function,std::string(msg));
 
         slice += 1;
 
-        SNPRINTF(message, "[DEBUG] inside loop over slices: error=%ld slice=%d slicecounter=%d cubedepth=%d nseq=%d",
+        SNPRINTF(message, "inside loop over slices: error=%ld slice=%d slicecounter=%d cubedepth=%d nseq=%d",
                           error, slice, slicecounter, camera_info.cubedepth, nseq);
-        logwrite(function, std::string(message));
+        logwrite(function, std::string(message), LogLevel::DEBUG);
       } // end loop over slices in datacube
-      SNPRINTF(message, "[DEBUG] outside loop over slices: error=%ld slice=%d slicecounter=%d cubedepth=%d nseq=%d",
+      SNPRINTF(message, "outside loop over slices: error=%ld slice=%d slicecounter=%d cubedepth=%d nseq=%d",
                         error, slice, slicecounter, camera_info.cubedepth, nseq);
-      logwrite(function, std::string(message));
+      logwrite(function, std::string(message), LogLevel::DEBUG);
 
       // push the datacube into the queue
       {
@@ -3694,9 +3637,9 @@ logwrite(function,std::string(msg));
 
       nseq--;
     } // end while nseq
-    SNPRINTF(message, "[DEBUG] outside loop over nseq: error=%ld cubedepth=%d nseq=%d",
+    SNPRINTF(message,"outside loop over nseq: error=%ld cubedepth=%d nseq=%d",
                       error, camera_info.cubedepth, nseq);
-    logwrite(function, std::string(message));
+    logwrite(function, std::string(message), LogLevel::DEBUG);
     logwrite(function, "complete");
     is_producer_error = (error!=NO_ERROR);
   }
@@ -3711,7 +3654,7 @@ logwrite(function,std::string(msg));
   void Interface::image_processing_loop() {
     const std::string function("Archon::Interface::image_processing_loop");
     std::stringstream message;
-    logwrite(function, "start");
+    logwrite(function, "start", LogLevel::DEBUG);
 
     // open FITS files
     //
@@ -3747,6 +3690,9 @@ logwrite(function,std::string(msg));
     if ( mcdsbuf_1 != nullptr ) delete [] (int32_t*)mcdsbuf_1;
     mcdsbuf_1 = (int32_t*) new int32_t [ cds_info.section_size ]{};
 
+    // not all modes calculate TRUITIME
+    bool should_calc_truitime=false;
+
     // prepare and store the appropriate header key for this particular "coadd" (they're not all coadds)
     //
     message.str("");
@@ -3755,6 +3701,7 @@ logwrite(function,std::string(msg));
       case SAMPMODE_CDS:
       case SAMPMODE_MCDS:
         message << "NCOADD=" << this->camera_info.ncoadd << "// coadd number";
+        should_calc_truitime=true;
         break;
       case SAMPMODE_UTR:
         message << "NRAMP=" << this->camera_info.ncoadd << "// ramp number";
@@ -3778,19 +3725,19 @@ logwrite(function,std::string(msg));
       queue_cv.wait(lock, [this] {
           return !imagebuf_queue.empty() || is_producer_finished || camera.is_aborted();
           });
-//message.str(""); message << "[DEBUG] Woke up. Queue size: " << imagebuf_queue.size()
+//message.str(""); message << "Woke up. Queue size: " << imagebuf_queue.size()
 //                         << ", finished: " << is_producer_finished
 //                         << ", aborted: " << camera.is_aborted();
-//logwrite(function, message.str());
+//logwrite(function, message.str(), LogLevel::DEBUG);
       if (camera.is_aborted()) break;
 
       if (imagebuf_queue.empty()) {       // nothing in the queue
         if (is_producer_finished) {
-//        logwrite(function, "[DEBUG] exit due to empty queue and producer finished");
+          logwrite(function, "exit due to empty queue and producer finished", LogLevel::DEBUG);
           break;  // nothing else is coming
         }
         else {
-//        logwrite(function, "[DEBUG] queue empty but producer not finished");
+          logwrite(function, "queue empty but producer not finished", LogLevel::DEBUG);
           continue;                    // or keep waiting
         }
       }
@@ -3806,10 +3753,10 @@ logwrite(function,std::string(msg));
 
       uint64_t ts0 = imagebuf->buftimestamp_slice[0];  // timestamp of first slice in the cube to compute deltas (DTS)
 
-      // If there is an even number of slices, compute true integration time
+      // For modes that support it, if there is an even number of slices, compute true integration time
       // using delta timestamp from first frame to halfway point.
       //
-      if (n_slices%2 == 0) {
+      if (should_calc_truitime && n_slices%2 == 0) {
         uint64_t dts = imagebuf->buftimestamp_slice[n_slices/2] - imagebuf->buftimestamp_slice[0];
         double truitime = static_cast<double>(dts)/100000000.0;
         this->cds_info.systemkeys.addkey( "TRUITIME", truitime, "True integration time in seconds (calculated)", 8 );
@@ -3870,18 +3817,18 @@ logwrite(function,std::string(msg));
    */
   void Interface::process_image(std::shared_ptr<ImageBuffer> &imagebuf) {
     const std::string function("Archon::Interface::process_image");
-    std::stringstream message;
+    char message[256];
     long error=NO_ERROR;
 
-    logwrite(function, "start");
-//  message << "[DEBUG] camera_info.datatype=" << this->camera_info.datatype; logwrite(function,message.str());
+    SNPRINTF(message, "start. camera_info.datatype=%d", this->camera_info.datatype);
+    logwrite(function, std::string(message), LogLevel::DEBUG);
 
     // call the appropriate template deinterlacer
     //
     switch (this->camera_info.datatype) {
       case USHORT_IMG:
         {
-//      logwrite(function, "[DEBUG] processing 16-bit unsigned");
+        logwrite(function, "processing 16-bit unsigned", LogLevel::DEBUG);
         auto buf16u = std::make_unique<ProcessingBuffers<uint16_t>>(camera_info.section_size, cds_info.section_size);
         deinterlace_queue<uint16_t>(imagebuf, *buf16u);
         error=this->__fits_file->write_image( buf16u->workbuf.get(),
@@ -3893,26 +3840,26 @@ logwrite(function,std::string(msg));
         }
       case SHORT_IMG:
         {
-//      logwrite(function, "[DEBUG] processing 16-bit signed");
+        logwrite(function, "processing 16-bit signed", LogLevel::DEBUG);
         auto buf16s = std::make_unique<ProcessingBuffers<int16_t>>(camera_info.section_size, cds_info.section_size);
         deinterlace_queue<int16_t>(imagebuf, *buf16s);
         break;
         }
       case FLOAT_IMG:
         {
-//      logwrite(function, "[DEBUG] processing 32-bit unsigned");
+        logwrite(function, "processing 32-bit unsigned", LogLevel::DEBUG);
         auto buf32u = std::make_unique<ProcessingBuffers<uint32_t>>(camera_info.section_size, cds_info.section_size);
         deinterlace_queue<uint32_t>(imagebuf, *buf32u);
         break;
         }
       default:
-        message.str(""); message << "unknown datatype " << this->camera_info.datatype;
-        this->camera.log_error( function, message.str() );
+        SNPRINTF(message, "unknown datatype %d", this->camera_info.datatype);
+        this->camera.log_error( function, std::string(message) );
         return;
     }
 
     is_consumer_error = (error!=NO_ERROR);
-    logwrite(function, "complete");
+    logwrite(function, "complete", LogLevel::DEBUG);
   }
   /***** Archon::Interface::process_image *************************************/
 
@@ -3922,16 +3869,16 @@ logwrite(function,std::string(msg));
   void Interface::deinterlace_queue(std::shared_ptr<ImageBuffer> imagebuf, ProcessingBuffers<T> &buffers) {
     const std::string function("Archon::Interface::deinterlace_queue");
 
-    logwrite(function, "start");
+    logwrite(function, "start", LogLevel::DEBUG);
 
-//std::stringstream message;
     try {
       if (mcdsbuf_0) memset(mcdsbuf_0, 0, cds_info.section_size * sizeof(int32_t));
       if (mcdsbuf_1) memset(mcdsbuf_1, 0, cds_info.section_size * sizeof(int32_t));
 
-//message << "[DEBUG] mcdsbuf_0=" << std::hex << static_cast<void*>(mcdsbuf_0)
-//        << " mcdsbuf_1=" << static_cast<void*>(mcdsbuf_1);
-//logwrite(function,message.str());
+      char message[256];
+      SNPRINTF(message, "mcdsbuf_0=%p mcdsbuf_1=%p", mcdsbuf_0, mcdsbuf_1);
+      logwrite(function, std::string(message), LogLevel::DEBUG);
+
       T* _imbuf   = reinterpret_cast<T*>(imagebuf->rawpixels.get());
       T* _workbuf = buffers.workbuf.get();
       T* _cdsbuf  = buffers.cdsbuf.get();
@@ -3955,13 +3902,13 @@ logwrite(function,std::string(msg));
       deinterlacer.do_deinterlace();
     }
     catch (const std::exception &e) {
-      logwrite(function, "ERROR: "+std::string(e.what()));
+      logwrite(function, "ERROR: "+std::string(e.what()), LogLevel::ERROR);
       return;
     }
 
     if (camera_info.iscds) runcds(imagebuf->ncoadd==cds_info.ncoadd);
 
-    logwrite(function, "complete");
+    logwrite(function, "complete", LogLevel::DEBUG);
   }
   /***** Archon::Interface::deinterlace_queue *********************************/
 
@@ -3969,8 +3916,7 @@ logwrite(function,std::string(msg));
   /***** Archon::Interface::runcds ********************************************/
   void Interface::runcds(bool is_last_coadd) {
     const std::string function("Archon::Interface::runcds");
-    std::stringstream message;
-    logwrite(function, "start");
+    logwrite(function, "start", LogLevel::DEBUG);
 
     // These Mat images are initialized for each exposure in image_processing_loop()
     // and remain throughout the exposure, and I'm just making a local pointer to them
@@ -3978,34 +3924,39 @@ logwrite(function,std::string(msg));
     //
     cv::Mat* _coadd = this->coadd_img.get();
     cv::Mat* _diff  = this->diff_img.get();
-//message.str(""); message << "ncoadd=" << this->cds_info.ncoadd << " nseq=" << camera_info.nseq << " cds_info.nmcds=" << this->cds_info.nmcds << " camera_info.nmcds=" << this->camera_info.nmcds;
-//logwrite( function, message.str() );
-//if (this->cds_info.nmcds>0) {
-//{
-//message.str(""); message << "[PIXELVALS] entry coadd_img=";
-//double* data = (double*)_coadd->data;
-//for(int i=0; i<10; i++) message << " " << data[i];
-//logwrite(function, message.str());
-//}
-//{
-//message.str(""); message << "[PIXELVALS] entry diff_img=";
-//double* data = (double*)_diff->data;
-//for(int i=0; i<10; i++) message << " " << data[i];
-//logwrite(function, message.str());
-//}
-//{
-//message.str(""); message << "[PIXELVALS] entry mcdsbuf_0 " << std::hex << static_cast<void*>(this->mcdsbuf_0)
-//                         << " pixels=" << std::dec;
-//for(int i=0; i<10; i++) message << " " << this->mcdsbuf_0[i];
-//logwrite(function, message.str());
-//}
-//{
-//message.str(""); message << "[PIXELVALS] entry mcdsbuf_1 " << std::hex << static_cast<void*>(this->mcdsbuf_1)
-//                         << " pixels=" << std::dec;
-//for(int i=0; i<10; i++) message << " " << this->mcdsbuf_1[i];
-//logwrite(function, message.str());
-//}
-//}
+    char message[256];
+    SNPRINTF(message, "ncoadd=%d nseq=%d cds_info.nmcds=%d camera_info.nmcds=%d",
+                      this->cds_info.ncoadd, camera_info.nseq, this->cds_info.nmcds, this->camera_info.nmcds);
+    logwrite( function, std::string(message), LogLevel::DEBUG );
+#ifdef LOGLEVEL_DEBUG
+    if (this->cds_info.nmcds>0) {
+      std::stringstream message;
+      {
+      message.str(""); message << "[PIXELVALS] entry coadd_img=";
+      double* data = (double*)_coadd->data;
+      for(int i=0; i<10; i++) message << " " << data[i];
+      logwrite(function, message.str(), LogLevel::DEBUG);
+      }
+      {
+      message.str(""); message << "[PIXELVALS] entry diff_img=";
+      double* data = (double*)_diff->data;
+      for(int i=0; i<10; i++) message << " " << data[i];
+      logwrite(function, message.str(), LogLevel::DEBUG);
+      }
+      {
+      message.str(""); message << "[PIXELVALS] entry mcdsbuf_0 " << std::hex << static_cast<void*>(this->mcdsbuf_0)
+                               << " pixels=" << std::dec;
+      for(int i=0; i<10; i++) message << " " << this->mcdsbuf_0[i];
+      logwrite(function, message.str(), LogLevel::DEBUG);
+      }
+      {
+      message.str(""); message << "[PIXELVALS] entry mcdsbuf_1 " << std::hex << static_cast<void*>(this->mcdsbuf_1)
+                               << " pixels=" << std::dec;
+      for(int i=0; i<10; i++) message << " " << this->mcdsbuf_1[i];
+      logwrite(function, message.str(), LogLevel::DEBUG);
+      }
+    }
+#endif
 
     // MCDS subtraction and co-adding
     //
@@ -4033,12 +3984,11 @@ logwrite(function,std::string(msg));
         *(this->coadd_img) += _diffd;
       }
       catch (const std::exception &ex) {
-        message.str(""); message << "ERROR subtracting signal-baseline: " << ex.what();
-        logwrite( function, message.str() );
+        logwrite( function, "subtracting signal-baseline: "+std::string(ex.what()), LogLevel::ERROR );
         return;
       }
       catch (...) {
-        logwrite( function, "ERROR subtracting signal-baseline: other" );
+        logwrite( function, "subtracting signal-baseline: other", LogLevel::ERROR );
         return;
       }
     }
@@ -4047,10 +3997,13 @@ logwrite(function,std::string(msg));
     //
     if ( is_last_coadd ) {
       if (camera_info.nmcds==0) {
-//message.str(""); message << "[PIXELVALS] nmcds=" << camera_info.nmcds << " after cds coaddbuf=";
-//for (int i=0; i<10; i++) message << " " << this->coaddbuf[i];
-//logwrite(function, message.str());
-//logwrite( function, "[DEBUG] (a) calling __file_cds->write_image" );
+#ifdef LOGLEVEL_DEBUG
+        std::stringstream message;
+        message << "[PIXELVALS] nmcds=" << camera_info.nmcds << " after cds coaddbuf=";
+        for (int i=0; i<10; i++) message << " " << this->coaddbuf[i];
+        logwrite(function, message.str(), LogLevel::DEBUG);
+        logwrite(function, "(a) calling __file_cds->write_image", LogLevel::DEBUG);
+#endif
         this->__file_cds->write_image( this->coaddbuf,
                                        get_timestamp(),
                                        0,
@@ -4067,10 +4020,13 @@ logwrite(function,std::string(msg));
             this->coaddbuf[index++] = static_cast<int32_t>(std::round(finalcoadd.at<double>(row,col)));
           }
         }
-//message.str(""); message << "[PIXELVALS] nmcds=" << camera_info.nmcds << " after cds coaddbuf=";
-//for (int i=0; i<10; i++) message << " " << this->coaddbuf[i];
-//logwrite(function, message.str());
-//logwrite( function, "[DEBUG] (b) calling __file_cds->write_image" );
+#ifdef LOGLEVEL_DEBUG
+        std::stringstream message;
+        message << "[PIXELVALS] nmcds=" << camera_info.nmcds << " after cds coaddbuf=";
+        for (int i=0; i<10; i++) message << " " << this->coaddbuf[i];
+        logwrite(function, message.str(), LogLevel::DEBUG);
+        logwrite(function, "(b) calling __file_cds->write_image", LogLevel::DEBUG);
+#endif
         this->__file_cds->write_image( this->coaddbuf,
                                        get_timestamp(),
                                        0,
@@ -4078,21 +4034,24 @@ logwrite(function,std::string(msg));
                                      );
       }
     }
-//if (this->cds_info.nmcds>0) {
-//{
-//message.str(""); message << "[PIXELVALS] exit coadd_img=";
-//int32_t* data = (int32_t*)_coadd->data;
-//for(int i=0; i<10; i++) message << " " << data[i];
-//logwrite(function, message.str());
-//}
-//{
-//message.str(""); message << "[PIXELVALS] exit diff_img=";
-//int32_t* data = (int32_t*)_diff->data;
-//for(int i=0; i<10; i++) message << " " << data[i];
-//logwrite(function, message.str());
-//}
-//}
-    logwrite(function, "complete");
+#ifdef LOGLEVEL_DEBUG
+    if (this->cds_info.nmcds>0) {
+      std::stringstream message;
+      {
+      message << "[PIXELVALS] exit coadd_img=";
+      int32_t* data = (int32_t*)_coadd->data;
+      for(int i=0; i<10; i++) message << " " << data[i];
+      logwrite(function, message.str(), LogLevel::DEBUG);
+      }
+      {
+      message.str(""); message << "[PIXELVALS] exit diff_img=";
+      int32_t* data = (int32_t*)_diff->data;
+      for(int i=0; i<10; i++) message << " " << data[i];
+      logwrite(function, message.str(), LogLevel::DEBUG);
+      }
+    }
+#endif
+    logwrite(function, "complete", LogLevel::DEBUG);
   }
   /***** Archon::Interface::runcds ********************************************/
 
@@ -4148,9 +4107,9 @@ logwrite(function,std::string(msg));
     uint64_t prediction = this->last_frame_timer + ( (uint64_t)this->camera_info.exposure_delay * 100000000 ) / this->camera_info.exposure_factor;
 
 #ifdef LOGLEVEL_DEBUG
-//  SNPRINTF(message, "[DEBUG] exposure_delay=%u exposure_factor=%d waittime=%lfs last_frame_timer=%lu prediction=%lu",
-//           this->camera_info.exposure_delay, this->camera_info.exposure_factor, waittime, this->last_frame_timer, prediction);
-//  logwrite( function, std::string(message) );
+    SNPRINTF(message, "exposure_delay=%u exposure_factor=%d waittime=%lfs last_frame_timer=%lu prediction=%lu",
+             this->camera_info.exposure_delay, this->camera_info.exposure_factor, waittime, this->last_frame_timer, prediction);
+    logwrite( function, std::string(message), LogLevel::DEBUG );
 #endif
 
 //  std::cerr << "exposure progress: ";
@@ -4187,7 +4146,7 @@ logwrite(function,std::string(msg));
       //
       if ( (error=this->get_timer(&timer)) == ERROR ) {
 //      std::cerr << "\n";
-        logwrite( function, "ERROR: could not get Archon timer" );
+        logwrite( function, "could not get Archon timer", LogLevel::ERROR );
         break;
       }
 
@@ -4262,14 +4221,14 @@ logwrite(function,std::string(msg));
     int newframe               = this->frame.currentframe.load();
 
     SNPRINTF(message, "waiting for new frame: lastframe=%d frame.index=%d", this->lastframe, index);
-    logwrite(function, std::string(message));
+    logwrite(function, std::string(message), LogLevel::DEBUG);
 
     // waittime is 10% over the specified readout time
     // and will be used to keep track of timeout errors
     //
     double waittime_ms = this->camera.readout_time[0] * 1.1;   // this is in msec
     if (waittime_ms==0) {
-      logwrite(function, "ERROR readout time for Archon not found from config file");
+      logwrite(function, "readout time for Archon not found from config file", LogLevel::ERROR);
       return ERROR;
     }
 
@@ -4291,7 +4250,7 @@ logwrite(function,std::string(msg));
 
       if (error == ERROR) {
         done = true;
-        logwrite( function, "ERROR: unable to get frame status" );
+        logwrite( function, "unable to get frame status", LogLevel::ERROR );
         break;
       }
       else
@@ -4311,9 +4270,9 @@ logwrite(function,std::string(msg));
       }
       else busycount=0;
 
-      SNPRINTF(message, "[DEBUG] previous_frame=%d latest_completed_frame=%d newframe=%d bufcomplete[%d]=%s",
+      SNPRINTF(message, "previous_frame=%d latest_completed_frame=%d newframe=%d bufcomplete[%d]=%s",
                previous_frame, latest_completed_frame, newframe, index, frame.bufcomplete[index]?"T":"F");
-      logwrite(function, std::string(message));
+      logwrite(function, std::string(message), LogLevel::DEBUG);
 
       // latest completed frame number +1 above frame number coming in here,
       // then a new frame has arrived.
@@ -4329,8 +4288,8 @@ logwrite(function,std::string(msg));
       // then at least one frame has been skipped.
       //
       if ( frame_arrived > 0 ) {
-        SNPRINTF(message, "ERROR missed %d frame%s", frame_arrived, (frame_arrived>1?"s":""));
-        logwrite(function, std::string(message));
+        SNPRINTF(message, "missed %d frame%s", frame_arrived, (frame_arrived>1?"s":""));
+        logwrite(function, std::string(message), LogLevel::ERROR);
         this->abort();
         done = true;
         error = ERROR;
@@ -4344,8 +4303,8 @@ logwrite(function,std::string(msg));
         pollcount=0;
         done = true;
         error = ERROR;
-        SNPRINTF(message, "ERROR timeout waiting for new frame exceeded %lf msec. lastframe=%d", waittime_ms, this->lastframe);
-        logwrite( function, std::string(message) );
+        SNPRINTF(message, "timeout waiting for new frame exceeded %lf msec. lastframe=%d", waittime_ms, this->lastframe);
+        logwrite( function, std::string(message), LogLevel::ERROR );
         break;
       }
 
@@ -4361,11 +4320,6 @@ logwrite(function,std::string(msg));
  *      this->camera.async.enqueue("LINECOUNT:"+std::to_string(this->frame.buflines[ this->frame.next_index]));  // 1-24 usec
  *    }
  ***/
-#ifdef LOGLEVEL_DEBUG
-//    message << " [DEBUG] ";
-//    message << " index=" << this->frame.index << " next_index=" << this->frame.next_index << " | ";
-//    for ( int i=0; i < Archon::nbufs; i++ ) { message << " " << this->frame.buflines[ i ]; }
-#endif
 
       usleep(10);  // reduces polling frequency
     } // end while (done == false && not this->camera.is_aborted)
@@ -4375,20 +4329,11 @@ logwrite(function,std::string(msg));
       return error;
     }
 
-#ifdef LOGLEVEL_DEBUG
-//  message.str(""); 
-//  message << "[DEBUG] lastframe=" << this->lastframe 
-//          << " currentframe=" << currentframe 
-//          << " bufcomplete=" << this->frame.bufcomplete[this->frame.index]
-//          << " timestamp=" << this->frame.buftimestamp[this->frame.index];
-//  logwrite(function, message.str());
-#endif
-
     // On success, write the value to the log and return
     //
     if ( ! this->camera.is_aborted() ) {
       logwrite(function, "received currentframe: "+std::to_string(latest_completed_frame)+
-                         " at TS "+std::to_string(this->lasttimestamp));
+                         " at TS "+std::to_string(this->lasttimestamp), LogLevel::DEBUG);
       return NO_ERROR;
     }
     // If the wait was stopped, log a message and return NO_ERROR
@@ -4545,9 +4490,7 @@ logwrite(function,std::string(msg));
       return ERROR;
     }
 
-#ifdef LOGLEVEL_DEBUG
-//      message.str(""); message << "[DEBUG] exptime_in=" << exptime_in; logwrite( function, message.str() );
-#endif
+    message.str(""); message << "exptime_in=" << exptime_in; logwrite( function, message.str(), LogLevel::DEBUG );
 
     if ( !exptime_in.empty() ) {
       // Convert to integer to check the value
@@ -4852,7 +4795,7 @@ logwrite(function,std::string(msg));
     std::string mode = this->camera_info.current_observing_mode;
 
     if ( this->modemap.count(mode) == 0 ) {
-      logwrite(function, "ERROR: unknown observing mode " + mode);
+      logwrite(function, "unknown observing mode " + mode, LogLevel::ERROR);
       return;
     }
 
@@ -5398,7 +5341,7 @@ logwrite(function,std::string(msg));
       error = this->archon_cmd( applystr.str() );
 
       if ( error != NO_ERROR ) {
-        logwrite( function, "ERROR: applying heater configuration" );
+        logwrite( function, "applying heater configuration", LogLevel::ERROR );
       }
     }
 
@@ -5416,7 +5359,7 @@ logwrite(function,std::string(msg));
 
       if ( error != NO_ERROR ) {
         message.str(""); message << "reading heater configuration " << key;
-        logwrite( function, message.str() );
+        logwrite( function, message.str(), LogLevel::ERROR );
         return( error );
       }
       else {
@@ -5685,13 +5628,11 @@ logwrite(function,std::string(msg));
       return( ERROR );
     }
 
-#ifdef LOGLEVEL_DEBUG
-    message.str(""); message << "[DEBUG] module=" << module << " sensorid=" << sensorid
+    message.str(""); message << "module=" << module << " sensorid=" << sensorid
                              << " readonly=" << ( readonly ? "true" : "false" )
                              << " sensorconfig=" << sensorconfig.str()
                              << " sensorvalue=" << sensorvalue;
-    logwrite( function, message.str() );
-#endif
+    logwrite( function, message.str(), LogLevel::DEBUG );
 
     std::string sensorkey = sensorconfig.str();
 
@@ -5741,7 +5682,7 @@ logwrite(function,std::string(msg));
 
     if ( error != NO_ERROR ) {
       message.str(""); message << "reading sensor configuration " << sensorkey;
-      logwrite( function, message.str() );
+      logwrite( function, message.str(), LogLevel::ERROR );
       return( error );  
     } 
 
@@ -6140,7 +6081,7 @@ logwrite(function,std::string(msg));
     long error = this->write_config_key( inreg_key.str().c_str(), value, changed );
     if ( error != NO_ERROR ) {
       message.str(""); message << "configuration " << inreg_key.str() << "=" << value;
-      logwrite( function, message.str() );
+      logwrite( function, message.str(), LogLevel::ERROR );
       return( ERROR );
     }
     else {
@@ -6215,8 +6156,8 @@ logwrite(function,std::string(msg));
         }
       }
       if ( !readout_name_valid ) {
-        message.str(""); message << "ERROR: readout " << readout_in << " not recognized";
-        logwrite( function, message.str() );
+        message.str(""); message << "readout " << readout_in << " not recognized";
+        logwrite( function, message.str(), LogLevel::ERROR );
         error = ERROR;
       }
       else {  // requested readout type is known, so set it for each of the specified devices
@@ -6258,40 +6199,103 @@ logwrite(function,std::string(msg));
     std::stringstream message;
     long error = NO_ERROR;
 
+    struct caldata_t {
+      double systemtime_us;
+      double roundtrip_us;
+      uint64_t archontime;
+    };
+    std::vector<caldata_t> caldata;
+
+    struct timespec systime1, systime2;
+    uint64_t archontime;
+
     // Archon's CPU is single-threaded. Temporarily disabling hardware polling will
     // ensure a prompt response to the TIMER command.
     //
-    error = this->archon_cmd(POLLOFF);
+    if (this->archon_cmd(POLLOFF) != NO_ERROR) {
+      logwrite(function, "failed to calibrate", LogLevel::ERROR);
+      return ERROR;
+    }
 
-    if ( error == NO_ERROR ) error = get_timer( &this->cal_archontime );  // get Archon TIMER, store in unsigned long
-    if ( error == NO_ERROR ) {
-      error = clock_gettime( CLOCK_REALTIME, &this->cal_systime );        // get system time, store in timespec struct
-      if ( error != 0 ) {
-        logwrite( function, "ERROR getting system time" );
-        error = ERROR;
+    for (int i=0; i<1000; ++i) {
+      // get the system clock time on either side of reading the Archon timer
+      clock_gettime(CLOCK_REALTIME, &systime1);
+      error = get_timer(&archontime);
+      clock_gettime(CLOCK_REALTIME, &systime2);
+
+      if (error != NO_ERROR) {
+        logwrite( function, "getting system time", LogLevel::ERROR );
+        continue;
       }
+
+      // average system clock time
+      timespec systime_avg  = timespec_avg(systime1, systime2);
+      double systime_avg_us = timespec_to_us(systime_avg);
+      double roundtrip_us   = timespec_to_us(timespec_diff(systime2, systime1));
+
+      // store the data in a vector, avg system clock time and corresponding archon timer
+      caldata.push_back( { systime_avg_us, roundtrip_us, archontime } );
+
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
     // Re-enable hardware polling
-    //
-    error |= this->archon_cmd(POLLON);  // OR'd so as not to lose any previous error
+    if (this->archon_cmd(POLLON) != NO_ERROR) {
+      logwrite(function, "failed to enable hardware polling: may need to restart Archon", LogLevel::ERROR);
+      return ERROR;
+    }
 
-    message.str(""); message << "Archon time at " << timestamp_from( this->cal_systime ) << " is " << this->cal_archontime;
-    logwrite( function, message.str() );
+    if (caldata.size() < 10) {
+      logwrite(function, "not enough samples collected", LogLevel::ERROR);
+      return ERROR;
+    }
 
-    // Add the calibration values to the systemkeys database
+    // sort by roundtrip time
+    std::sort(caldata.begin(), caldata.end(), [](const caldata_t& a, const caldata_t& b) {
+      return a.roundtrip_us < b.roundtrip_us;
+    });
+
+    // remove slowest 10%
+    size_t keep = static_cast<size_t>(caldata.size() * 0.9);
+    caldata.resize(keep);
+
+    // calculate statistics
+    double mean_archon=0.0;
+    double mean_system=0.0;
+    double mean_roundtrip=0.0;
+
+    for (const auto &data : caldata) {
+      mean_archon += static_cast<double>(data.archontime);
+      mean_system += data.systemtime_us;
+      mean_roundtrip += data.roundtrip_us;
+    }
+    mean_archon    /= caldata.size();  // mean archon timer
+    mean_system    /= caldata.size();  // mean system time usec
+    mean_roundtrip /= caldata.size();  // mean roundtrip time usec
+
+    auto mean_system_ts = us_to_timespec(mean_system);  // mean system time timespec struct
+
+    // assign to class variables
+    this->cal_systime    = mean_system_ts;
+    this->cal_archontime = static_cast<uint64_t>(std::round(mean_archon));
+
+    message.str(""); message << "mean Archon time at " << timestamp_from( this->cal_systime )
+                             << " is " << this->cal_archontime;
+    logwrite(function, message.str(), LogLevel::INFO);
+
+    // Broadcast and add the calibration values to the systemkeys database
     //
-    message.str(""); message << "CAL_ARCH=" << this->cal_archontime << "// Archon time in 10ns per tick at CAL_SYS";
+    message.str(""); message << "CAL_ARCH=" << this->cal_archontime << "// mean Archon time in 10ns per tick at CAL_SYS";
     this->systemkeys.addkey( message.str() );
     message.str(""); message << "CAL_ARCH:" << this->cal_archontime;
     this->camera.async.enqueue( message.str() );
 
-    message.str(""); message << "CAL_SYS=" << timestamp_from( this->cal_systime ) << "// system time at CAL_ARCH";
+    message.str(""); message << "CAL_SYS=" << timestamp_from( this->cal_systime ) << "// mean system time at CAL_ARCH";
     this->systemkeys.addkey( message.str() );
     message.str(""); message << "CAL_SYS:" << timestamp_from( this->cal_systime );
     this->camera.async.enqueue( message.str() );
 
-    return( error );
+    return NO_ERROR;
   }
   /***** Archon::Interface::caltimer ******************************************/
 
@@ -6711,6 +6715,41 @@ logwrite(function,std::string(msg));
     } // end if (testname==timer)
 
     // ----------------------------------------------------
+    // timertime
+    // ----------------------------------------------------
+    // convert archon timer to wall clock time
+    //
+    else
+    if (testname == "timertime") {
+      if ((this->cal_systime.tv_sec==0 && this->cal_systime.tv_nsec==0) || this->cal_archontime==0) {
+        logwrite(function, "no calibration data. run caltimer", LogLevel::ERROR);
+        return ERROR;
+      }
+
+      if (tokens.size() < 2) {
+        this->camera.log_error( function, "expected test timertime <archontimer>" );
+        return ERROR;
+      }
+
+      uint64_t archontimer;
+      try {
+        archontimer = std::stoull( tokens.at(1) );
+        if (archontimer<this->cal_archontime) throw std::runtime_error("value less than cal_archontime");
+      }
+      catch (const std::exception &e) {
+        logwrite(function, "converting archontimer: "+std::string(e.what()), LogLevel::ERROR);
+        return ERROR;
+      }
+
+      double system_time_us = timespec_to_us(this->cal_systime) + (static_cast<double>(archontimer) - this->cal_archontime);
+      auto ts = us_to_timespec(system_time_us);
+      message.str(""); message << "archontimer=" << archontimer << " to system=" << timestamp_from(ts);
+      logwrite(function, message.str());
+
+      error=NO_ERROR;
+    }
+
+    // ----------------------------------------------------
     // invalid test name
     // ----------------------------------------------------
     //
@@ -6742,7 +6781,7 @@ logwrite(function,std::string(msg));
     long error = this->abort_archon();
 
     if ( error != NO_ERROR ) {
-      logwrite( function, "ERROR aborting Archon" );
+      logwrite( function, "aborting Archon", LogLevel::ERROR );
     }
 
     // Set class object abort flags
@@ -6772,6 +6811,4 @@ logwrite(function,std::string(msg));
     return error;
   }
   /***** Archon::Interface::abort_archon **************************************/
-
-
 }
