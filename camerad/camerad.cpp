@@ -107,6 +107,11 @@ int main(int argc, char **argv) {
   }
 
   for (int entry=0; entry < server.config.n_entries; entry++) {
+    if (server.config.param[entry].compare(0, 15, "LOGLEVEL_FILTER")==0) {
+        set_loglevel_filter(string_to_log_level(server.config.arg[entry]));
+        message.str(""); message << "CONFIG:" << server.config.param[entry] << "=" << server.config.arg[entry];
+        logwrite( function, message.str(), LogLevel::INFO );
+    }
 
     if (server.config.param[entry] == "LOGPATH") log_path = server.config.arg[entry];
 

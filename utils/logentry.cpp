@@ -22,6 +22,7 @@ struct LogItem {
 boost::lockfree::queue<LogItem*> log_queue(1024);
 std::atomic<bool> logger_running{true};
 std::thread logger_thread;
+std::atomic<LogLevel> global_loglevel = LogLevel::INFO;
 
 /***** logger_worker **********************************************************/
 /**
@@ -59,14 +60,17 @@ void logger_worker() {
 
             if (item->level == LogLevel::ERROR || write_failed) {
                 std::cerr << *(item->msg);
+            } else {
+                std::cout << *(item->msg);
             }
 
             delete item->msg;
             delete item;
         }
 
-        if (filestream.is_open())
+        if (filestream.is_open()) {
             filestream.flush();
+        }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(5)); // slight delay to reduce CPU usage
     }
@@ -89,11 +93,12 @@ void logger_worker() {
  * background logger thread that processes queued log messages.
  *
  */
-long init_log(std::string name, std::string logpath, std::string logstderr, std::string logtmzone)
+long init_log(std::string name, std::string logpath, std::string logstderr, std::string logtmzone, LogLevel min_level)
 {
     const std::string function = "init_log";
     std::stringstream filename;
     std::stringstream message;
+    global_loglevel = min_level;
     int year, mon, mday, hour, min, sec, usec;
     long error = 0;
 
@@ -174,6 +179,25 @@ void close_log() {
 
 /***** close_log **************************************************************/
 
+/***** set_loglevel ************************************************************/
+/**
+ * @brief      Sets the global log level threshold.
+ * @param[in]  new_level   The minimum LogLevel to allow logging.
+ *
+ * This function updates the global logging threshold used by `logwrite()`
+ * to decide whether a message should be queued for logging. Any log message
+ * with a level higher (less severe) than this threshold will be ignored.
+ *
+ * Example usage:
+ *   set_loglevel(LogLevel::WARNING);  // Log only WARNING and ERROR
+ *
+ * Thread-safe due to use of std::atomic.
+ */
+void set_loglevel_filter(LogLevel new_level) {
+    global_loglevel.store(new_level);
+}
+/***** set_loglevel ************************************************************/
+
 /***** logwrite ***************************************************************/
 /**
  * @brief      Queues a formatted log message with a timestamp and function name.
@@ -191,6 +215,8 @@ void close_log() {
  *
  */
 void logwrite(const std::string &function, const std::string &message, LogLevel level) {
+    if (level > global_loglevel.load()) return;  // filter based on global threshold
+
     char buffer[512];
     std::string timestamp = get_timestamp(tmzone_log);
     const char* level_str = log_level_to_string(level);
