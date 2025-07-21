@@ -364,19 +364,35 @@ void async_main(Network::UdpSocket sock) {
     logwrite(function, "asyncrhonous message port disabled by request");
   }
 
-  while (1) {
-    std::string message = server.camera.async.dequeue();    // get the latest message from the queue (blocks)
-    retval = sock.Send(message);                            // transmit the message
-    if (retval < 0) {
-      std::stringstream errstm;
-      errstm << "error sending UDP message: " << message;
-      logwrite(function, errstm.str(), LogLevel::ERROR);
+  // This loop will pull messages from the non-blocking queue as fast as
+  // possible while active, in order to keep up with messages that might
+  // come in quickly such as durring an exposure. During idle periods it
+  // will sleep progressively longer (up to a max) in order to limit CPU
+  // usage when not needed.
+  //
+  const std::chrono::duration min_delay = std::chrono::microseconds(1);
+  const std::chrono::duration max_delay = std::chrono::microseconds(10000);
+
+  int idle=0;
+  std::chrono::duration delay = min_delay;
+
+  while (true) {
+    std::string message = server.camera.async.dequeue();    // get the latest message from the queue (non-blocking)
+    if (!message.empty()) {
+      sock.Send(message);                                   // transmit the message
+      idle=0;
+      delay = min_delay;                                    // got a message so sleep the min amount
+      if (message=="exit") break;                           // terminate this thread on exit
     }
-    if (message=="exit") {                                  // terminate this thread
-      sock.Close();
-      return;
+    else {
+      if (++idle<1000) { std::this_thread::yield(); }       // short idle, yield CPU to other threads
+      else {
+        std::this_thread::sleep_for(delay);                 // limits CPU usage
+        delay = std::min(delay*2, max_delay);               // progressively increases delay while idle
+      }
     }
   }
+  sock.Close();
   return;
 }
 /** async_main ***************************************************************/
