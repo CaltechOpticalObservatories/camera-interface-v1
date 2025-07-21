@@ -14,12 +14,6 @@ include_directories( ${PROJECT_BASE_DIR}/utils )
 include_directories( ${PROJECT_BASE_DIR}/common )
 link_directories( ${PROJECT_BASE_DIR}/lib )
 
-execute_process(
-    COMMAND git describe --always --dirty --abbrev=7
-    OUTPUT_VARIABLE GIT_HASH
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
 # ----------------------------------------------------------------------------
 # OpenCV
 # ----------------------------------------------------------------------------
@@ -67,7 +61,23 @@ target_link_libraries(camerad
         Boost::chrono
         )
 
-target_compile_definitions(camerad PRIVATE GIT_HASH="${GIT_HASH}")
+# ----------------------------------------------------------------------------
+# generate githash.h file before camerad is built
+# ----------------------------------------------------------------------------
+add_custom_command(
+    OUTPUT ${CMAKE_BINARY_DIR}/githash.h
+    COMMAND ${CMAKE_COMMAND}
+        -DCMAKE_SOURCE_DIR=${CAMERA_DIR}
+        -DOUTPUT_FILE=${CMAKE_BINARY_DIR}/githash.h
+        -P ${CAMERA_DIR}/generate_githash.cmake
+    COMMENT "Generating githash.h"
+    VERBATIM
+)
+
+add_custom_target(githash_target ALL DEPENDS ${CMAKE_BINARY_DIR}/githash.h)
+add_dependencies(camerad githash_target)
+target_include_directories(camerad PRIVATE ${CMAKE_BINARY_DIR})
+target_sources(camerad PRIVATE ${CMAKE_BINARY_DIR}/githash.h)
 
 # ----------------------------------------------------------------------------
 # cURL is not used here, so it's not strictly required, but cfitsio can
