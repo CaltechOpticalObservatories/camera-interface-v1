@@ -932,7 +932,7 @@ namespace Archon {
 
     if ( error != NO_ERROR ) {
       message.str(""); message << "ERROR: sending archon_cmd(" << cmd.str() << ")";
-      logwrite( function, message.str() );
+      logwrite( function, message.str(), LogLevel::ERROR );
       return error;
     }
 
@@ -995,7 +995,7 @@ namespace Archon {
 
     if (error != NO_ERROR) {
       message << "ERROR prepping parameter \"" << paramname << "=" << value;
-      logwrite( function, message.str() );
+      logwrite( function, message.str(), LogLevel::ERROR );
     }
 
     return error;
@@ -1027,7 +1027,7 @@ namespace Archon {
       message << "parameter \"" << paramname << "=" << value << "\" loaded into Archon";
     }
 
-    logwrite( function, message.str() );
+    logwrite( function, message.str(), (error==NO_ERROR ? LogLevel::INFO : LogLevel::ERROR) );
     return(error);
   }
   /**************** Archon::Interface::load_parameter *************************/
@@ -1054,7 +1054,7 @@ namespace Archon {
     //
     do {
       if ( (retval=this->archon_cmd(FETCHLOG, reply))!=NO_ERROR ) {          // send command here
-        logwrite( function, "ERROR: calling FETCHLOG" );
+        logwrite( function, "ERROR: calling FETCHLOG", LogLevel::ERROR );
         return(retval);
       }
       if (reply != "(null)") {
@@ -1098,9 +1098,9 @@ namespace Archon {
 
     // defaults are required
     //
-    if ( this->camera.default_roi.empty() )      { error=ERROR; logwrite( function, "ERROR missing default roi" ); }
-    if ( this->camera.default_sampmode.empty() ) { error=ERROR; logwrite( function, "ERROR missing default sampmode" ); }
-    if ( this->camera.default_exptime.empty() )  { error=ERROR; logwrite( function, "ERROR missing default exptime" ); }
+    if ( this->camera.default_roi.empty() )      { error=ERROR; logwrite( function, "ERROR missing default roi", LogLevel::ERROR ); }
+    if ( this->camera.default_sampmode.empty() ) { error=ERROR; logwrite( function, "ERROR missing default sampmode", LogLevel::ERROR ); }
+    if ( this->camera.default_exptime.empty() )  { error=ERROR; logwrite( function, "ERROR missing default exptime", LogLevel::ERROR ); }
 
     // exptime requires readout time,
     // and readout time requires ROI and sampmode,
@@ -1154,9 +1154,9 @@ namespace Archon {
 
     // defaults are required
     //
-    if ( this->camera.default_roi.empty() )      { error=ERROR; logwrite( function, "ERROR missing default roi" ); }
-    if ( this->camera.default_sampmode.empty() ) { error=ERROR; logwrite( function, "ERROR missing default sampmode" ); }
-    if ( this->camera.default_exptime.empty() )  { error=ERROR; logwrite( function, "ERROR missing default exptime" ); }
+    if ( this->camera.default_roi.empty() )      { error=ERROR; logwrite( function, "ERROR missing default roi", LogLevel::ERROR ); }
+    if ( this->camera.default_sampmode.empty() ) { error=ERROR; logwrite( function, "ERROR missing default sampmode", LogLevel::ERROR ); }
+    if ( this->camera.default_exptime.empty() )  { error=ERROR; logwrite( function, "ERROR missing default exptime", LogLevel::ERROR ); }
 
     // exptime requires readout time,
     // and readout time requires ROI and sampmode,
@@ -1277,7 +1277,7 @@ namespace Archon {
     //
     if ( error == NO_ERROR && write_to_archon ) error = this->archon_cmd(CLEARCONFIG);
 
-    if ( error != NO_ERROR  && write_to_archon ) { logwrite( function, "ERROR: could not prepare Archon for new ACF" ); return error; }
+    if ( error != NO_ERROR  && write_to_archon ) { logwrite( function, "ERROR: could not prepare Archon for new ACF", LogLevel::ERROR ); return error; }
 
     // Any failure after clearing the configuration memory will mean
     // no firmware is loaded.
@@ -1431,7 +1431,7 @@ namespace Archon {
           if ( ! keymatch ) {
             message.str("");
             message << "[MODE_" << mode << "] ACF directive: " << key << "=" << value << " is not a valid parameter or configuration key";
-            logwrite(function, message.str());
+            logwrite(function, message.str(), LogLevel::ERROR);
             filestream.close();
             return ERROR;
           }
@@ -1712,7 +1712,7 @@ namespace Archon {
     //
     if ( load_mode_settings(mode) != NO_ERROR) {
       message.str(""); message << "ERROR: failed to load mode settings for mode: " << mode;
-      logwrite( function, message.str() );
+      logwrite( function, message.str(), LogLevel::ERROR );
       return(ERROR);
     }
 
@@ -1735,7 +1735,7 @@ namespace Archon {
 
     // get out if any errors at this point
     //
-    if ( error != NO_ERROR ) { logwrite( function, "ERROR: one or more internal variables missing from configmap" ); return error; }
+    if ( error != NO_ERROR ) { logwrite( function, "ERROR: one or more internal variables missing from configmap", LogLevel::ERROR ); return error; }
 
     int num_detect = this->modemap[mode].geometry.num_detect;             // for convenience
 
@@ -1745,7 +1745,7 @@ namespace Archon {
     int bigbuf=-1;
     if (error==NO_ERROR) error = get_configmap_value("BIGBUF", bigbuf);   // get value of BIGBUF from loaded acf file
     this->camera_info.activebufs = (bigbuf==1) ? 2 : 3;                   // set number of active buffers based on BIGBUF
-    if ( error != NO_ERROR ) { logwrite( function, "ERROR: unable to read BIGBUF from ACF" ); return error; }
+    if ( error != NO_ERROR ) { logwrite( function, "ERROR: unable to read BIGBUF from ACF", LogLevel::ERROR ); return error; }
 
     // There is one special reserved mode name, "RAW"
     //
@@ -1801,14 +1801,14 @@ namespace Archon {
       message.str(""); message << "this->camera_info.detector_pixels[1] (LINECOUNT) = " << this->camera_info.detector_pixels[1];
       logwrite(function, message.str(), LogLevel::DEBUG);
 #endif
-      if ( error != NO_ERROR ) { logwrite( function, "ERROR: unable to get PIXELCOUNT,LINECOUNT from ACF" ); return error; }
+      if ( error != NO_ERROR ) { logwrite( function, "ERROR: unable to get PIXELCOUNT,LINECOUNT from ACF", LogLevel::ERROR ); return error; }
     }
 
     // set bitpix based on SAMPLEMODE
     //
     int samplemode=-1;
     if (error==NO_ERROR) error = get_configmap_value("SAMPLEMODE", samplemode); // SAMPLEMODE=0 for 16bpp, =1 for 32bpp
-    if ( error != NO_ERROR ) { logwrite( function, "ERROR: unable to get SAMPLEMODE from ACF" ); return error; }
+    if ( error != NO_ERROR ) { logwrite( function, "ERROR: unable to get SAMPLEMODE from ACF", LogLevel::ERROR ); return error; }
     if (samplemode < 0) { this->camera.log_error( function, "bad or missing SAMPLEMODE from ACF" ); return ERROR; }
     this->camera_info.bitpix = (samplemode==0) ? 16 : 32;
 
@@ -1820,7 +1820,7 @@ namespace Archon {
     // Get the current frame buffer status
     if (error == NO_ERROR) error = this->get_frame_status();
     if (error != NO_ERROR) {
-      logwrite( function, "ERROR: unable to get frame status" );
+      logwrite( function, "ERROR: unable to get frame status", LogLevel::ERROR );
       return(error);
     }
 
@@ -1967,7 +1967,7 @@ namespace Archon {
            param_it++) {
         error = this->write_parameter( param_it->first.c_str(), param_it->second.value.c_str(), paramchanged );
         message.str(""); message << "paramchanged=" << (paramchanged?"true":"false");
-        logwrite(function, message.str());
+        logwrite(function, message.str(), LogLevel::DEBUG);
         if (error != NO_ERROR) {
           errstr  << "ERROR: writing parameter key:" << param_it->first << " value:" << param_it->second.value << " for mode " << mode;
           break;
@@ -1986,7 +1986,7 @@ namespace Archon {
       logwrite(function, message.str());
     }
     else {
-      logwrite( function, errstr.str() );
+      logwrite( function, errstr.str(), LogLevel::ERROR );
       return error;
     }
 
@@ -2000,7 +2000,7 @@ namespace Archon {
       std::string lshutten;
       if ( read_parameter( this->shutenableparam, lshutten ) != NO_ERROR ) { 
         message.str(""); message << "ERROR: reading \"" << this->shutenableparam << "\" parameter from Archon";
-        logwrite( function, message.str() );
+        logwrite( function, message.str(), LogLevel::ERROR );
         return ERROR;
       }
 
@@ -2013,14 +2013,14 @@ namespace Archon {
       if ( lshutten == "0" ) shuttenstr = "disable";
       else {
         message.str(""); message << "ERROR: unrecognized shutter enable parameter value " << lshutten << ": expected {0,1}";
-        logwrite( function, message.str() );
+        logwrite( function, message.str(), LogLevel::ERROR );
         return ERROR;
       }
 
       // Tell the server
       //
       std::string dontcare;
-      if ( this->shutter( shuttenstr, dontcare ) != NO_ERROR ) { logwrite( function, "ERROR: setting shutter enable parameter" ); return ERROR; }
+      if ( this->shutter( shuttenstr, dontcare ) != NO_ERROR ) { logwrite( function, "ERROR: setting shutter enable parameter", LogLevel::ERROR ); return ERROR; }
     }
 
     /**
@@ -2171,7 +2171,7 @@ namespace Archon {
     // send FRAME command to get frame buffer status
     //
     if ( (error = this->archon_cmd(FRAME, reply)) ) {
-      if ( error == ERROR ) logwrite( function, "ERROR sending FRAME command" );  // don't log here if BUSY
+      if ( error == ERROR ) logwrite( function, "ERROR sending FRAME command", LogLevel::ERROR );  // don't log here if BUSY
       return error;
     }
 
@@ -2380,7 +2380,7 @@ namespace Archon {
     char cmd[8];
     SNPRINTF(cmd, "LOCK%d", buffer);
     if ( this->archon_cmd(std::string(cmd)) ) {
-      logwrite("Archon::Interface::lock_buffer", "ERROR sending Archon command "+std::string(cmd));
+      logwrite("Archon::Interface::lock_buffer", "ERROR sending Archon command "+std::string(cmd), LogLevel::ERROR);
       return ERROR;
     }
     return NO_ERROR;
@@ -2479,7 +2479,7 @@ namespace Archon {
     // make sure that it's cleared here.
     //
     if ( this->archon_cmd( std::string(buf) ) == ERROR ) {
-      logwrite( function, "ERROR: sending FETCH command. Aborting read." );
+      logwrite( function, "ERROR: sending FETCH command. Aborting read.", LogLevel::ERROR );
       this->archon_busy.clear();                                            // clear busy flag
       this->archon_cmd(UNLOCK);                                             // unlock all buffers
       return ERROR;
@@ -2526,7 +2526,7 @@ namespace Archon {
 
     // Lock the frame buffer before reading it
     //
-    if ( this->lock_buffer(bufready) == ERROR) { logwrite( function, "ERROR locking frame buffer" ); return ERROR; }
+    if ( this->lock_buffer(bufready) == ERROR) { logwrite( function, "ERROR locking frame buffer", LogLevel::ERROR ); return ERROR; }
 
     // Send the FETCH command to read the memory buffer from the Archon backplane.
     // Archon replies with one binary response per requested block. Each response
@@ -2563,7 +2563,7 @@ namespace Archon {
     error = this->fetch(bufaddr, bufblocks);
 
     if ( error != NO_ERROR ) {
-      logwrite( function, "ERROR fetching Archon buffer" );
+      logwrite( function, "ERROR fetching Archon buffer", LogLevel::ERROR );
       return error;
     }
 
@@ -2645,7 +2645,7 @@ namespace Archon {
     if ( error==ERROR || block < bufblocks) {
       SNPRINTF(message, "incomplete frame read %d bytes: %d of %d 1024-byte blocks",
                         totalbytesread, block, bufblocks);
-      logwrite( function, std::string(message) );
+      logwrite( function, std::string(message), LogLevel::ERROR );
       this->print_frame_status();
     }
 
@@ -2693,7 +2693,7 @@ namespace Archon {
     if ( this->configmap[key].value == newvalue ) {
       error = NO_ERROR;
       message.str(""); message << "config key " << key << "=" << newvalue << " not written: no change in value";
-      logwrite(function, message.str());
+      logwrite(function, message.str(), LogLevel::DEBUG);
     }
 
     else
@@ -2710,7 +2710,7 @@ namespace Archon {
             << "="
             << newvalue;
       message.str(""); message << "sending: archon_cmd(" << sscmd.str() << ")";
-      logwrite(function, message.str());
+      logwrite(function, message.str(), LogLevel::DEBUG);
       error=this->archon_cmd((char *)sscmd.str().c_str());   // send the WCONFIG command here
       if (error==NO_ERROR) {
         this->configmap[key].value = newvalue;               // save newvalue in the STL map
@@ -2718,7 +2718,7 @@ namespace Archon {
       }
       else {
         message.str(""); message << "ERROR: config key=value: " << key << "=" << newvalue << " not written";
-        logwrite( function, message.str() );
+        logwrite( function, message.str(), LogLevel::ERROR );
       }
     }
     return(error);
@@ -2772,7 +2772,7 @@ namespace Archon {
     if ( error==NO_ERROR && this->parammap[paramname].value == newvalue ) {
       error = NO_ERROR;
       message.str(""); message << "parameter " << paramname << "=" << newvalue << " not written: no change in value";
-      logwrite(function, message.str());
+      logwrite(function, message.str(), LogLevel::DEBUG);
     }
 
     else
@@ -2792,13 +2792,13 @@ namespace Archon {
             << "="
             << newvalue;
       message.str(""); message << "sending archon_cmd(" << sscmd.str() << ")";
-      logwrite(function, message.str());
+      logwrite(function, message.str(), LogLevel::DEBUG);
       error=this->archon_cmd((char *)sscmd.str().c_str());   // send the WCONFIG command here
       if ( error == NO_ERROR ) {
         this->parammap[paramname].value = newvalue;            // save newvalue in the STL map
         changed = true;
       }
-      else logwrite( function, "ERROR: sending WCONFIG command" );
+      else logwrite( function, "ERROR: sending WCONFIG command", LogLevel::ERROR );
     } 
     
     return(error);
@@ -3265,12 +3265,12 @@ namespace Archon {
       // read the Archon configuration memory
       //
       std::string etime;
-      if ( read_parameter( "exptime", etime ) != NO_ERROR ) { logwrite( function, "ERROR: reading \"exptime\" parameter from Archon" ); return ERROR; }
+      if ( read_parameter( "exptime", etime ) != NO_ERROR ) { logwrite( function, "ERROR: reading \"exptime\" parameter from Archon", LogLevel::ERROR ); return ERROR; }
 
       // Tell the server these values
       //
       std::string retval;
-      if ( this->exptime( etime, retval ) != NO_ERROR ) { logwrite( function, "ERROR: setting exptime" ); return ERROR; }
+      if ( this->exptime( etime, retval ) != NO_ERROR ) { logwrite( function, "ERROR: setting exptime", LogLevel::ERROR ); return ERROR; }
     }
     if ( this->camera_info.exposure_factor == -1 ||
          this->camera_info.exposure_unit.empty() ) {
@@ -3280,12 +3280,12 @@ namespace Archon {
       // read the Archon configuration memory
       //
       std::string lexp;
-      if ( read_parameter( "longexposure", lexp ) != NO_ERROR ) { logwrite( function, "ERROR: reading \"longexposure\" parameter from Archon" ); return ERROR; }
+      if ( read_parameter( "longexposure", lexp ) != NO_ERROR ) { logwrite( function, "ERROR: reading \"longexposure\" parameter from Archon", LogLevel::ERROR ); return ERROR; }
 
       // Tell the server these values
       //
       std::string retval;
-      if ( this->longexposure( lexp, retval ) != NO_ERROR ) { logwrite( function, "ERROR: setting longexposure" ); return ERROR; }
+      if ( this->longexposure( lexp, retval ) != NO_ERROR ) { logwrite( function, "ERROR: setting longexposure", LogLevel::ERROR ); return ERROR; }
     }
 
     // parse the requested number of sequences
@@ -3331,7 +3331,7 @@ namespace Archon {
 //  error = this->get_frame_status();  // TODO is this needed here?
 
     if (error != NO_ERROR) {
-      logwrite( function, "ERROR: unable to get frame status" );
+      logwrite( function, "ERROR: unable to get frame status", LogLevel::ERROR );
       return(ERROR);
     }
 
@@ -3347,7 +3347,7 @@ namespace Archon {
       this->cds_info.axes[2] = 1;
       this->cds_info.section_size = this->cds_info.imheight * this->cds_info.imwidth;
       if (this->cds_info.section_size==0) {
-        logwrite(function, "ERROR CDS image size=0");
+        logwrite(function, "ERROR CDS image size=0", LogLevel::ERROR);
         return ERROR;
       }
       if ( this->camera.coadd() ) {   // need long to handle coadding
@@ -4329,20 +4329,18 @@ namespace Archon {
       return error;
     }
 
-    // On success, write the value to the log and return
-    //
-    if ( ! this->camera.is_aborted() ) {
-      logwrite(function, "received currentframe: "+std::to_string(latest_completed_frame)+
-                         " at TS "+std::to_string(this->lasttimestamp), LogLevel::DEBUG);
-      return NO_ERROR;
-    }
-    // If the wait was stopped, log a message and return NO_ERROR
-    //
-    else {
+    if ( this->camera.is_aborted() ) {
       logwrite(function, "wait for readout stopped by external signal");
       this->abort_archon();
-      return NO_ERROR;
     }
+#ifdef LOGLEVEL_DEBUG
+    else {
+      logwrite(function, "received currentframe: "+std::to_string(latest_completed_frame)+
+                         " at TS "+std::to_string(this->lasttimestamp), LogLevel::DEBUG);
+    }
+#endif
+
+    return NO_ERROR;
   }
   /***** Archon::Interface::wait_for_readout **********************************/
 
@@ -5245,7 +5243,6 @@ namespace Archon {
             message.str(""); message << "NOTICE:PIDs converted to: " << tokens[3] << " " << tokens[4] << " " << tokens[5];
             this->camera.async.enqueue( message.str() );
             logwrite( function, message.str() );
-
           }
           pid_p = std::stof( tokens[3] );
           pid_i = std::stof( tokens[4] );

@@ -10,6 +10,10 @@
 #ifndef SERVER_H
 #define SERVER_H
 
+#ifndef GIT_HASH
+#define GIT_HASH "unknown"
+#endif
+
 #include <fstream>
 #include <iostream>
 #include <sstream>

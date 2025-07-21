@@ -118,7 +118,7 @@ int main(int argc, char **argv) {
     if (server.config.param[entry] == "TM_ZONE") {
       if ( server.config.arg[entry] != "UTC" && server.config.arg[entry] != "local" ) {
         message.str(""); message << "ERROR invalid TM_ZONE_DATA=" << server.config.arg[entry] << ": expected UTC|local";
-        logwrite( function, message.str() );
+        logwrite( function, message.str(), LogLevel::ERROR );
         server.exit_cleanly();
       }
       message.str(""); message << "TM_ZONE=" << server.config.arg[entry] << "//time zone";
@@ -132,7 +132,7 @@ int main(int argc, char **argv) {
     if (server.config.param[entry] == "TM_ZONE_LOG") {
       if ( server.config.arg[entry] != "UTC" && server.config.arg[entry] != "local" ) {
         message.str(""); message << "ERROR invalid TM_ZONE_LOG=" << server.config.arg[entry] << ": expected UTC|local";
-        logwrite( function, message.str() );
+        logwrite( function, message.str(), LogLevel::ERROR );
         server.exit_cleanly();
       }
       log_tmzone = server.config.arg[entry];
@@ -188,6 +188,12 @@ int main(int argc, char **argv) {
   //
   message.str(""); message << "this version built " << BUILD_DATE << " " << BUILD_TIME;
   logwrite(function, message.str());
+
+  message.str(""); message << "camerad git hash " << GIT_HASH;
+  logwrite(function, message.str());
+
+  message.str(""); message << "GIT_HASH=" << GIT_HASH << " // camerad git hash";
+  server.systemkeys.addkey( message.str() );
 
   message.str(""); message << "CAMD_VER=" << BUILD_DATE << " " << BUILD_TIME << " // camerad build date";
   server.systemkeys.addkey( message.str() );
@@ -461,7 +467,7 @@ void doit(Network::TcpSocket sock) {
       }
 
       message.str(""); message << "thread " << sock.id << " received command on fd " << sock.getfd() << ": " << cmd << " " << args;
-      logwrite(function, message.str(), LogLevel::DEBUG);
+      logwrite(function, message.str(), LogLevel::INFO);
     }
     catch ( std::runtime_error &e ) {
       std::stringstream errstream; errstream << e.what();

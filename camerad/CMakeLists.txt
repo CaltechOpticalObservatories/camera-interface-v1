@@ -14,6 +14,12 @@ include_directories( ${PROJECT_BASE_DIR}/utils )
 include_directories( ${PROJECT_BASE_DIR}/common )
 link_directories( ${PROJECT_BASE_DIR}/lib )
 
+execute_process(
+    COMMAND git describe --always --dirty --abbrev=7
+    OUTPUT_VARIABLE GIT_HASH
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+
 # ----------------------------------------------------------------------------
 # OpenCV
 # ----------------------------------------------------------------------------
@@ -60,6 +66,8 @@ target_link_libraries(camerad
         Boost::thread
         Boost::chrono
         )
+
+target_compile_definitions(camerad PRIVATE GIT_HASH="${GIT_HASH}")
 
 # ----------------------------------------------------------------------------
 # cURL is not used here, so it's not strictly required, but cfitsio can

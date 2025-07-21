@@ -440,7 +440,7 @@ namespace Camera {
     if ( time_in.length() != 23 ) {  // wrong number of characters, input can't be formatted correctly
       message.str(""); message << "ERROR: bad input time \"" << time_in << "\""
                                << " has " << time_in.length() << " chars but expected 23";
-      logwrite(function, message.str());
+      logwrite(function, message.str(), LogLevel::ERROR);
       this->fitstime = "99999999999999";
       return;
     }
@@ -870,19 +870,14 @@ namespace Camera {
       try {
         num = std::stoi( num_in );     // convert incoming string to integer
       }
-      catch ( std::invalid_argument & ) {
-        message.str(""); message << "ERROR: invalid number: unable to convert " << num_in << " to integer";
-        logwrite( function, message.str() );
-        return( ERROR );
-      }
-      catch ( std::out_of_range & ) {
-        message.str(""); message << "ERROR: " << num_in << " out of integer range";
-        logwrite( function, message.str() );
+      catch ( const std::exception &e ) {
+        message.str(""); message << "ERROR converting " << num_in << " to integer: " << e.what();
+        logwrite( function, message.str(), LogLevel::ERROR );
         return( ERROR );
       }
       if ( num < 0 ) {                 // can't be negative
         message.str(""); message << "ERROR: requested pre-exposures " << num << " must be >= 0";
-        logwrite( function, message.str() );
+        logwrite( function, message.str(), LogLevel::ERROR );
         return( ERROR );
       }
       else {                           // incoming value is OK
