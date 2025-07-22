@@ -1,4 +1,4 @@
-# creates version include file with git hash
+# creates include file with git hash
 execute_process(
     COMMAND git describe --always --dirty --abbrev=7
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}

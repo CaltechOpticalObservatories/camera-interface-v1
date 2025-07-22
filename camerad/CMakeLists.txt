@@ -64,18 +64,8 @@ target_link_libraries(camerad
 # ----------------------------------------------------------------------------
 # generate githash.h file before camerad is built
 # ----------------------------------------------------------------------------
-#add_custom_command(
-#    OUTPUT ${CMAKE_BINARY_DIR}/githash.h.tmp
-#    COMMAND ${CMAKE_COMMAND}
-#        -DCMAKE_SOURCE_DIR=${CAMERA_DIR}
-#        -DOUTPUT_FILE=${CMAKE_BINARY_DIR}/githash.h
-#        -P ${CAMERA_DIR}/generate_githash.cmake
-#    COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_BINARY_DIR}/githash.h.tmp
-#    COMMENT "checking githash.h"
-#    VERBATIM
-#)
+file(TOUCH "${CMAKE_BINARY_DIR}/githash.h")
 
-#add_custom_target(githash_target ALL DEPENDS ${CMAKE_BINARY_DIR}/githash.h)
 add_custom_target(githash_target ALL
         COMMAND ${CMAKE_COMMAND}
             -DCMAKE_SOURCE_DIR=${CAMERA_DIR}
