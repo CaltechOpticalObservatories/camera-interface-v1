@@ -609,6 +609,7 @@ namespace Network {
   /**
    * @brief      connect to this->host on this->port
    * @return     0 on success, -1 on error
+   * @throws     std::runtime_error
    *
    * this->host and this->port need to be specified prior to calling Connect()
    * On success, this function will set this->fd with the open socket file descriptor.
@@ -636,10 +637,8 @@ namespace Network {
     int status = getaddrinfo(this->host.c_str(), std::to_string(this->port).c_str(), &hints, &this->addrs);
 
     if ( status != 0 ) {
-      errstm << "error " << errno << " connecting to " << this->host << "/" << this->port
-                         << " : " << gai_strerror(status);
-      logwrite(function, errstm.str());
-      return -1;
+      errstm << "connecting to host " << this->host << " port " << this->port << " : " << gai_strerror(status);
+      throw std::runtime_error(errstm.str());
     }
 
     // Loop though the results returned by getaddrinfo and attempt to create a socket and connect to it.
@@ -655,17 +654,15 @@ namespace Network {
       // before setting to non-block get the current flags
       //
       if ((flags = fcntl(this->fd, F_GETFL, 0)) < 0) {
-        errstm << "error " << errno << " getting socket file descriptor flags: " << std::strerror(errno);
-        logwrite(function, errstm.str());
-        return -1;
+        errstm << "getting socket file descriptor flags: " << std::strerror(errno);
+        throw std::runtime_error(errstm.str());
       }
 
       // set socket to non-blocking so that it can timeout on failure to connect
       //
       if ( fcntl( this->fd, F_SETFL, flags | O_NONBLOCK ) == -1 ) {
-        errstm << "error " << errno << " setting non-block flag on fd " << this->fd << ": " << std::strerror(errno);
-        logwrite(function, errstm.str());
-        return -1;
+        errstm << "setting non-block flag on fd " << this->fd << ": " << std::strerror(errno);
+        throw std::runtime_error(errstm.str());
       }
 
       // connect to the socket file descriptor

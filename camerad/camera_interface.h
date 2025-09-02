@@ -24,6 +24,10 @@ namespace Camera {
 
       std::unique_ptr<ExposureModeBase> exposure_mode;
 
+      std::atomic<bool> is_producer_finished;
+      std::atomic<bool> is_producer_error;
+      std::atomic<bool> is_consumer_error;
+
     public:
       virtual ~Interface() = default;
 
@@ -50,6 +54,10 @@ namespace Camera {
       virtual long native( std::string args, std::string &retstring ) = 0;
       virtual long power( std::string args, std::string &retstring ) = 0;
       virtual long test( std::string args, std::string &retstring ) = 0;
+
+      virtual long do_expose(int nexp) = 0;
+      virtual void image_acquisition_thread() = 0;
+      virtual void image_processing_thread() = 0;
 
   };
 

@@ -10,14 +10,31 @@
 
 namespace Camera {
 
+  /***** Camera::Controller::Controller ***************************************/
+  /**
+   * @brief      Controller constructor
+   */
   Controller::Controller() : 
-    interface(nullptr), framebuf(nullptr), framebuf_bytes(0), is_connected(false), is_busy(false), is_firmwareloaded(false)
+    interface(nullptr),
+    framebuf(nullptr),
+    framebuf_bytes(0),
+    is_connected(false),
+    is_busy(false),
+    is_firmwareloaded(false)
   {
   }
+  /***** Camera::Controller::Controller ***************************************/
 
+
+  /***** Camera::Controller::~Controller **************************************/
+  /**
+   * @brief      Controller destructor
+   */
   Controller::~Controller() {
     delete[] framebuf;
   }
+  /***** Camera::Controller::~Controller **************************************/
+
 
   /***** Camera::Controller::set_interface ************************************/
   /**
@@ -69,9 +86,10 @@ namespace Camera {
   /***** Camera::Controller::write_config_key *********************************/
   /**
    * @brief      write a configuration KEY=VALUE pair to the Archon controller
-   * @param[in]  key
-   * @param[in]  newvalue
-   * @param[out] changed
+   * @details    This function is overloaded. Use this version for char values.
+   * @param[in]  key       char pointer to key
+   * @param[in]  newvalue  char pointer to value
+   * @param[out] changed   set true if changed
    * @return     ERROR | NO_ERROR
    *
    */
@@ -123,11 +141,10 @@ namespace Camera {
   /***** Camera::Controller::write_config_key *********************************/
   /**
    * @brief      write a configuration KEY=VALUE pair to the Archon controller
-   * @details    This function is overloaded.
-   *             Use this version for integer values.
+   * @details    This function is overloaded. Use this version for integer values.
    * @param[in]  key       pointer to key
    * @param[in]  newvalue  integer value
-   * @param[out] changed   true if changed
+   * @param[out] changed   set true if changed
    * @return     ERROR | NO_ERROR
    *
    */
@@ -137,5 +154,104 @@ namespace Camera {
     return ( write_config_key(key, newvaluestr.str().c_str(), changed) );
   }
   /***** Camera::Controller::write_config_key *********************************/
+
+
+  /***** Camera::Controller::parse_system_configuration ***********************/
+  /**
+   * @brief      write a configuration KEY=VALUE pair to the Archon controller
+   * @brief
+   * @param[in]  message
+   * @return     ERROR | NO_ERROR
+   *
+   */
+  long Controller::parse_system_configuration(const std::string &message) {
+    const std::string function("Camera::Controller::get_system_configuration");
+    if ( !is_connected ) {
+      logwrite(function, "ERROR Archon connection not open");
+      return ERROR;
+    }
+
+    std::vector<std::string> lines, tokens;
+    Tokenize( message, lines, " " );                  // then each line in a separate token "lines"
+
+    for ( const auto &line : lines ) {
+      Tokenize( line, tokens, "_=" );                 // finally break each line into tokens to get module, type and version
+      if ( tokens.size() != 3 ) continue;             // need 3 tokens
+
+      std::string version;
+      int module=0;
+      int type=0;
+
+      // get the module number
+      //
+      if ( tokens[0].compare( 0, 9, "BACKPLANE" ) == 0 ) {
+        if ( tokens[1] == "VERSION" ) this->backplaneversion = tokens[2];
+        continue;
+      }
+
+      // get the module and type of each module from MODn_TYPE
+      //
+      if ( ( tokens[0].compare( 0, 3, "MOD" ) == 0 ) && ( tokens[1] == "TYPE" ) ) {
+        try {
+          module = std::stoi( tokens[0].substr(3) );
+          type   = std::stoi( tokens[2] );
+        }
+        catch (const std::exception &e) {
+          std::stringstream err;
+          err << "ERROR parsing module or type from " << tokens[0] << "=" << tokens[1] << ": " << e.what();
+          logwrite( function, err.str() );
+          return ERROR;
+        }
+
+      } else continue;
+
+      // get the module version
+      //
+      if ( tokens[1] == "VERSION" ) version = tokens[2]; else version = "";
+
+      // now store it permanently
+      //
+      if ( (module > 0) && (module <= NMODS) ) {
+        try {
+          this->modtype.at(module-1)    = type;       // store the type in a vector indexed by module
+          this->modversion.at(module-1) = version;    // store the type in a vector indexed by module
+
+        }
+        catch (const std::out_of_range &e) {
+          std::stringstream err;
+          err << "ERROR module " << module << " out of range {1:" << NMODS << "}";
+          logwrite( function, err.str() );
+        }
+      }
+      else {                                          // else should never happen
+        std::stringstream err;
+        err << "ERROR module " << module << " outside range {1:" << NMODS << "}";
+        logwrite( function, err.str() );
+        return ERROR;
+      }
+
+      // Use the module type to resize the gain and offset vectors,
+      // ADC module is type 2
+      // ADM module is type 17
+      //
+      if (type==2 || type==17) {
+        const auto size = (type==2) ? MAXADCCHANS : MAXADMCHANS;
+        this->gain.resize( size );
+        this->offset.resize( size );
+
+        // Check that the AD modules are installed in the correct slot
+        if ( module < 5 || module > 8 ) {
+          std::stringstream err;
+          err << "AD module (type=" << type << ") cannot be in slot " << module << ". Use slots 5-8";
+          logwrite( function, err.str() );
+          return ERROR;
+        }
+      }
+
+    } // end for ( auto line : lines )
+
+    return NO_ERROR;
+  }
+  /***** Camera::Controller::parse_system_configuration ***********************/
 
 }

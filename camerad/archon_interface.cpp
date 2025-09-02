@@ -294,41 +294,34 @@ namespace Camera {
    */
   long ArchonInterface::connect_controller( const std::string args, std::string &retstring ) {
     const std::string function("Camera::ArchonInterface::connect_controller");
-    logwrite(function, "not yet implemented");
-    // Example content
-    retstring = "OK";
-    return NO_ERROR;
-  }
-
-  long ArchonInterface::connect_controller(const std::string& devices_in="") {
-    std::string function = "ArchonInterface::connect_controller";
     std::stringstream message;
-    int adchans=0;
-    long   error = ERROR;
+    long error;
 
-    if ( this->controller.is_connected) {
+    // do nothing if already connected
+    if ( controller.is_connected ) {
       logwrite(function, "camera connection already open");
       return NO_ERROR;
     }
 
-    // Initialize the camera connection
-    //
-    logwrite(function, "opening a connection to the camera system");
-
-    if ( !this->controller.is_connected ) {
-      message.str(""); message << "connecting to " << this->controller.archon_network_details.hostname << ":" << this->controller.archon_network_details.port << ": " << strerror(errno);
-      logwrite( function, message.str() );
+    // initialize camera connection
+    try {
+      controller.archon.Connect();
+    }
+    catch (const std::exception &e) {
+      logwrite(function, "ERROR "+std::string(e.what()));
+      retstring = "could not connect";
       return ERROR;
     }
 
     message.str("");
-    message << "socket connection to " << this->controller.archon_network_details.hostname << ":" << this->controller.archon_network_details.port;
+    message << "socket connection to host " << controller.archon.gethost()
+            << " port " << controller.archon.getport()
+            << " established on fd " << controller.archon.getfd();
     logwrite(function, message.str());
 
-    // Get the current system information for the installed modules
-    //
+    // get the Archon system information for installed modules
     std::string reply;
-    error = this->send_cmd( SYSTEM, reply );        // first the whole reply in one string
+    error = send_cmd( SYSTEM, reply );                // first the whole reply in one string
 
     std::vector<std::string> lines, tokens;
     Tokenize( reply, lines, " " );                    // then each line in a separate token "lines"
@@ -391,20 +384,23 @@ namespace Camera {
       }
 
       // Use the module type to resize the gain and offset vectors,
-      // but always use the largest possible value allowed.
+      // ADC module is type 2
+      // ADM module is type 17
       //
-      if ( type ==  2 ) adchans = ( adchans < MAXADCCHANS ? MAXADCCHANS : adchans );  // ADC module (type=2) found
-      if ( type == 17 ) adchans = ( adchans < MAXADMCHANS ? MAXADMCHANS : adchans );  // ADM module (type=17) found
-      this->controller.gain.resize( adchans );
-      this->controller.offset.resize( adchans );
+      if (type==2 || type==17) {
+        const auto size = (type==2) ? MAXADCCHANS : MAXADMCHANS;
+        this->controller.gain.resize( size );
+        this->controller.offset.resize( size );
 
-      // Check that the AD modules are installed in the correct slot
-      //
-      if ( ( type == 2 || type == 17 ) && ( module < 5 || module > 8 ) ) {
-        message.str(""); message << "AD module (type=" << type << ") cannot be in slot " << module << ". Use slots 5-8";
-        logwrite( function, message.str() );
-        return ERROR;
+        // Check that the AD modules are installed in the correct slot
+        if ( module < 5 || module > 8 ) {
+          message.str(""); message << "AD module (type=" << type << ") cannot be in slot " << module << ". Use slots 5-8";
+          logwrite( function, message.str() );
+          retstring="AD module in wrong slot";
+          return ERROR;
+        }
       }
+
 
     } // end for ( auto line : lines )
 
@@ -591,16 +587,34 @@ namespace Camera {
    */
   long ArchonInterface::expose( const std::string args, std::string &retstring ) {
     const std::string function("Camera::ArchonInterface::expose");
-    logwrite(function, "not yet implemented");
 
     // Help
     //
-    if (args.empty() || args=="?" || args=="help") {
+    if (args=="?" || args=="help") {
       retstring = CAMERAD_EXPOSE;
       retstring.append( " <tbd>\n" );
       retstring.append( "  TBD\n" );
       return HELP;
     }
+
+    int nseq=1;
+
+    if (!args.empty()) {
+      try { nseq = std::stoi(args);
+      }
+      catch (const std::exception &e) {
+        retstring="ERROR reading nseq: "+std::string(e.what());
+        logwrite(function, retstring);
+        return ERROR;
+      }
+    }
+
+    int nseq_remaining = nseq;
+
+    while (nseq_remaining-- > 0) {
+      do_expose(camera_info.nexp);
+    }
+
     return NO_ERROR;
   }
   /***** Camera::ArchonInterface::expose **************************************/
@@ -1529,19 +1543,19 @@ namespace Camera {
   long ArchonInterface::test( const std::string args, std::string &retstring ) {
     const std::string function("Camera::ArchonInterface::test");
 
-    // initialize the exposure mode to Expose_CCD and call that expose
+    // initialize the exposure mode to ExposureModeCCD and call that expose
     //
-    logwrite(function, "calling exposure_mode->expose() for Expose_CCD");
-    this->exposure_mode = std::make_unique<Expose_CCD>(this);
-    if (this->exposure_mode) this->exposure_mode->expose();
+    logwrite(function, "----- calling exposure_mode->expose() for exposure mode CCD -----");
+    exposure_mode = std::make_unique<ExposureModeCCD>(this);
+    if (exposure_mode) exposure_mode->expose();
 
-    // initialize the exposure mode to Expose_RXRV and call that expose
+    // initialize the exposure mode to ExposureModeRXRV and call that expose
     //
-    logwrite(function, "calling exposure_mode->expose() for Expose_RXRV");
-    this->exposure_mode = std::make_unique<Expose_RXRV>(this);
-    if (this->exposure_mode) this->exposure_mode->expose();
+    logwrite(function, "----- calling exposure_mode->expose() for exposure mode RXRV -----");
+    exposure_mode = std::make_unique<ExposureModeRXRV>(this);
+    if (exposure_mode) exposure_mode->expose();
 
-    if (!this->exposure_mode) {
+    if (!exposure_mode) {
       logwrite(function, "ERROR exposure mode undefined!");
       return ERROR;
     }
@@ -1569,4 +1583,44 @@ namespace Camera {
     controller.read_frame(Camera::Controller::FRAME_IMAGE);
     return NO_ERROR;
   }
+
+
+  long ArchonInterface::do_expose(int nexp) {
+    const std::string function("Camera::ArchonInterface::do_expose");
+    long error=NO_ERROR;
+
+    logwrite(function, "here");
+
+    // spawn two threads, a producer and a consumer
+    //
+    // The producer triggers the exposure and collect images into a FIFO queue.
+    // The consumer pops images out of the queue for processing.
+    //
+    std::thread producer(&ArchonInterface::image_acquisition_thread, this);
+    std::thread consumer(&ArchonInterface::image_processing_thread, this);
+
+    producer.join();
+    {
+      std::lock_guard<std::mutex> lock(queue_mutex);
+      is_producer_finished=true;
+      error |= (is_producer_error ? ERROR : NO_ERROR);
+    }
+
+    consumer.join();
+
+    return NO_ERROR;
+  }
+
+
+  void ArchonInterface::image_acquisition_thread() {
+    const std::string function("Camera::ArchonInterface::image_acquisition_thread");
+    logwrite(function, "here");
+  }
+
+
+  void ArchonInterface::image_processing_thread() {
+    const std::string function("Camera::ArchonInterface::image_processing_thread");
+    logwrite(function, "here");
+  }
+
 }

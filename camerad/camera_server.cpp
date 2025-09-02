@@ -187,59 +187,60 @@ namespace Camera {
       }
       else
       if ( cmd == CAMERAD_ABORT ) {
-        this->interface->abort(args, retstring);
+        ret = interface->abort(args, retstring);
       }
       else
       if ( cmd == CAMERAD_AUTODIR ) {
-        this->interface->autodir(args, retstring);
+        ret = interface->autodir(args, retstring);
       }
       else
       if ( cmd == CAMERAD_BASENAME ) {
-        this->interface->basename(args, retstring);
+        ret = interface->basename(args, retstring);
       }
       else
       if ( cmd == CAMERAD_BIAS ) {
-        this->interface->bias(args, retstring);
+        ret = interface->bias(args, retstring);
       }
       else
       if ( cmd == CAMERAD_BIN ) {
-        this->interface->bias(args, retstring);
+        ret = interface->bias(args, retstring);
       }
       else
       if ( cmd == CAMERAD_CLOSE ) {
-        this->interface->disconnect_controller(args, retstring);
+        ret = interface->disconnect_controller(args, retstring);
       }
       else
       if ( cmd == CAMERAD_EXIT ) {
-        this->exit_cleanly();
+        ret = NO_ERROR;
+        exit_cleanly();
       }
       else
       if ( cmd == CAMERAD_EXPTIME ) {
-        this->interface->exptime(args, retstring);
+        ret = interface->exptime(args, retstring);
       }
       else
       if ( cmd == CAMERAD_EXPOSE ) {
-        this->interface->expose(args, retstring);
+        ret = interface->expose(args, retstring);
       }
       else
       if ( cmd == CAMERAD_LOAD ) {
-        this->interface->load_firmware(args, retstring);
+        ret = interface->load_firmware(args, retstring);
       }
       else
       if ( cmd == CAMERAD_OPEN ) {
-        this->interface->connect_controller(args, retstring);
+        ret = interface->connect_controller(args, retstring);
       }
       else
       if ( cmd == CAMERAD_NATIVE ) {
-        this->interface->native(args, retstring);
+        ret = interface->native(args, retstring);
       }
       else
       if ( cmd == CAMERAD_POWER ) {
-        this->interface->power(args, retstring);
+        ret = interface->power(args, retstring);
       }
       else
       if ( cmd == CAMERAD_TEST ) {
-        this->interface->test(args, retstring);
+        ret = interface->test(args, retstring);
       }
 #ifdef CONTROLLER_ARCHON
       else

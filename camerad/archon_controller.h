@@ -30,7 +30,14 @@ namespace Camera {
    *
    */
   class Controller {
-    friend class ArchonInterface;
+    friend class ArchonInterface;      //!< forward declaration of parent interface
+
+    // Archon hardware-based constants.
+    // These shouldn't change unless there is a significant hardware change.
+    //
+    const int NBUFS = 3; //!< total number of frame buffers  //TODO rename to maxnbufs?
+    const int NMODS = 12; //!< number of modules per controller
+    const int NADCHAN = 4; //!< number of channels per ADC module
 
     public:
       Controller();
@@ -49,6 +56,8 @@ namespace Camera {
 
     private:
       ArchonInterface* interface;      //!< pointer back to the parent interface
+
+      Network::TcpSocket archon;       //!< this is how we talk to the Archon
 
       void set_interface(ArchonInterface* _interface);
 
@@ -144,6 +153,7 @@ namespace Camera {
 
       std::map<std::string, modeinfo_t> modemap;
 
+      long parse_system_configuration(const std::string &message);
   };
   /***** Camera::ArchonInterface::Controller **********************************/
 }

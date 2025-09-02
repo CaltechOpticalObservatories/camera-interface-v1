@@ -50,6 +50,18 @@ namespace Camera {
 
   class Controller;
 
+  /** @brief    holds one or more frames and metadata from the Archon
+   *  @details  A single ImageBuffer object can contain multiple frames,
+   *            or slices, as would be the case for a datacube.
+   */
+  struct ImageBuffer {
+    int ncoadd;
+    int n_slices;                              // number of slices in this image
+    std::vector<int> bufframen_slice;          // Archon frame number(s) for all slices in this image
+    std::vector<uint64_t> buftimestamp_slice;  // Archon timestamp(s) for all slices in this image
+    std::shared_ptr<char[]> rawpixels;         // Archon frame buffer(s)
+  };
+
   class ArchonInterface : public Interface {
     friend Controller;
 
@@ -75,6 +87,10 @@ namespace Camera {
       long power( const std::string args, std::string &retstring ) override;
       long test( const std::string args, std::string &retstring ) override;
 
+      long do_expose(int nexp) override;
+      void image_acquisition_thread() override;
+      void image_processing_thread() override;
+
       // These functions are specific to the Archon Interface and are not
       // found in the base class.
       //
@@ -87,7 +103,12 @@ namespace Camera {
     private:
       Controller controller;
       std::string_view QUIET = "quiet";  // allows sending commands without logging
-      const int nmods = 12; //!< number of modules per controller
+      const int nmods = 12;              //!< number of modules per controller
+
+      /** @brief FIFO queue to contain images from Archon */
+      std::queue<std::shared_ptr<ImageBuffer>> imagebuf_queue;  ///< the queue itself
+      std::mutex queue_mutex;                                   ///< mutex protects access to the queue
+      std::condition_variable queue_cv;
 
       // These functions are specific to the Archon Interface and are not
       // found in the base class.
@@ -100,6 +121,7 @@ namespace Camera {
       long send_cmd(std::string cmd, std::string &reply);
       long send_cmd(std::string cmd);
       long fetchlog();
+
   };
 
 }

@@ -36,14 +36,15 @@ namespace Camera {
       void deinterlace(char* imgbuf, uint16_t* sigbuf, uint16_t* resbuf) {
         const std::string function("Camera::DeInterlace_RXRV::deinterlace");
         logwrite(function, "here");
-        std::cerr << "(" << function << ") buffer contents:";
+        std::stringstream message;
+        message << "contents:";
         for (int i=0; i<10; i++) {
-          std::cerr << " " << i;
+          message << " " << i;
           // modify contents of output buffers
           sigbuf[i]=i;
           resbuf[i]=100-i;
         }
-        std::cerr << std::endl;
+        logwrite(function, message.str());
       }
   };
   /***** Camera::DeInterlace_RXRV *********************************************/
@@ -74,7 +75,7 @@ namespace Camera {
   };
 
 
-  /***** Camera::make_deinterlacer ********************************************/
+  /***** Camera::make_image_processor *****************************************/
   /**
    * @brief      factory function creates appropriate image processor object
    * @param[in]  mode
@@ -83,6 +84,8 @@ namespace Camera {
    *
    */
   std::unique_ptr<ImageProcessor> make_image_processor(const std::string &mode) {
+    const std::string function("Camera::make_image_processor");
+    logwrite(function, "factory for mode "+mode);
     if (mode=="none") {
       return std::make_unique<ImageProcessor>(
           std::make_unique<DeInterlace_None>(),
@@ -98,8 +101,7 @@ namespace Camera {
           std::make_unique<CoaddAdd>()
           );
     }
-    else
-    throw std::invalid_argument("unknown mode "+mode);
+    else throw std::invalid_argument(function+" unknown mode "+mode);
   }
-  /***** Camera::make_deinterlacer ********************************************/
+  /***** Camera::make_image_processor *****************************************/
 }

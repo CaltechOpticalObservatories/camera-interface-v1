@@ -9,26 +9,26 @@
 
 namespace Camera {
 
-  /***** Camera::Expose_CCD **************************************************/
+  /***** Camera::ExposureModeCCD *********************************************/
   /**
    * @brief  implementation of Archon-specific expose for CCD
    *
    */
-  long Expose_CCD::expose() {
-    const std::string function("Camera::Expose_CCD::expose");
+  long ExposureModeCCD::expose() {
+    const std::string function("Camera::ExposureModeCCD::expose");
     logwrite(function, "hi");
     return NO_ERROR;
   }
-  /***** Camera::Expose_CCD **************************************************/
+  /***** Camera::ExposureModeCCD *********************************************/
 
 
-  /***** Camera::Expose_RXRV *************************************************/
+  /***** Camera::ExposureModeRXRV ********************************************/
   /**
    * @brief  implementation of Archon-specific expose for RXR-Video
    *
    */
-  long Expose_RXRV::expose() {
-    const std::string function("Camera::Expose_RXRV::expose");
+  long ExposureModeRXRV::expose() {
+    const std::string function("Camera::ExposureModeRXRV::expose");
 
     size_t sz=100;
 
@@ -63,18 +63,19 @@ namespace Camera {
     processor->coadder()->coadd(&a, &b);
 
     // show contents
-    std::cerr << "(" << function << ") sig:";
-    for (int i=0; i<10; i++) std::cerr << " " << sigbuf[0][i];
-    std::cerr << std::endl;
-    std::cerr << "(" << function << ") res:";
-    for (int i=0; i<10; i++) std::cerr << " " << resbuf[0][i];
-    std::cerr << std::endl;
+    std::stringstream message;
+    message << "sig:";
+    for (int i=0; i<10; i++) message << " " << sigbuf[0][i];
+    logwrite(function, message.str());
+    message.str(""); message << "res:";
+    for (int i=0; i<10; i++) message << " " << resbuf[0][i];
+    logwrite(function, message.str());
 
     // loop:
     // subsequent frame pairs, read, deinterlace, write
 
     return NO_ERROR;
   }
-  /***** Camera::Expose_RXRV *************************************************/
+  /***** Camera::ExposureModeRXRV ********************************************/
 
 }

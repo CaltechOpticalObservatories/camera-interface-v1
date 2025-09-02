@@ -15,19 +15,19 @@ namespace Camera {
 
   class ArchonInterface;     // forward declaration
 
-  class Expose_Raw : public ExposureMode<Camera::ArchonInterface> {
+  class ExposureModeRaw : public ExposureMode<Camera::ArchonInterface> {
     using ExposureMode<Camera::ArchonInterface>::ExposureMode;
 
     long expose() override;
   };
 
-  class Expose_CCD : public ExposureMode<Camera::ArchonInterface> {
+  class ExposureModeCCD : public ExposureMode<Camera::ArchonInterface> {
     using ExposureMode<Camera::ArchonInterface>::ExposureMode;
 
     long expose() override;
   };
 
-  class Expose_RXRV : public ExposureMode<Camera::ArchonInterface> {
+  class ExposureModeRXRV : public ExposureMode<Camera::ArchonInterface> {
     using ExposureMode<Camera::ArchonInterface>::ExposureMode;
 
     long expose() override;
