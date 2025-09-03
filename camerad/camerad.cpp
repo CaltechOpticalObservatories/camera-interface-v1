@@ -678,6 +678,39 @@ void doit(Network::TcpSocket sock) {
         if (!retstring.empty()) { sock.Write(retstring); sock.Write(" "); }
     }
 #endif
+#ifdef INSTR_DEIMOS
+    else
+    if (cmd=="fcs_exptime") {
+      ret = ERROR;
+      retstring="not_yet_implemented";
+    }
+    else
+    if (cmd=="fcs_expose") {
+      ret = ERROR;
+      retstring="not_yet_implemented";
+    }
+    else
+    if (cmd=="sci_exptime") {
+      ret = ERROR;
+      retstring="not_yet_implemented";
+    }
+    else
+    if (cmd=="start_sci_expose") {
+      ret = ERROR;
+      retstring="not_yet_implemented";
+      server.start_sci_expose();
+    }
+    else
+    if (cmd=="stop_sci_expose") {
+      ret = ERROR;
+      retstring="not_yet_implemented";
+    }
+    else
+    if (cmd=="pause_expose") {
+      ret = ERROR;
+      retstring="not_yet_implemented";
+    }
+#endif
         else if (cmd == "roi") {
             ret = server.region_of_interest(args, retstring);
             if (!retstring.empty()) {

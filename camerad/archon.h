@@ -284,6 +284,10 @@ namespace Archon {
 
         long test(std::string args, std::string &retstring);
 
+#ifdef INSTR_DEIMOS
+        long start_sci_expose();
+#endif
+
         /**
          * @var     struct geometry_t geometry[]
          * @details structure of geometry which is unique to each observing mode
