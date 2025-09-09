@@ -29,7 +29,12 @@ namespace Camera {
    * @brief      Server constructor
    *
    */
-  Server::Server() : interface(nullptr), id_pool(N_THREADS) {
+  Server::Server() :
+    interface(nullptr),
+    blkport(-1),
+    id_pool(N_THREADS),
+    cmd_num(0)
+  {
     interface = new ControllerType();   // instantiate specific controller implementation
     interface->set_server(this);        // pointer back to this Server instance
   }
@@ -45,6 +50,37 @@ namespace Camera {
     delete interface;
   }
   /***** Camera::Server::~Server **********************************************/
+
+
+  /***** Camera::Server::configure_server *************************************/
+  /**
+   * @brief      parse the configuration file for server-related parameters
+   * @details    The config file has already been read into the Config class.
+   * @throws     std::runtime_error
+   *
+   */
+  void Server::configure_server() {
+    std::stringstream errstr;
+
+    if (interface->configfile.n_rows < 1) throw std::runtime_error("empty configuration");
+
+    // iterate through each row in config file
+    for (int row=0; row < interface->configfile.n_rows; row++) {
+
+      // BLKPORT
+      if (interface->configfile.param[row]=="BLKPORT") {
+        try {
+          this->blkport = std::stoi( interface->configfile.arg[row] );
+        }
+        catch (const std::exception &e) {
+          errstr << "parsing " << interface->configfile.param[row]
+                               << "=" << interface->configfile.arg[row] << ": " << e.what();
+          throw std::runtime_error(errstr.str());
+        }
+      }
+    }
+  }
+  /***** Camera::Server::configure_server *************************************/
 
 
   /***** Camera::Server::exit_cleanly *****************************************/

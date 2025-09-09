@@ -31,12 +31,15 @@ namespace Camera {
 
       Interface* interface;
 
+      int blkport;
+
       NumberPool id_pool;
       std::map<int, std::shared_ptr<Network::TcpSocket>> socklist;
       std::mutex sock_block_mutex;
       std::atomic<int> threads_active;
       std::atomic<int> cmd_num;
 
+      void configure_server();
       void exit_cleanly();
       void block_main(std::shared_ptr<Network::TcpSocket> socket);
       void doit(Network::TcpSocket sock);

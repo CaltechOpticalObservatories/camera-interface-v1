@@ -16,27 +16,39 @@
  *
  */
 int main( int argc, char** argv ) {
-  std::string function("Camera::main");
+  const std::string function("main");
 
-  logwrite(function, "starting daemon");
-
-  // immediately daemonize
+  // Unless specifically requested to run in foreground,
+  // immediately daemonize.
   //
-  Daemon::daemonize( "camerad", "/tmp", "/dev/null", "/tmp/camerad.stderr", "", false );
-  std::cerr << "daemonized. child process running\n";
+  if (!hasOption(argc, argv, "--foreground")) {
+    logwrite(function, "starting daemon");
+    Daemon::daemonize( "camerad", "/tmp", "/dev/null", "/tmp/camerad.stderr", "", false );
+    std::cerr << get_timestamp() << "  (" << function << ") daemonized. child process running" << std::endl;
+  }
 
   // the child process instantiates a Server object
   //
   Camera::Server camerad;
 
-  // testing
+  // read the config file and configure the various components
   //
-  // camerad.interface->myfunction();
+  try {
+    camerad.interface->configfile.filename = getOptionArg(argc, argv, "--config");
+    camerad.interface->configfile.read_config();
+    camerad.configure_server();
+    camerad.interface->configure_controller();
+//  camerad.interface->configure_interface();
+  }
+  catch (const std::exception &e) {
+    logwrite(function, "ERROR configuring system: "+std::string(e.what()));
+    exit(1);
+  }
 
   // dynamically create a new listening socket and thread
   // to handle each connection request
   //
-  Network::TcpSocket sock_block(8675, true, -1, 0);  // instantiate a TcpSocket with blocking port
+  Network::TcpSocket sock_block(camerad.blkport, true, -1, 0);  // instantiate a TcpSocket with blocking port
   if ( sock_block.Listen() < 0 ) {
     std::cerr << "ERROR could not create listening socket\n";
     exit(1);

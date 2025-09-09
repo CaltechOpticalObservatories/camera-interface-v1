@@ -43,6 +43,8 @@ namespace Camera {
       Controller();
       ~Controller();
 
+      void configure_controller();
+
       typedef enum {
         FRAME_IMAGE,
         FRAME_RAW,
@@ -66,7 +68,7 @@ namespace Camera {
       frametype_t frametype;
 
       bool is_connected;               //!< true if controller connected
-      bool is_busy;
+      std::atomic_flag archon_busy = ATOMIC_FLAG_INIT;  //!< indicates a thread is accessing Archon
       bool is_firmwareloaded;
       bool is_camera_mode;             //!< has a camera mode been selected
       int msgref;
@@ -79,7 +81,6 @@ namespace Camera {
       int n_hdrshift;
       std::string power_status;             //!< Archon power status
       std::mutex archon_mutex;
-      Network::TcpSocket sock;
       network_details archon_network_details;
 
       long allocate_framebuf(uint32_t reqsz);

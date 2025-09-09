@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include "config.h"
 #include "common.h"
 #include "camera_information.h"
 #include "camerad_commands.h"
@@ -31,6 +32,8 @@ namespace Camera {
     public:
       virtual ~Interface() = default;
 
+      Config configfile;
+
       // These functions are shared by all interfaces with common implementations,
       // and are implemented in camera_interface.cpp
       //
@@ -46,6 +49,7 @@ namespace Camera {
       virtual long basename( std::string args, std::string &retstring ) = 0;
       virtual long bias( std::string args, std::string &retstring ) = 0;
       virtual long bin( std::string args, std::string &retstring ) = 0;
+      virtual void configure_controller() = 0;
       virtual long connect_controller( std::string args, std::string &retstring ) = 0;
       virtual long disconnect_controller( std::string args, std::string &retstring ) = 0;
       virtual long exptime( std::string args, std::string &retstring ) = 0;

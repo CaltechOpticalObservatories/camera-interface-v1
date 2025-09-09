@@ -10,50 +10,50 @@
 std::string tmzone_cfg; ///< time zone if set in cfg file
 std::mutex generate_tmpfile_mtx;
 
-/***** cmdOptionExists ******************************************************/
+
+/***** getOptionArg *********************************************************/
 /**
- * @brief      returns true if option is found in argv
- * @param[in]  begin       this is the beginning, should be argv
- * @param[in]  end         this is the end, should be argv+argc
- * @param[out] option      string to search for
- * @return     true|false  if string was found
- *
- * Intended to be called as cmdOptionExists( argv, argv+argc, "-X" )
- * to search for "-X" option in argv.
- *
- * Pair with getCmdOption() function.
+ * @brief      returns command line argument for specified command line option
+ * @details    Give it argv, argc and an option and it will return the argument
+ *             associated with that option, or empty string if no argument.
+ * @param[in]  argc    argc as passed to main()
+ * @param[in]  argv    argv as passed to main()
+ * @param[in]  option  option to search for
+ * @return     string  argument associated with option
  *
  */
-bool cmdOptionExists(char **begin, char **end, const std::string &option) {
-    return std::find(begin, end, option) != end;
+std::string getOptionArg(int argc, char** argv, const std::string &option) {
+  char** begin=argv;
+  char** end  =argv+argc;
+  auto is_option = [option](const char* arg) {return std::string(arg)==option;};
+  char** found = std::find_if(begin, end, is_option);
+  // if option found and if there is an argument then return that argument
+  if (found != end && ++found != end) {
+    return std::string(*found);
+  }
+  else return "";
 }
-
-/***** cmdOptionExists ******************************************************/
-
-
 /***** getCmdOption *********************************************************/
+
+
+/***** hasOption ************************************************************/
 /**
- * @brief      returns pointer to command line option specified with "-X option"
- * @param[in]  begin   this is the beginning, should be argv
- * @param[in]  end     this is the end, should be argv+argc
- * @param[out] option  string to search for
- * @return     char*   pointer to the option found
- *
- * Intended to be called as char* option = getCmdOption( argv, argv+argc, "-X" );
- * to get option associated with "-X option" in argv.
- *
- * Pair with cmdOptionExists()
+ * @brief      check for presence of a command line option
+ * @details    Give it argv, argc and an option and it will return true|false
+ *             if that option is present.
+ * @param[in]  argc    argc as passed to main()
+ * @param[in]  argv    argv as passed to main()
+ * @param[in]  option  option to search for
+ * @return     true|false
  *
  */
-char *getCmdOption(char **begin, char **end, const std::string &option) {
-    char **itr = std::find(begin, end, option);
-    if (itr != end && ++itr != end) {
-        return *itr;
-    }
-    return nullptr;
+bool hasOption(int argc, char** argv, const std::string &option) {
+  char** begin=argv;
+  char** end  =argv+argc;
+  auto is_option = [option](const char* arg) {return std::string(arg)==option;};
+  if (std::find_if(begin, end, is_option) != end) return true; else return false;
 }
-
-/***** getCmdOption *********************************************************/
+/***** hasOption ************************************************************/
 
 
 /***** my_hardware_concurrency **********************************************/

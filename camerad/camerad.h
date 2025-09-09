@@ -28,5 +28,4 @@
 #include "common.h"
 #include "logentry.h"
 
-//void signal_handler(int signo);   ///< handles ctrl-C and other signals
 int main(int argc, char** argv);  ///< the main function

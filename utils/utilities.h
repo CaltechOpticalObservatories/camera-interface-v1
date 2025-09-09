@@ -50,9 +50,9 @@
 extern std::string tmzone_cfg; /// time zone if set in cfg file
 extern std::mutex generate_tmpfile_mtx;
 
-bool cmdOptionExists(char **begin, char **end, const std::string &option);
+std::string getOptionArg(int argc, char** argv, const std::string &option);
 
-char *getCmdOption(char **begin, char **end, const std::string &option);
+bool hasOption(int argc, char** argv, const std::string &option);
 
 int my_hardware_concurrency();
 
@@ -326,3 +326,25 @@ class NumberPool {
     /***** NumberPool::release_number *****************************************/
 };
 /***** NumberPool ***********************************************************/
+
+
+/***** BoolState **************************************************************/
+/**
+ * @class   BoolState
+ * @brief   automatically set/clear a boolean
+ * @details This is a utility class to automatically set and clear a boolean
+ *          for the duration of a limited scope. You supply the atomic bool
+ *          variable and construct this class with a reference to that variable
+ *          and the bool state is set (true). When the class goes out of scope
+ *          the destructor will clear the bool state (false).
+ *
+ */
+class BoolState {
+  private:
+    std::atomic<bool> &_state;
+  public:
+    BoolState( std::atomic<bool> &state_var ) : _state( state_var ) { _state.store( true, std::memory_order_release ); }
+    ~BoolState() { _state.store( false, std::memory_order_release ); }
+};
+/***** BoolState **************************************************************/
+

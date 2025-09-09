@@ -688,14 +688,12 @@ namespace Network {
         if ( retval == 0 ) {                    // none ready is timeout
           errstm << "timeout (" << errno << ") connecting to " << this->host << "/" << this->port
                  << ": " << std::strerror(errno);
-          logwrite(function, errstm.str());
-          return -1;
+          throw std::runtime_error(errstm.str());
         }
         if ( retval == -1 ) {                   // error calling select
-          errstm << "error " << errno << " connecting to " << this->host << "/" << this->port
+          errstm << "errno " << errno << " connecting to " << this->host << "/" << this->port
                  << " on fd " << this->fd << ": " << std::strerror(errno);
-          logwrite(function, errstm.str());
-          return -1;
+          throw std::runtime_error(errstm.str());
         }
 
         // select got an fd but still must check if socket is usable
@@ -704,36 +702,34 @@ namespace Network {
         socklen_t len = sizeof(err);
         retval = getsockopt( this->fd, SOL_SOCKET, SO_ERROR, &err, &len );
         if ( retval != 0 ) {
-          errstm << "error " << errno << " getting socket error code for fd " << this->fd << ": " << std::strerror(errno);
-          logwrite(function, errstm.str());
-          return -1;
+          errstm << "errno " << errno << " getting socket error code for fd " << this->fd << ": " << std::strerror(errno);
+          throw std::runtime_error(errstm.str());
         }
         if ( err != 0 ) {
-          errstm << "error " << errno << " connecting to " << this->host << "/" << this->port
+          errstm << "errno " << errno << " connecting to " << this->host << "/" << this->port
                  << " on fd " << this->fd << ": " << std::strerror(errno);
-          logwrite(function, errstm.str());
-          return -1;
+          throw std::runtime_error(errstm.str());
         }
 
         break;  // by now it's a success
       }
       else {
-        errstm << "error " << errno << " connecting to " << this->host << "/" << this->port 
+        errstm << "errno " << errno << " connecting to " << this->host << "/" << this->port 
                            << " on fd " << this->fd << ": " << std::strerror(errno);
-        logwrite(function, errstm.str());
-        return -1;
+        throw std::runtime_error(errstm.str());
       }
     }
 
     // restore flags
     //
     if ( flags >= 0 && (fcntl(this->fd, F_SETFL, flags) < 0) ) {
-      errstm << "error " << errno << " setting socket file descriptor flags: " << std::strerror(errno);
-      logwrite(function, errstm.str());
-      return -1;
+      errstm << "errno " << errno << " setting socket file descriptor flags: " << std::strerror(errno);
+      throw std::runtime_error(errstm.str());
     }
 
     this->connection_open = (this->fd >= 0 ? true : false);
+
+    if (this->fd < 0) throw std::runtime_error("no socket file descriptors");
 
     return (this->fd >= 0 ? 0 : -1);
   }

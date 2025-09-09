@@ -78,6 +78,7 @@ namespace Camera {
       long basename( const std::string args, std::string &retstring ) override;
       long bias( const std::string args, std::string &retstring ) override;
       long bin( const std::string args, std::string &retstring ) override;
+      void configure_controller() override;
       long connect_controller( const std::string args, std::string &retstring ) override;
       long disconnect_controller( const std::string args, std::string &retstring ) override;
       long exptime( const std::string args, std::string &retstring ) override;
@@ -94,6 +95,7 @@ namespace Camera {
       // These functions are specific to the Archon Interface and are not
       // found in the base class.
       //
+      long disconnect_controller();
       long allocate_framebuf(uint32_t reqsz);
       long load_timing(std::string cmd, std::string &reply);
       long read_frame();
@@ -103,7 +105,7 @@ namespace Camera {
     private:
       Controller controller;
       std::string_view QUIET = "quiet";  // allows sending commands without logging
-      const int nmods = 12;              //!< number of modules per controller
+      const int NMODS = 12;              //!< number of modules per controller
 
       /** @brief FIFO queue to contain images from Archon */
       std::queue<std::shared_ptr<ImageBuffer>> imagebuf_queue;  ///< the queue itself

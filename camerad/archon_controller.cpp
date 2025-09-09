@@ -19,7 +19,6 @@ namespace Camera {
     framebuf(nullptr),
     framebuf_bytes(0),
     is_connected(false),
-    is_busy(false),
     is_firmwareloaded(false)
   {
   }

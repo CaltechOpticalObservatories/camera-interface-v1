@@ -5,6 +5,8 @@
  *
  */
 
+#define SNPRINTF(VAR, ...) { snprintf(VAR, sizeof(VAR), __VA_ARGS__); }
+
 #pragma once
 
 #include <sstream>

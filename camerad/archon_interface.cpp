@@ -12,6 +12,10 @@ namespace Camera {
 
   ArchonInterface::ArchonInterface() {
     controller.set_interface(this);
+
+    // pre-size the modtype and modversion vectors to hold the max number of modules
+    controller.modtype.resize(NMODS);
+    controller.modversion.resize(NMODS);
   }
   ArchonInterface::~ArchonInterface() {
   }
@@ -157,8 +161,8 @@ namespace Camera {
 
     // Check that the module number is valid
     //
-    if ( (module < 0) || (module > nmods) ) {
-      message.str(""); message << "module " << module << ": outside range {0:" << nmods << "}";
+    if ( (module < 0) || (module > NMODS) ) {
+      message.str(""); message << "module " << module << ": outside range {0:" << NMODS << "}";
       logwrite( function, message.str() );
       return ERROR;
     }
@@ -284,6 +288,42 @@ namespace Camera {
   /***** Camera::ArchonInterface::bin *****************************************/
 
 
+  /***** Camera::ArchonInterface::configure_controller ************************/
+  /**
+   * @brief      parse the configuration file for controller-related parameters
+   * @details    The config file has already been read into the Config class.
+   * @throws     std::runtime_error
+   *
+   */
+  void ArchonInterface::configure_controller() {
+    std::stringstream errstr;
+
+    if (interface->configfile.n_rows < 1) throw std::runtime_error("empty configuration");
+
+    // iterate through each row in config file
+    for (int row=0; row < this->configfile.n_rows; row++) {
+
+      // ARCHON_IP
+      if (this->configfile.param[row]=="ARCHON_IP") {
+        controller.archon.sethost( this->configfile.arg[row] );
+      }
+
+      // ARCHON_PORT
+      if (this->configfile.param[row]=="ARCHON_PORT") {
+        try {
+          controller.archon.setport( std::stoi(this->configfile.arg[row]) );
+        }
+        catch (const std::exception &e) {
+          errstr << "parsing " << this->configfile.param[row]
+                               << "=" << this->configfile.arg[row] << ": " << e.what();
+          throw std::runtime_error(errstr.str());
+        }
+      }
+    }
+  }
+  /***** Camera::ArchonInterface::configure_controller ************************/
+
+
   /***** Camera::ArchonInterface::connect_controller **************************/
   /**
    * @brief
@@ -297,15 +337,15 @@ namespace Camera {
     std::stringstream message;
     long error;
 
-    // do nothing if already connected
-    if ( controller.is_connected ) {
+    // nothing to do if already connected
+    if ( controller.archon.isconnected() ) {
       logwrite(function, "camera connection already open");
       return NO_ERROR;
     }
 
     // initialize camera connection
     try {
-      controller.archon.Connect();
+      if ( controller.archon.Connect() < 0 ) throw std::runtime_error("could not connect");
     }
     catch (const std::exception &e) {
       logwrite(function, "ERROR "+std::string(e.what()));
@@ -367,41 +407,38 @@ namespace Camera {
 
       // now store it permanently
       //
-      if ( (module > 0) && (module <= nmods) ) {
+      if ( (module > 0) && (module <= NMODS) ) {
         try {
           this->controller.modtype.at(module-1)    = type;       // store the type in a vector indexed by module
           this->controller.modversion.at(module-1) = version;    // store the type in a vector indexed by module
-
-        } catch (std::out_of_range &) {
-          message.str(""); message << "requested module " << module << " out of range {1:" << nmods;
+        }
+        catch (const std::exception &e) {
+          message.str(""); message << "requested module " << module << " out of range {1:" << NMODS << "}";
           logwrite( function, message.str() );
         }
-
-      } else {                                          // else should never happen
-        message.str(""); message << "module " << module << " outside range {1:" << nmods << "}";
+      }
+      else {                                          // else should never happen
+        message.str(""); message << "module " << module << " outside range {1:" << NMODS << "}";
         logwrite( function, message.str() );
         return ERROR;
       }
 
       // Use the module type to resize the gain and offset vectors,
-      // ADC module is type 2
-      // ADM module is type 17
+      // but always use the largest possible value allowed.
       //
-      if (type==2 || type==17) {
-        const auto size = (type==2) ? MAXADCCHANS : MAXADMCHANS;
-        this->controller.gain.resize( size );
-        this->controller.offset.resize( size );
+      int adchans=0;
+      if ( type ==  2 ) adchans = ( adchans < MAXADCCHANS ? MAXADCCHANS : adchans );  // ADC module (type=2) found
+      if ( type == 17 ) adchans = ( adchans < MAXADMCHANS ? MAXADMCHANS : adchans );  // ADM module (type=17) found
+      controller.gain.resize( adchans );
+      controller.offset.resize( adchans );
 
-        // Check that the AD modules are installed in the correct slot
-        if ( module < 5 || module > 8 ) {
-          message.str(""); message << "AD module (type=" << type << ") cannot be in slot " << module << ". Use slots 5-8";
-          logwrite( function, message.str() );
-          retstring="AD module in wrong slot";
-          return ERROR;
-        }
+      // Check that the AD modules are installed in the correct slot
+      //
+      if ( ( type == 2 || type == 17 ) && ( module < 5 || module > 8 ) ) {
+        message.str(""); message << "AD module (type=" << type << ") cannot be in slot " << module << ". Use slots 5-8";
+        logwrite( function, message.str() );
+        return ERROR;
       }
-
-
     } // end for ( auto line : lines )
 
     // empty the Archon log
@@ -446,29 +483,32 @@ namespace Camera {
 
   /***** Camera::ArchonInterface::disconnect_controller ***********************/
   /**
-   * @brief
+   * @brief      general description
    * @param[in]  args
    * @param[out] retstring
    * @return     ERROR | NO_ERROR
    *
    */
   long ArchonInterface::disconnect_controller(const std::string args, std::string &retstring) {
+    return disconnect_controller();
+  }
+  /***** Camera::ArchonInterface::disconnect_controller ***********************/
+  /**
+   * @brief      specialized version
+   * @return     ERROR | NO_ERROR
+   *
+   */
+  long ArchonInterface::disconnect_controller() {
     const std::string function("Camera::ArchonInterface::disconnect_controller");
-    long error = NO_ERROR;
-
-    if (!this->controller.is_connected) {
-      logwrite(function, "connection already closed");
-      return NO_ERROR;
-    }
+    long error = controller.archon.Close();
 
     // On success, write the value to the log and return
     //
     if (error == NO_ERROR) {
       logwrite(function, "Archon connection terminated");
-
-    } else {
-        // Throw an error for any other errors
-      logwrite( function, "disconnecting Archon camera" );
+    }
+    else {
+      logwrite( function, "ERROR disconnecting Archon" );
     }
 
     return error;
@@ -684,84 +724,47 @@ namespace Camera {
    */
   long ArchonInterface::send_cmd(std::string cmd, std::string &reply) {
     std::string function = "ArchonInterface::send_cmd";
-    std::stringstream message;
-    std::stringstream check;
+    char message[256];
+    char check[4];
     int     retval;
-    char    buffer[4096];                       //!< temporary buffer for holding Archon replies
     int     error = NO_ERROR;
 
-    if (!this->controller.is_connected) {       // nothing to do if no connection open to controller
+    // nothing to do if no connection open to controller
+    if (!controller.archon.isconnected()) {
       logwrite( function, "ERROR connection not open to controller" );
       return ERROR;
     }
 
-    if (this->controller.is_busy) {                    // only one command at a time
-      message.str(""); message << "Archon busy: ignored command " << cmd;
-      logwrite( function, message.str() );
+    // Blocks to protect against simultaneous access, automatically
+    // unlocks on return.
+    //
+    std::lock_guard<std::mutex> lock(controller.archon_mutex);
+
+    // The archon busy atomic flag is also needed because FETCH can keep
+    // Archon busy for longer than the duration of this function.
+    //
+    if ( controller.archon_busy.test_and_set() ) {
+      SNPRINTF(message, "ERROR Archon busy: ignored command \"%s\"", cmd.c_str());
+      logwrite(function, std::string(message));
       return BUSY;
     }
 
-    // Hold a scoped lock for the duration of this function,
-    // to prevent multiple threads from accessing the Archon.
-    //
-    const std::lock_guard<std::mutex> lock(this->controller.archon_mutex);
-    this->controller.is_busy = true;
-
     // build command: ">xxCOMMAND\n" where xx=hex msgref and COMMAND=command
     //
-    this->controller.msgref = (this->controller.msgref + 1) % 256;       // increment msgref for each new command sent
-    std::stringstream ssprefix;
-    ssprefix << ">"
-             << std::setfill('0')
-             << std::setw(2)
-             << std::hex
-             << this->controller.msgref;
-    std::string prefix=ssprefix.str();
-    try {
-      std::transform( prefix.begin(), prefix.end(), prefix.begin(), ::toupper );    // make uppercase
-    }
-    catch (const std::exception &e) {
-      message.str(""); message << "ERROR converting command " << prefix << " to uppercase: " << e.what();
-      logwrite( function, message.str() );
-      return ERROR;
-    }
-
-    // This allows sending commands that don't get logged,
-    // by prepending QUIET, which gets removed here if present.
-    //
-    bool quiet=false;
-    if ( cmd.find(QUIET)==0 ) {
-      cmd.erase(0, QUIET.length());
-      quiet=true;
-    }
-
-    std::stringstream  sscmd;         // sscmd = stringstream, building command
-    sscmd << prefix << cmd << "\n";
-    std::string scmd = sscmd.str();   // scmd = string, command to send
+    char buf[256];
+    controller.msgref = (controller.msgref + 1) % 256;       // increment msgref for each new command sent
+    int len = std::snprintf(buf, sizeof(buf), ">%02X%s\n", controller.msgref, cmd.c_str());
+    std::string scmd(buf, len);
 
     // build the command checksum: msgref used to check that reply matches command
     //
-    check << "<" << std::setfill('0') << std::setw(2) << std::hex << this->controller.msgref;
-
-    // log the command as long as it's not a STATUS, TIMER, WCONFIG or FRAME command
-    //
-    if ( !quiet && (cmd.compare(0,7,"WCONFIG") != 0) &&
-                   (cmd.compare(0,5,"TIMER") != 0)   &&
-                   (cmd.compare(0,6,"STATUS") != 0)  &&
-                   (cmd.compare(0,5,"FRAME") != 0) ) {
-      // erase newline for logging purposes
-      std::string fcmd = scmd;
-      try {
-          fcmd.erase(fcmd.find('\n'), 1);
-      } catch(...) { }
-      message.str(""); message << "sending command: " << fcmd;
-      logwrite(function, message.str());
-    }
+    SNPRINTF(check, "<%02X", controller.msgref);
 
     // send the command
     //
-    if ( (this->controller.sock.Write(scmd)) == -1) {
-      logwrite( function, "writing to camera socket");
+    if ( (controller.archon.Write(scmd)) == -1) {
+      logwrite( function, "ERROR writing to camera socket");
+      return ERROR;
     }
 
     // For the FETCH command we don't wait for a reply, but return immediately.
@@ -769,45 +772,41 @@ namespace Camera {
     // Must also distinguish this from the FETCHLOG command, for which we do wait
     // for a normal reply.
     //
-    // The scoped mutex lock will be released automatically upon return.
+    // Do not clear the archon_busy flag because Archon is still busy!
+    // The read_frame() function will have to clear this flag when it is
+    // done reading the data.
     //
-    if ( (cmd.compare(0,5,"FETCH")==0)
-        && (cmd.compare(0,8,"FETCHLOG")!=0) ) return (NO_ERROR);
+    if (cmd.size() >= 5 && memcmp(cmd.data(), "FETCH", 5)==0 &&
+       (cmd.size() < 8 || memcmp(cmd.data(), "FETCHLOG", 8) != 0)) return NO_ERROR;
 
     // For all other commands, receive the reply
     //
-    reply.clear();                                   // zero reply buffer
+    char* buffer = new char[64*1024+1]{};                // temporary buffer for holding Archon replies
+    reply.clear();                                       // zero reply buffer
     do {
-      if ( (retval=this->controller.sock.Poll()) <= 0) {
-        if (retval==0) {
-            message.str("");
-            message << "Poll timeout waiting for response from Archon command (maybe unrecognized command?)";
-            error = TIMEOUT;
-        }
-        if (retval<0)  {
-            message.str("");
-            message << "Poll error waiting for response from Archon command";
-            error = ERROR;
-        }
-        if ( error != NO_ERROR ) {
-          logwrite( function, message.str() );
-        }
+      if ( (retval=controller.archon.Poll()) <= 0) {
+        if (retval==0) { SNPRINTF(message, "Poll timeout waiting for response from Archon command (maybe unrecognized command?)"); error=TIMEOUT; }
+        if (retval<0)  { SNPRINTF(message, "Poll error waiting for response from Archon command"); error=ERROR; }
+        if ( error != NO_ERROR ) logwrite( function, std::string(message) );
         break;
       }
-      memset(buffer, '\0', 2048);                         // init temporary buffer
-      retval = this->controller.sock.Read(buffer, 2048);  // read into temp buffer
+      retval = controller.archon.Read(buffer, 64*1024);  // read into temp buffer
       if (retval <= 0) {
-        logwrite( function, "reading Archon" );
+        logwrite( function, "ERROR reading Archon" );
         break;
       }
-      reply.append(buffer);                          // append read buffer into the reply string
-    } while(retval>0 && reply.find('\n') == std::string::npos);
+      buffer[retval] = '\0';                             // null-terminate bytes read
+      reply.append(buffer);                              // append read buffer into the reply string
+      if (strchr(buffer, '\n') != nullptr) break;        // exit on newline
+    } while(retval>0);
+
+    delete [] buffer;
 
     // If there was an Archon error then clear the busy flag and get out now
     //
     if ( error != NO_ERROR ) {
-        this->controller.is_busy = false;
-        return error;
+      controller.archon_busy.clear();
+      return error;
     }
 
     // The first three bytes of the reply should contain the msgref of the
@@ -816,37 +815,28 @@ namespace Camera {
     //
     // Error processing command (no other information is provided by Archon)
     //
-    if (reply.compare(0, 1, "?")==0) {  // "?" means Archon experienced an error processing command
+    if (!reply.empty() && reply[0]=='?') {
       error = ERROR;
-      message.str(""); message << "Archon controller returned error processing command: " << cmd;
-      logwrite( function, message.str() );
+      SNPRINTF(message, "Archon controller returned ERROR processing command: %s", cmd.c_str());
+      logwrite( function, std::string(message) );
     }
     else
     // First 3 bytes of reply must equal checksum else reply doesn't belong to command
-    if (reply.substr(0,3) != check.str()) {
+    if (reply.size()<3 || std::memcmp(reply.data(), check, 3) != 0) {
       error = ERROR;
-      scmd.erase( std::remove( scmd.begin(), scmd.end(), '\n' ), scmd.end() );
-      message.str(""); message << "ERROR command-reply mismatch for " + scmd + ": expected " + check.str() + " but received " + reply ;
-      logwrite( function, message.str() );
-    } else {                                           // command and reply are a matched pair
+      std::string hdr = reply;
+      try { scmd.erase(scmd.find("\n"), 1); } catch(...) { }
+      SNPRINTF(message, "ERROR command-reply mismatch for command: %s: expected %s but received %s", scmd.c_str(), check, reply.c_str());
+      logwrite( function, std::string(message) );
+    }
+    else {
+      // command and reply are a matched pair
       error = NO_ERROR;
-
-      // log the command as long as it's not a STATUS, TIMER, WCONFIG or FRAME command
-      if ( !quiet && (cmd.compare(0,7,"WCONFIG") != 0) &&
-                     (cmd.compare(0,5,"TIMER") != 0)   &&
-                     (cmd.compare(0,6,"STATUS") != 0)  &&
-                     (cmd.compare(0,5,"FRAME") != 0) ) {
-        message.str("");
-        message << "command 0x" << std::setfill('0') << std::setw(2) << std::uppercase << std::hex << this->controller.msgref << " success";
-        logwrite(function, message.str());
-      }
-
       reply.erase(0, 3);                             // strip off the msgref from the reply
     }
 
-    // clear the semaphore (still had the mutex this entire function)
-    //
-    this->controller.is_busy = false;
+    // clear the busy flag
+    controller.archon_busy.clear();
 
     return error;
   }
@@ -875,13 +865,13 @@ namespace Camera {
         logwrite( function, "ERROR: calling FETCHLOG" );
         return retval;
       }
-      if (reply != "(null)") {
+      if (reply != "<null>") {
         try {
             reply.erase(reply.find('\n'), 1);
         } catch(...) { }             // strip newline
         logwrite(function, reply);                                           // log reply here
       }
-    } while (reply != "(null)");                                             // stop when reply is (null)
+    } while (reply != "<null>");                                             // stop when reply is (null)
 
     return retval;
   }
@@ -1446,7 +1436,8 @@ namespace Camera {
       return HELP;
     }
 
-    if (!this->controller.is_connected) {       // nothing to do if no connection open to controller
+    // nothing to do if no connection open to controller
+    if (!this->controller.archon.isconnected()) {
       logwrite( function, "ERROR connection not open to controller" );
       return ERROR;
     }
