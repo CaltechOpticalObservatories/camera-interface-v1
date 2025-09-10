@@ -909,7 +909,7 @@ namespace Camera {
    * with a LOADTIMING or APPLYALL command, for example.
    *
    */
-  long ArchonInterface::load_acf(std::string acffile) {
+  long ArchonInterface::load_acf(std::string filename, bool write_to_archon) {
     const std::string function("Camera::ArchonInterface::load_acf");
     std::stringstream message;
     std::fstream filestream;  // I/O stream class
@@ -925,29 +925,29 @@ namespace Camera {
 
     // get the acf filename, either passed here or from loaded default
     //
-    if ( acffile.empty() ) {
-      acffile = this->camera_info.firmware[0];
+    if ( filename.empty() ) {
+      filename = this->camera_info.firmware;
 
     } else {
-      this->camera_info.firmware[0] = acffile;
+      this->camera_info.firmware = filename;
     }
 
     // try to open the file
     //
     try {
-      filestream.open(acffile, std::ios_base::in);
+      filestream.open(filename, std::ios_base::in);
     }
     catch(const std::exception &e) {
-      logwrite( function, "ERROR opening "+acffile+": "+std::string(e.what()));
+      logwrite( function, "ERROR opening "+filename+": "+std::string(e.what()));
       return ERROR;
     }
 
     if ( ! filestream.is_open() || ! filestream.good() ) {
-      logwrite(function, "ERROR opening "+acffile);
+      logwrite(function, "ERROR opening "+filename);
       return ERROR;
     }
 
-    logwrite(function, acffile);
+    logwrite(function, filename);
 
     // The CPU in Archon is single threaded, so it checks for a network
     // command, then does some background polling (reading bias voltages etc.),
@@ -1311,7 +1311,7 @@ namespace Camera {
       // add to systemkeys keyword database
       //
       std::stringstream keystr;
-      keystr << "FIRMWARE=" << acffile << "// controller firmware";
+      keystr << "FIRMWARE=" << filename << "// controller firmware";
       this->systemkeys.addkey( keystr.str() );
     }
 

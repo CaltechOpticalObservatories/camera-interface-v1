@@ -125,7 +125,7 @@ namespace Camera {
             << newvalue;
       message.str(""); message << "sending: archon_cmd(" << sscmd.str() << ")";
       logwrite(function, message.str());
-      error = this->interface->send_cmd((char*)sscmd.str().c_str());  // send the WCONFIG command here
+      error = this->interface->archon_cmd((char*)sscmd.str().c_str());// send the WCONFIG command here
       if (error==NO_ERROR) {
         this->configmap[key].value = newvalue;                        // save newvalue in the STL map
         changed = true;

@@ -61,23 +61,13 @@ int main(int argc, char **argv) {
   signal(SIGPIPE, signal_handler);
   signal(SIGHUP, signal_handler);
 
-  std::string instrument;
+  std::string instrument = getOptionArg(argc, argv, "-i");
 
-  if ( cmdOptionExists( argv, argv+argc, "-i" ) ) {
-    char* instrument_cstr = getCmdOption( argv, argv+argc, "-i" );
-    if ( instrument_cstr != nullptr ) {
-      instrument = std::string( instrument_cstr );
-      server = std::make_unique<Emulator::Server>(instrument);
-    }
-    else {
-      std::cout << get_timestamp() << function << "ERROR missing or invalid instrument specified with -i <instrument>\n";
-      exit(1);
-    }
-  }
-  else {
-    std::cout << get_timestamp() << function << "ERROR no instrument specified with -i <instrument>\n";
+  if (instrument.empty()) {
+    std::cout << get_timestamp() << function << "ERROR missing -i <instrument>\n";
     exit(1);
   }
+  else server = std::make_unique<Emulator::Server>(instrument);
 
   // If an ImageInfo class pointer is not created then the instrument type
   // was wrong.
@@ -91,26 +81,21 @@ int main(int argc, char **argv) {
     std::cout << get_timestamp() << function << "constructed instrument \"" << instrument << "\"\n";
   }
 
-  if ( cmdOptionExists( argv, argv+argc, "-f" ) ) {
-    char* filename = getCmdOption( argv, argv+argc, "-f" );
-    if ( filename ) {
-      server->config.filename = std::string( filename );
-    }
-  }
+  server->config.filename = getOptionArg(argc, argv, "-f");
 
   // get the configuration file from the command line
   //
   long ret;
   if (argc>1) {
     server->config.filename = std::string( argv[1] );
-    ret = server->config.read_config(server->config);      // read configuration file specified on command line
+    ret = server->config.read_config();                    // read configuration file specified on command line
   }
   else {
     std::cerr << function << "ERROR: no configuration file specified\n";
     server->exit_cleanly();
   }
 
-  std::cerr << function << server->config.n_entries << " lines read from " << server->config.filename << "\n";
+  std::cerr << function << server->config.n_rows << " lines read from " << server->config.filename << "\n";
 
   if (ret==NO_ERROR) ret=server->configure_server();      // get needed values out of read-in configuration file for the server
 

@@ -119,7 +119,7 @@ namespace Camera {
       long connect_controller(const std::string& devices_in);
       template <class T> long get_configmap_value(std::string key_in, T& value_out);
       long get_status_key(std::string key, std::string &value);
-      long load_acf(std::string cmd);
+      long load_acf(std::string filename, bool write_to_archon=true);
       long load_timing(std::string cmd);
       long archon_cmd(std::string cmd, std::string &reply);
       long archon_cmd(std::string cmd);

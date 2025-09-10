@@ -35,7 +35,6 @@ target_link_libraries(emulator
         logentry
         utilities
         common
-        camera
         ${EMULATOR_TARGET}
         ${CMAKE_THREAD_LIBS_INIT}
         )

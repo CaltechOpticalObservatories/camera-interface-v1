@@ -97,30 +97,26 @@ namespace Archon {
   long Interface::configure_controller() {
     std::string function = " (Archon::Interface::configure_controller) ";
 
-    // loop through the entries in the configuration file, stored in config class
+    // loop through the rows in the configuration file, stored in config class
     //
-    for ( int entry=0; entry < this->config.n_entries; entry++ ) {
+    for ( int row=0; row < this->config.n_rows; row++ ) {
 
       try {
-        this->image->set_config_parameter( config.param[entry], config.arg[entry] );
+        this->image->set_config_parameter( config.param[row], config.arg[row] );
 
-        if ( config.param.at(entry).compare(0, 15, "EMULATOR_SYSTEM")==0 ) {
-          this->systemfile = config.arg.at(entry);
+        if ( config.param.at(row).compare(0, 15, "EMULATOR_SYSTEM")==0 ) {
+          this->systemfile = config.arg.at(row);
         }
-        if ( config.param.at(entry).compare(0, 12, "EXPOSE_PARAM")==0) {
-          this->exposeparam = config.arg[entry];
+        if ( config.param.at(row).compare(0, 12, "EXPOSE_PARAM")==0) {
+          this->exposeparam = config.arg[row];
         }
       }
-      catch( std::invalid_argument & ) {
-        std::cerr << get_timestamp() << function << "ERROR: invalid argument parsing entry " << entry << " of " << this->config.n_entries << "\n";
+      catch(const std::exception &e ) {
+        std::cerr << get_timestamp() << function << "ERROR parsing row " << row << " of " << this->config.n_rows << ": " << e.what() << "\n";
         return ERROR;
       }
-      catch( std::out_of_range & ) {
-        std::cerr << get_timestamp() << function << "ERROR: value out of range parsing entry " << entry << " of " << this->config.n_entries << "\n";
-        return ERROR;
-      }
-      catch( ... ) {
-        std::cerr << get_timestamp() << function << "unknown error parsing entry " << entry << " of " << this->config.n_entries << "\n";
+      catch(...) {
+        std::cerr << get_timestamp() << function << "unknown error parsing row " << row << " of " << this->config.n_rows << "\n";
         return ERROR;
       }
     }
