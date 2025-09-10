@@ -52,18 +52,29 @@ namespace Common {
 
     /** Common::FitsKeys::get_keytype *******************************************/
     /**
-     * @fn     get_keytype
      * @brief  return the keyword type based on the keyvalue
      * @param  std::string value
-     * @return std::string type: "BOOL", "STRING", "DOUBLE", "INT"
+     * @return string { "BOOL", "STRING", "DOUBLE", "FLOAT", "INT", "LONG" }
      *
-     * This function looks at the contents of the value string to determine if it
-     * contains an INT, DOUBLE, BOOL or STRING, and returns a string identifying the type.
-     * That type is used in FITS_file::add_user_key() for adding keywords to the header.
+     * This function looks at the contents of the value string to determine if
+     * it contains an INT, DOUBLE, FLOAT, BOOL or STRING, and returns a string
+     * identifying the type.  That type is used in FITS_file::add_user_key()
+     * for adding keywords to the header.
+     *
+     * To differentiate between double and float, the keyvalue string must end
+     * with an "f", as in "3.14f" which returns "FLOAT" or "3.14" which returns
+     * "DOUBLE". Decimal point is required ("1f" is not a float but "1.0f" is)
+     *
+     * To differentiate between int and long, keyvalue string must end with "l"
+     * as in "100l" which returns "LONG" or "100" which returns "INT". Since a
+     * long can't have a decimal, using 'l' with a decimal point is a string.
      *
      */
     std::string FitsKeys::get_keytype(std::string keyvalue) {
         std::size_t pos(0);
+
+        // If it's empty then what else can it be but string
+        if ( keyvalue.empty() ) return std::string("STRING");
 
         // if the entire string is either (exactly) T or F then it's a boolean
         if (keyvalue == "T" || keyvalue == "F") {
@@ -71,54 +82,68 @@ namespace Common {
         }
 
         // skip the whitespaces
-        pos = keyvalue.find_first_not_of(' ');
+        if (keyvalue.find_first_not_of(' ') != std::string::npos) {
+          pos = keyvalue.find_first_not_of(' ');
+        }
         if (pos == keyvalue.size()) return std::string("STRING"); // all spaces, so it's a string
 
-        // check the significand
-        if (keyvalue[pos] == '+' || keyvalue[pos] == '-') ++pos; // skip the sign if exist
+        // remove sign if it exists
+        if (keyvalue[pos] == '+' || keyvalue[pos] == '-') keyvalue.erase(0,1);
 
-        // count the number of digits and number of decimal points
-        int n_nm, n_pt;
-        for (n_nm = 0, n_pt = 0; std::isdigit(keyvalue[pos]) || keyvalue[pos] == '.'; ++pos) {
-            keyvalue[pos] == '.' ? ++n_pt : ++n_nm;
-        }
+        // count the different types of characters
+        //
+        // number of decimal points
+        auto n_pt = std::count(keyvalue.begin(), keyvalue.end(), '.');
+        // number of numerics
+        auto n_nm = std::count_if(keyvalue.begin(), keyvalue.end(), [](unsigned char c) {
+                                                                    return std::isdigit(c);
+                                                                    } );
+        // number of string chars, non-numerics, non-decimals
+        auto n_ch = std::count_if(keyvalue.begin(), keyvalue.end(), [](unsigned char c) {
+                                                                    return (!std::isdigit(c) && c!='.');
+                                                                    } );
 
-        if (n_pt > 1 || n_nm < 1 || pos < keyvalue.size()) {
-            // no more than one point, no numbers, or a non-digit character
-            return std::string("STRING"); // then it's a string
-        }
-
-        // skip the trailing whitespaces
-        while (keyvalue[pos] == ' ') {
-            ++pos;
-        }
-
-        std::string check_type;
-
-        if (pos == keyvalue.size()) {
-            // If it's an INT or DOUBLE, don't return that type until it has been checked, below
-            //
-            if (keyvalue.find(".") == std::string::npos) // all numbers and no decimals, it's an integer
-                check_type = "INT";
-            else // otherwise numbers with a decimal, it's a float
-                check_type = "DOUBLE";
-        } else return std::string("STRING"); // lastly, must be a string
-
-        // If it's an INT or a DOUBLE then try to convert the value to INT or DOUBLE.
-        // If that conversion fails then set the type to STRING.
+        // number of decimals points, numeric and non-numeric chars determines the type
+        // verify by trying to convert to that type and return string on conversion failure
         //
         try {
-            if (check_type == "INT") std::stoi(keyvalue);
-            if (check_type == "DOUBLE") std::stod(keyvalue);
-        } catch (std::invalid_argument &) {
+          // no numbers or more than one decimal point can't be any type of number, so string
+          if ( n_nm==0 || n_pt > 1 ) {
+            return std::string("STRING");
+          }
+          else
+          // at least one digit, exactly one decimal point and only and last character is "f" is a float
+          if ( n_nm > 0 && n_pt==1 && n_ch==1 && keyvalue.back()=='f' ) {
+            std::stof(keyvalue);
+            return std::string("FLOAT");
+          }
+          else
+          // at least one digit, exactly one decimal point and no chars is double
+          if ( n_nm > 0 && n_pt==1 && n_ch==0 ) {
+            std::stod(keyvalue);
+            return std::string("DOUBLE");
+          }
+          else
+          // at least one digit, no decimal point and no chars is int
+          if ( n_nm > 0 && n_pt==0 && n_ch==0 ) {
+            std::stoi(keyvalue);
+            return std::string("INT");
+          }
+          else
+          // at least one digit, no decimal point and only and last char is "l" is long
+          if ( n_nm > 0 && n_pt==0 && n_ch==1 && keyvalue.back()=='l' ) {
+            std::stol(keyvalue);
+            return std::string("LONG");
+          }
+          else
+            // what else can it be but string
             return std::string("STRING");
         }
-        catch (std::out_of_range &) {
-            return std::string("STRING");
+        catch (const std::exception &) {
+          // any numeric conversion failure sets type as string
+          return std::string("STRING");
         }
-        return check_type;
     }
-
     /** Common::FitsKeys::get_keytype *******************************************/
 
 
@@ -230,6 +255,19 @@ namespace Common {
         this->keydb[keyword].keyvalue = keyvalue;
         this->keydb[keyword].keycomment = keycomment;
 
+        // long and float are designated by a modifier char which must be removed
+        //
+        if (this->keydb[keyword].keytype=="LONG") {
+          if (!this->keydb[keyword].keyvalue.empty() && this->keydb[keyword].keyvalue.back()=='l') {
+            this->keydb[keyword].keyvalue.pop_back();
+          }
+        }
+        if (this->keydb[keyword].keytype=="FLOAT") {
+          if (!this->keydb[keyword].keyvalue.empty() && this->keydb[keyword].keyvalue.back()=='f') {
+            this->keydb[keyword].keyvalue.pop_back();
+          }
+        }
+
 #ifdef LOGLEVEL_DEBUG
     message.str(""); message << "[DEBUG] added key: " << keyword << "=" << keyvalue << " (" << this->keydb[keyword].keytype << ") // " << keycomment;
     logwrite( function, message.str() );
@@ -275,5 +313,4 @@ namespace Common {
     }
 
     /***** Common::FitsKeys::delkey *********************************************/
-
 }

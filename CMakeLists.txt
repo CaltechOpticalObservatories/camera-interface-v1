@@ -62,6 +62,5 @@ find_package(Threads)
 add_subdirectory(${PROJECT_BASE_DIR}/utils)
 add_subdirectory(${PROJECT_BASE_DIR}/common)
 add_subdirectory(${PROJECT_BASE_DIR}/camerad)
-#add_subdirectory(${PROJECT_BASE_DIR}/emulator)
-#add_subdirectory(${PROJECT_BASE_DIR}/tests EXCLUDE_FROM_ALL)
-
+add_subdirectory(${PROJECT_BASE_DIR}/emulator)
+add_subdirectory(${PROJECT_BASE_DIR}/tests EXCLUDE_FROM_ALL)

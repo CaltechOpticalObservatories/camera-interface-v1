@@ -1,0 +1,36 @@
+name: CMake workflow
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+jobs:
+  Archon-build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        ls -l
+        .github/workflows/install-deps.sh
+      shell: bash
+    
+    - name: Configure CMake for Archon Interface
+      run: |
+        mkdir ${{github.workspace}}/build
+        cd ${{github.workspace}}/build
+        cmake ..
+
+    - name: Build
+      run: |
+        cd ${{github.workspace}}/build
+        make
+        make run_unit_tests
+
+    - name: Run Unit Tests
+      run: |
+        cd ${{github.workspace}}
+        bin/run_unit_tests
