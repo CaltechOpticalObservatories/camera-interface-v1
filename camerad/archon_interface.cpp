@@ -253,7 +253,7 @@ namespace Camera {
              << std::hex
              << (module-1);
 
-    if (error == NO_ERROR) error = this->send_cmd(applystr.str());
+    if (error == NO_ERROR) error = this->archon_cmd(applystr.str());
 
     if (error != NO_ERROR) {
       message << "writing bias configuration: " << key << "=" << value;
@@ -298,7 +298,7 @@ namespace Camera {
   void ArchonInterface::configure_controller() {
     std::stringstream errstr;
 
-    if (interface->configfile.n_rows < 1) throw std::runtime_error("empty configuration");
+    if (this->configfile.n_rows < 1) throw std::runtime_error("empty configuration");
 
     // iterate through each row in config file
     for (int row=0; row < this->configfile.n_rows; row++) {
@@ -361,7 +361,7 @@ namespace Camera {
 
     // get the Archon system information for installed modules
     std::string reply;
-    error = send_cmd( SYSTEM, reply );                // first the whole reply in one string
+    error = archon_cmd( SYSTEM, reply );              // first the whole reply in one string
 
     std::vector<std::string> lines, tokens;
     Tokenize( reply, lines, " " );                    // then each line in a separate token "lines"
@@ -484,33 +484,40 @@ namespace Camera {
   /***** Camera::ArchonInterface::disconnect_controller ***********************/
   /**
    * @brief      general description
-   * @param[in]  args
-   * @param[out] retstring
-   * @return     ERROR | NO_ERROR
+   * @details    This version fits the general description of all virtual functions
+   *             inherited by the Camera::Interface base class and is overridden
+   *             by an Archon-specific implementation.
+   * @param[in]  args       not used
+   * @param[out] retstring  contains help on request, otherwise not used
+   * @return     HELP|ERROR|NO_ERROR
    *
    */
   long ArchonInterface::disconnect_controller(const std::string args, std::string &retstring) {
+    // Help
+    //
+    if (args=="?" || args=="help") {
+      retstring = CAMERAD_CLOSE;
+      retstring.append( " \n" );
+      retstring.append( "  Closes host connection to Archon controller.\n" );
+      return HELP;
+    }
     return disconnect_controller();
   }
   /***** Camera::ArchonInterface::disconnect_controller ***********************/
   /**
-   * @brief      specialized version
+   * @brief      specialized version closes connection to Archon
    * @return     ERROR | NO_ERROR
    *
    */
   long ArchonInterface::disconnect_controller() {
     const std::string function("Camera::ArchonInterface::disconnect_controller");
     long error = controller.archon.Close();
-
-    // On success, write the value to the log and return
-    //
     if (error == NO_ERROR) {
       logwrite(function, "Archon connection terminated");
     }
     else {
       logwrite( function, "ERROR disconnecting Archon" );
     }
-
     return error;
   }
   /***** Camera::ArchonInterface::disconnect_controller ***********************/
@@ -673,7 +680,7 @@ namespace Camera {
     std::stringstream message;
     std::string reply;
 
-    long error = this->send_cmd( STATUS, reply );  // first the whole reply in one string
+    long error = this->archon_cmd( STATUS, reply );// first the whole reply in one string
 
     if ( error != NO_ERROR ) return error;
 
@@ -699,7 +706,7 @@ namespace Camera {
   /***** Camera::ArchonInterface::get_status_key ******************************/
 
 
-  /***** Camera::ArchonInterface::send_cmd ************************************/
+  /***** Camera::ArchonInterface::archon_cmd **********************************/
   /**
    * @brief      send a command to Archon
    * @details    This function is overloaded.
@@ -708,11 +715,11 @@ namespace Camera {
    * @return     ERROR | BUSY | NO_ERROR
    *
    */
-  long ArchonInterface::send_cmd(std::string cmd) {
+  long ArchonInterface::archon_cmd(std::string cmd) {
     std::string reply;
-    return( send_cmd(cmd, reply) );
+    return( archon_cmd(cmd, reply) );
   }
-  /***** Camera::ArchonInterface::send_cmd ************************************/
+  /***** Camera::ArchonInterface::archon_cmd **********************************/
   /**
    * @brief      send a command to Archon
    * @details    This function is overloaded.
@@ -722,8 +729,8 @@ namespace Camera {
    * @return     ERROR | BUSY | NO_ERROR
    *
    */
-  long ArchonInterface::send_cmd(std::string cmd, std::string &reply) {
-    std::string function = "ArchonInterface::send_cmd";
+  long ArchonInterface::archon_cmd(std::string cmd, std::string &reply) {
+    std::string function = "ArchonInterface::archon_cmd";
     char message[256];
     char check[4];
     int     retval;
@@ -840,13 +847,13 @@ namespace Camera {
 
     return error;
   }
-  /***** Camera::ArchonInterface::send_cmd ************************************/
+  /***** Camera::ArchonInterface::archon_cmd **********************************/
 
 
   /***** Camera::ArchonInterface::fetchlog ************************************/
   /**
    * @brief  fetch the archon log entry and log the response
-   * @return NO_ERROR or ERROR,  return value from send_cmd call
+   * @return NO_ERROR or ERROR,  return value from archon_cmd call
    *
    * Send the FETCHLOG command to, then read the reply from Archon.
    * Fetch until the log is empty. Log the response.
@@ -861,7 +868,7 @@ namespace Camera {
     // send FETCHLOG command while reply is not (null)
     //
     do {
-      if ( (retval=this->send_cmd(FETCHLOG, reply)) != NO_ERROR ) {          // send command here
+      if ( (retval=this->archon_cmd(FETCHLOG, reply)) != NO_ERROR ) {        // send command here
         logwrite( function, "ERROR: calling FETCHLOG" );
         return retval;
       }
@@ -881,6 +888,12 @@ namespace Camera {
   /***** Camera::ArchonInterface::load_acf ************************************/
   /**
    * @brief      loads the ACF file into configuration memory (no APPLY!)
+   * @details    This is an internal-use function which performs the detailed
+   *             steps of loading and parsing an ACF file, from disk, into
+   *             the class and Archon configuration memory. Essentially, it
+   *             performs the WCONFIG but nothing else, nothing is applied
+   *             and the timing cores are not reset. This function will be
+   *             called by load_timing() and load_firmware().
    * @param[in]  acffile
    * @return     ERROR or NO_ERROR
    *
@@ -943,11 +956,11 @@ namespace Camera {
     // The downside is that bias voltages, temperatures, etc. are not updated
     // until you give a "POLLON".
     //
-    error = this->send_cmd(POLLOFF);
+    error = this->archon_cmd(POLLOFF);
 
     // clear configuration memory for this controller
     //
-    if (error == NO_ERROR) error = this->send_cmd(CLEARCONFIG);
+    if (error == NO_ERROR) error = this->archon_cmd(CLEARCONFIG);
 
     if ( error != NO_ERROR ) {
         logwrite( function, "ERROR: could not prepare Archon for new ACF" );
@@ -1279,7 +1292,7 @@ namespace Camera {
               << linecount
               << key << "=" << value << "\n";
         // send the WCONFIG command here
-        if (error == NO_ERROR) error = this->send_cmd(sscmd.str());
+        if (error == NO_ERROR) error = this->archon_cmd(sscmd.str());
         linecount++;
       } // end if ( !key.empty() && !value.empty() )
     } // end while ( getline(filestream, line) )
@@ -1288,7 +1301,7 @@ namespace Camera {
 
     // re-enable background polling
     //
-    if (error == NO_ERROR) error = this->send_cmd(POLLON);
+    if (error == NO_ERROR) error = this->archon_cmd(POLLON);
 
     filestream.close();
     if (error == NO_ERROR) {
@@ -1315,13 +1328,51 @@ namespace Camera {
 
   /***** Camera::ArchonInterface::load_firmware *******************************/
   /**
-   * @brief      send native commands directly to Archon and log result
-   * @details    sends the command directly to Archon but does not parse any
+   * @brief      general description of load firmware
+   * @details    This version fits the general description of all virtual functions
+   *             inherited by the Camera::Interface base class and is overridden
+   *             by an Archon-specific implementation.
+   * @param[in]  args       fully qualified path of ACF
+   * @param[out] retstring  contains help on request, otherwise not used
+   * @return     ERROR|NO_ERROR
    *
    */
   long ArchonInterface::load_firmware( const std::string args, std::string &retstring ) {
+    // Help
+    //
+    if (args=="?" || args=="help") {
+      retstring = CAMERAD_LOAD;
+      retstring.append( " <acf-file>\n" );
+      retstring.append( "  Loads the ACF file and applies the complete Archon configuration.\n" );
+      retstring.append( "  Archon power will be off after this operation.\n" );
+      return HELP;
+    }
+    return load_firmware(args);
+  }
+  /***** Camera::ArchonInterface::load_firmware *******************************/
+  /**
+   * @brief      loads the ACF file and applies the complete Archon Configuration
+   * @param[in]  args       fully qualified path of ACF
+   * @return     ERROR|NO_ERROR
+   *
+   */
+  long ArchonInterface::load_firmware( const std::string acffile ) {
     const std::string function("Camera::ArchonInterface::load_firmware");
-    return NO_ERROR;
+
+    // load the ACF file and write to Archon configuration memory
+    //
+    long error = this->load_acf( acffile, true );
+
+    // Parse and apply the complete system configuration from configuration memory.
+    // Detector power will be off after this.
+    //
+    if (error == NO_ERROR) error = this->archon_cmd(APPLYALL);
+
+    if ( error != NO_ERROR ) this->fetchlog();
+
+    // TODO set camera mode and any defaults (see NIRC2)
+
+    return error;
   }
   /***** Camera::ArchonInterface::load_firmware *******************************/
 
@@ -1371,7 +1422,7 @@ namespace Camera {
 
     // parse timing script and parameters and apply them to the system
     //
-    if (error == NO_ERROR) error = this->send_cmd(LOADTIMING);
+    if (error == NO_ERROR) error = this->archon_cmd(LOADTIMING);
 
     return error;
   }
@@ -1384,7 +1435,7 @@ namespace Camera {
    * @details    sends the command directly to Archon but does not parse any
    *             reply. @TODO publish the reply?
    * @param[in]  cmd  command to send to Archon
-   * @return     ERROR|NO_ERROR|BUSY, return from send_cmd() call
+   * @return     ERROR|NO_ERROR|BUSY, return from archon_cmd() call
    *
    */
   long ArchonInterface::native( const std::string args, std::string &retstring ) {
@@ -1401,7 +1452,7 @@ namespace Camera {
       return HELP;
     }
 
-    long error = send_cmd(args, reply);
+    long error = archon_cmd(args, reply);
 
     if (!reply.empty()) {
       logwrite(function, reply);
@@ -1448,14 +1499,14 @@ namespace Camera {
     if ( !args.empty() ) {
       if ( caseCompareString(args, "on") ) {
         // send POWERON command to Archon and wait 2s to ensure stable
-        if ( (error=this->send_cmd( POWERON )) == NO_ERROR ) {
+        if ( (error=this->archon_cmd( POWERON )) == NO_ERROR ) {
           std::this_thread::sleep_for( std::chrono::seconds(2) );
         }
       }
       else
       if ( caseCompareString(args, "off") ) {
         // send POWEROFF command to Archon and wait 200ms to ensure off
-        if ( (error=this->send_cmd( POWEROFF )) == NO_ERROR ) {
+        if ( (error=this->archon_cmd( POWEROFF )) == NO_ERROR ) {
           std::this_thread::sleep_for( std::chrono::milliseconds(200) );
         }
       }

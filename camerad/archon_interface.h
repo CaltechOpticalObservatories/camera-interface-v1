@@ -96,6 +96,7 @@ namespace Camera {
       // found in the base class.
       //
       long disconnect_controller();
+      long load_firmware(const std::string acffile);
       long allocate_framebuf(uint32_t reqsz);
       long load_timing(std::string cmd, std::string &reply);
       long read_frame();
@@ -120,8 +121,8 @@ namespace Camera {
       long get_status_key(std::string key, std::string &value);
       long load_acf(std::string cmd);
       long load_timing(std::string cmd);
-      long send_cmd(std::string cmd, std::string &reply);
-      long send_cmd(std::string cmd);
+      long archon_cmd(std::string cmd, std::string &reply);
+      long archon_cmd(std::string cmd);
       long fetchlog();
 
   };
