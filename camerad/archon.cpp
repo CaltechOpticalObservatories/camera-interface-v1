@@ -292,6 +292,42 @@ namespace Archon {
         }
       }
 
+      // FCS_EXPTIME_SEC_PARAM
+      if (config.param[entry]=="FCS_EXPTIME_SEC_PARAM") {
+        this->fcs_exptime_sec_param = config.arg[entry];
+        message.str(""); message << "CONFIG:" << config.param[entry] << "=" << config.arg[entry];
+        logwrite( function, message.str() );
+        this->camera.async.enqueue( message.str() );
+        applied++;
+      }
+
+      // FCS_EXPTIME_MSEC_PARAM
+      if (config.param[entry]=="FCS_EXPTIME_MSEC_PARAM") {
+        this->fcs_exptime_msec_param = config.arg[entry];
+        message.str(""); message << "CONFIG:" << config.param[entry] << "=" << config.arg[entry];
+        logwrite( function, message.str() );
+        this->camera.async.enqueue( message.str() );
+        applied++;
+      }
+
+      // SCI_EXPTIME_SEC_PARAM
+      if (config.param[entry]=="SCI_EXPTIME_SEC_PARAM") {
+        this->sci_exptime_sec_param = config.arg[entry];
+        message.str(""); message << "CONFIG:" << config.param[entry] << "=" << config.arg[entry];
+        logwrite( function, message.str() );
+        this->camera.async.enqueue( message.str() );
+        applied++;
+      }
+
+      // SCI_EXPTIME_MSEC_PARAM
+      if (config.param[entry]=="SCI_EXPTIME_MSEC_PARAM") {
+        this->sci_exptime_msec_param = config.arg[entry];
+        message.str(""); message << "CONFIG:" << config.param[entry] << "=" << config.arg[entry];
+        logwrite( function, message.str() );
+        this->camera.async.enqueue( message.str() );
+        applied++;
+      }
+
       if (config.param[entry].compare(0, 12, "EXPOSE_PARAM")==0) {             // EXPOSE_PARAM
         this->exposeparam = config.arg[entry];
         message.str(""); message << "CONFIG:" << config.param[entry] << "=" << config.arg[entry];
