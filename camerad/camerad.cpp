@@ -674,25 +674,24 @@ void doit(Network::TcpSocket sock) {
 #endif
 #ifdef INSTR_DEIMOS
     else
-    if (cmd=="fcs_exptime") {
+    if (cmd==CAMERAD_FCS_EXPTIME) {
       ret = server.fcs_exptime(args, retstring);
     }
     else
-    if (cmd=="fcs_expose") {
+    if (cmd==CAMERAD_FCS_EXPOSE) {
       ret = server.fcs_expose(args, retstring);
     }
     else
-    if (cmd=="sci_exptime") {
+    if (cmd==CAMERAD_SCI_EXPTIME) {
       ret = server.sci_exptime(args, retstring);
     }
     else
-    if (cmd=="start_sci_expose") {
+    if (cmd==CAMERAD_SCI_START) {
       ret = server.start_sci_expose(args, retstring);
     }
     else
-    if (cmd=="stop_sci_expose") {
-      ret = ERROR;
-      retstring="not_yet_implemented";
+    if (cmd==CAMERAD_SCI_READOUT) {
+      ret = server.readout_sci(args, retstring);
     }
     else
     if (cmd=="pause_expose") {

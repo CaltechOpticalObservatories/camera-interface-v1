@@ -164,6 +164,8 @@ namespace Archon {
         std::string fcs_exptime_msec_param;  //!< param name for FCS exposure time milliseconds
         std::string sci_exptime_sec_param;   //!< param name for SCI exposure time seconds
         std::string sci_exptime_msec_param;  //!< param name for SCI exposure time milliseconds
+        std::string sci_start_param;         //!< param name to start SCI exposure
+        std::string fcs_start_param;         //!< param name to start FCS exposure
 
         std::string shutenableparam; //!< param name to enable shutter open on expose
         int shutenable_enable; //!< the value which enables shutter enable
@@ -295,6 +297,7 @@ namespace Archon {
 #ifdef INSTR_DEIMOS
         long sci_exptime(std::string args, std::string &retstring);
         long start_sci_expose(std::string args, std::string &retstring);
+        long readout_sci(std::string args, std::string &retstring);
         long fcs_exptime(std::string args, std::string &retstring);
         long fcs_expose(std::string args, std::string &retstring);
 #endif
