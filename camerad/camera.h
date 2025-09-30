@@ -137,6 +137,69 @@ namespace Camera {
     /***** Camera::ExposureTime ***********************************************/
     /**
      * @class  ExposureTime
+     * @brief  creates object that encapsulates exposure time with a function
+     *         to split it into sec+msec which are needed by Archon.
+     *
+     */
+    class ExposureTime {
+      private:
+        double   _exptime_sec;  //!< total exposure time
+        uint32_t _sec_part;     //!< whole number seconds
+        uint32_t _msec_part;    //!< whole number milliseconds
+
+      public:
+        ExposureTime() : _exptime_sec(0), _sec_part(0), _msec_part(0) { }
+
+        /***** Camera::ExposureTime:split *************************************/
+        /**
+         * @brief      split the exposure time into sec+msec
+         * @details    exposure time is represented as double precision seconds
+         *             but the Archon needs whole number seconds and milliseconds
+         * @param[in]  value  double precision seconds
+         */
+        std::pair<uint32_t,uint32_t> split(double value) {
+          if (std::isnan(value)) throw std::runtime_error("value not a number");
+          if (value < 0) throw std::runtime_error("value can't be negative");
+
+          // total number of msec
+          uint32_t totmsec = static_cast<uint32_t>(std::round(value*1000.0));
+
+          // whole number of seconds is total msec divided by 1000
+          uint32_t sec  = totmsec / 1000;
+
+          // whole msec is total msec modulo 1000
+          uint32_t msec = totmsec % 1000;
+
+          // return the pair
+          return {sec,msec};
+        }
+        /***** Camera::ExposureTime:split *************************************/
+
+        /***** Camera::ExposureTime:set ***************************************/
+        /**
+         * @brief      set the exposure time
+         * @param[in]  value  double precision seconds
+         */
+        void set(double value) {
+          try {
+            auto [sec,msec] = split(value);
+            _sec_part       = sec;
+            _msec_part      = msec;
+            _exptime_sec    = value;
+          }
+          catch (const std::exception &e) { throw; }
+        }
+        /***** Camera::ExposureTime:set ***************************************/
+
+        std::pair<uint32_t,uint32_t> get_pair() { return {_sec_part, _msec_part}; }
+        double get()  { return _exptime_sec;  }
+    };
+    /***** Camera::ExposureTime ***********************************************/
+
+
+    /***** Camera::XxposureTime ***********************************************/
+    /**
+     * @class  XxposureTime
      * @brief  creates object that encapsulates exposure time with its unit
      *
      * This class allows setting and getting an exposure time together with
@@ -147,7 +210,7 @@ namespace Camera {
      * to operate on scalars only.
      *
      */
-    class ExposureTime {
+    class XxposureTime {
       private:
         uint32_t    _value;            // exposure time in the current units
         bool        _is_set;           // has it been set using the class value() function?
@@ -165,7 +228,7 @@ namespace Camera {
          * an ExposureTime object.
          *
          */
-        explicit ExposureTime( uint32_t time=0, const std::string &u="ms" )
+        explicit XxposureTime( uint32_t time=0, const std::string &u="ms" )
                    : _value(0), _is_set(false), _unit(u), _is_longexposure(u=="s") {
           if ( u != "ms" && u != "s" ) throw std::invalid_argument("invalid unit, expected \"s\" or \"ms\"");
           this->value(time);
@@ -205,7 +268,7 @@ namespace Camera {
          * @brief      return the longexposure state
          * @return     true | false
          */
-	bool is_longexposure() const { return _is_longexposure; }
+        bool is_longexposure() const { return _is_longexposure; }
 
         /**
          * @brief      return the exposure time in units of milliseconds
@@ -247,7 +310,7 @@ namespace Camera {
          * @details    allows checking if a user has explicitly set the exposure time.
          * @return     true | false
          */
-	bool is_set() const { return _is_set; }
+        bool is_set() const { return _is_set; }
 
         /**
          * @brief      overload operators to perform in the correct units
@@ -258,22 +321,22 @@ namespace Camera {
          *       .s() +/- 1    will add/subtract 1 sec to/from the current value
          *       .s() == xxx   will compare value in seconds to xxx
          */
-        ExposureTime operator+( uint32_t scalar ) const {
+        XxposureTime operator+( uint32_t scalar ) const {
           uint32_t val = ( _unit == "ms" ? ms() : s() );
-          return ExposureTime( val + scalar, _unit );
+          return XxposureTime( val + scalar, _unit );
         }
-        ExposureTime operator-( uint32_t scalar ) const {
+        XxposureTime operator-( uint32_t scalar ) const {
           uint32_t val = ( _unit == "ms" ? ms() : s() );
-          return ExposureTime( val - scalar, _unit );
+          return XxposureTime( val - scalar, _unit );
         }
-        ExposureTime operator*( uint32_t scalar ) const {
+        XxposureTime operator*( uint32_t scalar ) const {
           uint32_t val = ( _unit == "ms" ? ms() : s() * 1000 );
-          return ExposureTime( val * scalar );
+          return XxposureTime( val * scalar );
         }
-        ExposureTime operator/( uint32_t scalar ) const {
+        XxposureTime operator/( uint32_t scalar ) const {
           if ( scalar == 0 ) throw std::invalid_argument("division by zero");
           uint32_t val = ( _unit == "ms" ? ms() : s() * 1000 );
-          return ExposureTime( val / scalar );
+          return XxposureTime( val / scalar );
         }
         bool operator<( uint32_t scalar ) const {
           uint32_t val = ( _unit == "ms" ? ms() : s() * 1000 );
@@ -296,7 +359,7 @@ namespace Camera {
           return val >= scalar;
         }
     };
-    /***** Camera::ExposureTime ***********************************************/
+    /***** Camera::XxposureTime ***********************************************/
 
 
     /**************** Camera::Information ***************************************/
@@ -335,7 +398,7 @@ namespace Camera {
 
         std::vector<std::vector<long> > amp_section;
 
-        ExposureTime exposure_time;
+        XxposureTime exposure_time;
 
         Common::FitsKeys userkeys; /// create a FitsKeys object for FITS keys specified by the user
         Common::FitsKeys systemkeys; /// create a FitsKeys object for FITS keys imposed by the software

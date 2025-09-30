@@ -100,6 +100,9 @@ namespace Archon {
         Common::FitsKeys userkeys; //!< instantiate a Common object
         Common::FitsKeys systemkeys; //!< instantiate a Common object
 
+        Camera::ExposureTime fcs_exposure_time;  //!< exposure time for FCS detector
+        Camera::ExposureTime sci_exposure_time;  //!< exposure time for SCI detector
+
         Config config;
 
         FITS_file fits_file; //!< instantiate a FITS container object
@@ -156,6 +159,11 @@ namespace Archon {
                                                     //!< use in conjunction with archon_busy flag
         std::string longexposeparam; //!< param name to control longexposure in ACF (empty=not supported)
         std::string exposeparam; //!< param name to trigger exposure when set =1
+
+        std::string fcs_exptime_sec_param;   //!< param name for FCS exposure time seconds
+        std::string fcs_exptime_msec_param;  //!< param name for FCS exposure time milliseconds
+        std::string sci_exptime_sec_param;   //!< param name for SCI exposure time seconds
+        std::string sci_exptime_msec_param;  //!< param name for SCI exposure time milliseconds
 
         std::string shutenableparam; //!< param name to enable shutter open on expose
         int shutenable_enable; //!< the value which enables shutter enable
@@ -285,7 +293,10 @@ namespace Archon {
         long test(std::string args, std::string &retstring);
 
 #ifdef INSTR_DEIMOS
-        long start_sci_expose();
+        long sci_exptime(std::string args, std::string &retstring);
+        long start_sci_expose(std::string args, std::string &retstring);
+        long fcs_exptime(std::string args, std::string &retstring);
+        long fcs_expose(std::string args, std::string &retstring);
 #endif
 
         /**

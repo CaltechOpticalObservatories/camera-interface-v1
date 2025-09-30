@@ -75,12 +75,13 @@ int main(int argc, char **argv) {
     std::string cwd = std::filesystem::current_path().string();
     long ret = NO_ERROR;
 
-    // Daemonize by default, but allow command line arg to keep it as
-    // a foreground process
+    // Unless specifically requested to run in foreground,
+    // immediately daemonize.
     //
-    if (!cmdOptionExists(argv, argv + argc, "--foreground")) {
-        logwrite(function, "starting daemon");
-        Daemon::daemonize(Camera::DAEMON_NAME, cwd, "", "", "");
+    if (!hasOption(argc, argv, "--foreground")) {
+      logwrite(function, "starting daemon");
+      Daemon::daemonize( "camerad", "/tmp", "/dev/null", "/tmp/camerad.stderr", "", false );
+      std::cerr << get_timestamp() << "  (" << function << ") daemonized. child process running" << std::endl;
     }
 
     // capture these signals
@@ -89,21 +90,14 @@ int main(int argc, char **argv) {
     signal(SIGPIPE, signal_handler);
     signal(SIGHUP, signal_handler);
 
-    // check for "-f <filename>" command line option to specify config file
+    // read the config file and configure the various components
     //
-    if (cmdOptionExists(argv, argv + argc, "-f")) {
-        char *filename = getCmdOption(argv, argv + argc, "-f");
-        if (filename) {
-            server.config.filename = std::string(filename);
-        }
-    } else if (argc > 1) {
-        // if no "-f <filename>" then as long as there's at least one arg,
-        // assume that is the config file name.
-        //
-        server.config.filename = std::string(argv[1]);
-    } else {
-        logwrite(function, "ERROR: no configuration file specified");
-        server.exit_cleanly();
+    try {
+      server.config.filename = getOptionArg(argc, argv, "--config");
+    }
+    catch (const std::exception &e) {
+      logwrite(function, "ERROR configuring system: "+std::string(e.what()));
+      server.exit_cleanly();
     }
 
     if (server.config.read_config(server.config) != NO_ERROR) {
@@ -511,14 +505,14 @@ void doit(Network::TcpSocket sock) {
                 args = sbuf.substr(cmd_sep + 1); // otherwise args is everything after that space.
             }
 
+            if ( ++server.cmd_num==INT_MAX ) server.cmd_num=0;
+
             message.str("");
-            message << "thread " << sock.id << " received command on fd " << sock.getfd() << ": " << cmd << " " << args;
+            message << "thread " << sock.id << " received command (" << server.cmd_num << ") on fd " << sock.getfd() << ": " << cmd << " " << args;
             logwrite(function, message.str());
-        } catch (std::runtime_error &e) {
-            std::stringstream errstream;
-            errstream << e.what();
+        } catch (const std::exception &e) {
             message.str("");
-            message << "error parsing arguments: " << errstream.str();
+            message << "error parsing arguments: " << std::string(e.what());
             logwrite(function, message.str());
             ret = -1;
         }
@@ -681,24 +675,19 @@ void doit(Network::TcpSocket sock) {
 #ifdef INSTR_DEIMOS
     else
     if (cmd=="fcs_exptime") {
-      ret = ERROR;
-      retstring="not_yet_implemented";
+      ret = server.fcs_exptime(args, retstring);
     }
     else
     if (cmd=="fcs_expose") {
-      ret = ERROR;
-      retstring="not_yet_implemented";
+      ret = server.fcs_expose(args, retstring);
     }
     else
     if (cmd=="sci_exptime") {
-      ret = ERROR;
-      retstring="not_yet_implemented";
+      ret = server.sci_exptime(args, retstring);
     }
     else
     if (cmd=="start_sci_expose") {
-      ret = ERROR;
-      retstring="not_yet_implemented";
-      server.start_sci_expose();
+      ret = server.start_sci_expose(args, retstring);
     }
     else
     if (cmd=="stop_sci_expose") {
@@ -871,10 +860,23 @@ void doit(Network::TcpSocket sock) {
         }
 
         if (ret != NOTHING) {
-            std::string retstr = (ret == 0 ? "DONE\n" : "ERROR\n");
-            if (ret == 0) retstr = "DONE\n";
-            else retstr = "ERROR" + server.camera.get_longerror() + "\n";
-            if (sock.Write(retstr) < 0) connection_open = false;
+          if ( ! retstring.empty() ) retstring.append(" ");
+          // If the retstring doesn't already have a DONE or ERROR in it,
+          // then append that to the retstring.
+          //
+          if ( ret != HELP &&
+               ( retstring.find( "DONE" )  == std::string::npos ) &&
+               ( retstring.find( "ERROR" ) == std::string::npos ) ) {
+            retstring.append( ret == 0 ? "DONE" : "ERROR" );
+
+            if ( ret != HELP && sbuf.find("help")==std::string::npos && sbuf.find("?")==std::string::npos ) {
+              retstring.append( "\n" );
+              message.str(""); message << "command (" << server.cmd_num << ") reply: " << retstring;
+              logwrite( function, message.str() );
+            }
+          }
+          else retstring.append( "\n" );
+          if ( sock.Write( retstring ) < 0 ) connection_open=false;
         }
 
         if (!sock.isblocking()) break; // Non-blocking connection exits immediately.

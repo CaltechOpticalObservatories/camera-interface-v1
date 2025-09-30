@@ -51,8 +51,9 @@ namespace Camera {
         int nbport; //!< non-blocking port
         int blkport; //!< blocking port
         int asyncport; //!< asynchronous message port
+        int cmd_num;
 
-        Server() : nbport(-1), blkport(-1), asyncport(-1) {
+        Server() : nbport(-1), blkport(-1), asyncport(-1), cmd_num(0) {
         }
 
         ~Server() {
