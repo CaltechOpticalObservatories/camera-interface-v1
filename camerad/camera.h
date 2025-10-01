@@ -153,22 +153,39 @@ namespace Camera {
         /***** Camera::ExposureTime:split *************************************/
         /**
          * @brief      split the exposure time into sec+msec
-         * @details    exposure time is represented as double precision seconds
-         *             but the Archon needs whole number seconds and milliseconds
+         * @details    Exposure time is represented as double precision seconds
+         *             but the Archon needs whole number seconds and/or milliseconds.
+         *             Archon parameters are limited to 20-bits. When it fits,
+         *             assign the exposure time to msec only, otherwise overflow
+         *             into sec.
+         *             This is only a tool and does not set any class variables.
          * @param[in]  value  double precision seconds
+         * @return     pair{sec,msec}
+         * @throws     std::runtime_error
          */
         std::pair<uint32_t,uint32_t> split(double value) {
           if (std::isnan(value)) throw std::runtime_error("value not a number");
           if (value < 0) throw std::runtime_error("value can't be negative");
 
-          // total number of msec
-          uint32_t totmsec = static_cast<uint32_t>(std::round(value*1000.0));
+          uint32_t totmsec;  // total exposure time in msec
+          uint32_t sec;      // whole number of seconds
+          uint32_t msec;     // whole number of msec
 
-          // whole number of seconds is total msec divided by 1000
-          uint32_t sec  = totmsec / 1000;
+          // total exposure time in msec
+          totmsec = static_cast<uint32_t>(std::round(value*1000.0));
 
-          // whole msec is total msec modulo 1000
-          uint32_t msec = totmsec % 1000;
+          // if it fits in 20 bits then assign it all to msec
+          if (totmsec <= 0xFFFFF) {
+            sec  = 0;
+            msec = totmsec;
+          }
+          else
+          // otherwise assign it to seconds
+          if (totmsec/1000 <= 0xFFFFF) {
+            sec  = totmsec / 1000;
+            msec = totmsec % 1000;
+          }
+          else throw std::runtime_error("value exceeds 2^20 sec");
 
           // return the pair
           return {sec,msec};
@@ -178,7 +195,9 @@ namespace Camera {
         /***** Camera::ExposureTime:set ***************************************/
         /**
          * @brief      set the exposure time
+         * @details    This uses the class split() tool and sets class variables.
          * @param[in]  value  double precision seconds
+         * @throws     std::runtime_error
          */
         void set(double value) {
           try {
