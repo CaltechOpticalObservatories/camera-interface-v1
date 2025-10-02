@@ -53,10 +53,10 @@ namespace Archon {
   /***** Archon::Interface::fcs_exptime ***************************************/
   /**
    * @brief      set/get FCS exposure time
+   * @details    This function is used by the server.
    * @param[in]  args      requested exposure time, or empty or help
    * @param[out] restring  return string holds exposure time
    * @return     ERROR | NO_ERROR | HELP
-   * @throws     std::exception
    *
    */
   long Interface::fcs_exptime(std::string args, std::string &retstring) {
@@ -70,39 +70,14 @@ namespace Archon {
       return HELP;
     }
 
-    // Archon connection required to set/get exptime
-    if (!archon.isconnected()) {
-      camera.log_error(function, "connection not open to controller");
-      retstring="not_connected";
-      return ERROR;
-    }
-
     // If an arg was supplied then use it to try to set the exptime
     if (!args.empty()) {
-
-      // exposure time parameters must be defined
-      if (fcs_exptime_sec_param.empty() || fcs_exptime_msec_param.empty()) {
-        camera.log_error(function, "exposure time parameters not defined");
-        retstring="missing_config";
-        return ERROR;
-      }
-
       try {
-        double exptime = std::stod(args);
-
-        // split the requested exposure time into seconds and milliseconds
-        auto [sec, msec] = fcs_exposure_time.split(exptime);
-
-        // set the sec and msec parameters on the controller
-        // and store the exptime in the class on success
-        if ( (set_parameter(fcs_exptime_sec_param, sec)   != NO_ERROR) &&
-             (set_parameter(fcs_exptime_msec_param, msec) != NO_ERROR) ) {
-          fcs_exposure_time.set(exptime);
-        }
+        this->set_fcs_exptime(std::stod(args));
       }
       catch (const std::exception &e) {
-        camera.log_error(function, std::string(e.what()));
-        retstring="bad_exptime";
+        retstring=std::string(e.what());
+        camera.log_error(function, retstring);
         return ERROR;
       }
     }
@@ -113,6 +88,45 @@ namespace Archon {
     return NO_ERROR;
   }
   /***** Archon::Interface::fcs_exptime ***************************************/
+
+
+  /***** Archon::Interface::set_fcs_exptime ***********************************/
+  /**
+   * @brief      set FCS exposure time
+   * @details    This function is used internally, and is what actually sets
+   *             the exposure time.
+   * @param[in]  exptime  double-precision exposure time in seconds
+   * @throws     std::exception
+   *
+   */
+  void Interface::set_fcs_exptime(double exptime) {
+    const std::string function("Archon::Interface::set_fcs_exptime");
+    // Archon connection required to set/get exptime
+    if (!archon.isconnected()) {
+      throw std::runtime_error("connection not open to controller");
+    }
+    // exposure time parameters must be defined
+    if (fcs_exptime_sec_param.empty() || fcs_exptime_msec_param.empty()) {
+      throw std::runtime_error("FCS expsure time parameters not defined");
+    }
+    try {
+      // split the requested exposure time into seconds and milliseconds
+      auto [sec, msec] = fcs_exposure_time.split(exptime);
+
+      // set the sec and msec parameters on the controller
+      // and store the exptime in the class on success
+      if ( (set_parameter(fcs_exptime_sec_param, sec)   == NO_ERROR) &&
+           (set_parameter(fcs_exptime_msec_param, msec) == NO_ERROR) ) {
+        fcs_info.exposure_time.set(exptime);
+        fcs_exposure_time.set(exptime);
+      }
+      else throw std::runtime_error("could not set FCS exposure time parameters");
+    }
+    catch (const std::exception &e) {
+      throw;
+    }
+  }
+  /***** Archon::Interface::set_fcs_exptime ***********************************/
 
 
   /***** Archon::Interface::fcs_expose ****************************************/
@@ -208,6 +222,7 @@ namespace Archon {
    */
   long Interface::start_sci_expose(std::string args, std::string &retstring) {
     const std::string function("Archon::Interface::start_sci_expose");
+    long error=NO_ERROR;
 
     // Help
     if (args=="?" || args=="help") {
@@ -222,6 +237,13 @@ namespace Archon {
       camera.log_error(function, "connection not open to controller");
       retstring="not_connected";
       return ERROR;
+    }
+
+    error = set_camera_mode("SCIENCE");
+
+    if (error!=NO_ERROR) {
+      logwrite(function, "error");
+      return error;
     }
 
     // science exposure trigger parameter must be defined

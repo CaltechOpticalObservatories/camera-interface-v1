@@ -761,12 +761,6 @@ void doit(Network::TcpSocket sock) {
                 sock.Write(retstring);
                 sock.Write(" ");
             }
-        } else if (cmd == "longexposure") {
-            ret = server.longexposure(args, retstring);
-            if (!retstring.empty()) {
-                sock.Write(retstring);
-                sock.Write(" ");
-            }
         } else if (cmd == "hdrshift") {
             ret = server.hdrshift(args, retstring);
             if (!retstring.empty()) {
@@ -789,13 +783,6 @@ void doit(Network::TcpSocket sock) {
 #endif
         else if (cmd == "expose") {
             ret = server.expose(args);
-        }
-        else if (cmd == "exptime") {
-            ret = server.exptime(args, retstring);
-            if (!retstring.empty()) {
-                sock.Write(retstring);
-                sock.Write(" ");
-            }
         }
         else if (!retstring.empty()) {
                 sock.Write(retstring);

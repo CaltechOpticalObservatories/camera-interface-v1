@@ -61,6 +61,7 @@ namespace Archon {
 
     constexpr std::string_view QUIET = "quiet";  // allows sending commands without logging
     constexpr uint32_t MSEC_TO_TICK = 100000;    // Archon clock ticks per millisecond
+    constexpr uint32_t SEC_TO_TICK = 100000000;  // Archon clock ticks per second
     constexpr uint32_t MAX_EXPTIME  = 0xFFFFF;   // Archon parameters are limited to 20 bits
 
     // Archon hardware-based constants.
@@ -83,8 +84,11 @@ namespace Archon {
 
     class Interface {
     private:
-        unsigned long int start_timer, finish_timer; //!< Archon internal timer, start and end of exposure
-        int n_hdrshift; //!< number of right-shift bits for Archon buffer in HDR mode
+        uint64_t start_timer, finish_timer;  //!< Archon internal timer, start and end of exposure
+        uint64_t last_frame_timer;           //!< Archon timer of last frame
+        int n_hdrshift;                      //!< number of right-shift bits for Archon buffer in HDR mode
+        struct timespec cal_systime;
+        uint64_t cal_archontime;
 
     public:
         Interface();
@@ -103,6 +107,9 @@ namespace Archon {
         Camera::ExposureTime fcs_exposure_time;  //!< exposure time for FCS detector
         Camera::ExposureTime sci_exposure_time;  //!< exposure time for SCI detector
 
+        Camera::Information fcs_info;   /// this is the main camera_info object
+        Camera::Information sci_info;   /// this is the main camera_info object
+
         Config config;
 
         FITS_file fits_file; //!< instantiate a FITS container object
@@ -116,7 +123,6 @@ namespace Archon {
         std::vector<int> offset; //!< digital CDS offset (from TAPLINE definition)
         bool modeselected; //!< true if a valid mode has been selected, false otherwise
         bool firmwareloaded; //!< true if firmware is loaded, false otherwise
-        bool is_longexposure_set; //!< true for long exposure mode (exptime in sec), false for exptime in msec
         bool is_window; //!< true if in window mode for h2rg, false if not
         bool is_autofetch;
         int win_hstart;
@@ -157,7 +163,6 @@ namespace Archon {
         std::mutex archon_mutex;
         //!< protects Archon from being accessed by multiple threads,
                                                     //!< use in conjunction with archon_busy flag
-        std::string longexposeparam; //!< param name to control longexposure in ACF (empty=not supported)
         std::string exposeparam; //!< param name to trigger exposure when set =1
 
         std::string fcs_exptime_sec_param;   //!< param name for FCS exposure time seconds
@@ -243,14 +248,6 @@ namespace Archon {
 
         long expose(std::string nseq_in);
 
-        long hexpose(std::string nseq_in);
-
-        long hsetup();
-
-        long hroi(std::string geom_in, std::string &retstring);
-
-        long hwindow(std::string state_in, std::string &state_out);
-
         long autofetch(std::string state_in, std::string &state_out);
 
         long video();
@@ -267,10 +264,7 @@ namespace Archon {
 
         long set_parameter(std::string parameter);
 
-        long exptime(std::string exptime_in, std::string &retstring);
-
         void copy_keydb(); /// copy user keyword database into camera_info
-        long longexposure(std::string state_in, std::string &state_out);
 
         long shutter(std::string shutter_in, std::string &shutter_out);
 
@@ -299,6 +293,7 @@ namespace Archon {
         long start_sci_expose(std::string args, std::string &retstring);
         long readout_sci(std::string args, std::string &retstring);
         long fcs_exptime(std::string args, std::string &retstring);
+        void set_fcs_exptime(double exptime);
         long fcs_expose(std::string args, std::string &retstring);
 #endif
 
