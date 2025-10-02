@@ -7185,10 +7185,34 @@ namespace Archon {
       message.str(""); message << "logwconfig " << retstring;
       logwrite( function, message.str() );
       error = NO_ERROR;
-    } else {
-        // ----------------------------------------------------
-        // invalid test name
-        // ----------------------------------------------------
+    }
+    else
+    if (testname == "exptime") {
+      // ----------------------------------------------------
+      // exposure time split
+      // ----------------------------------------------------
+      if (tokens.size() < 2) {
+        logwrite(function, "ERROR expected one argument");
+        return ERROR;
+      }
+      message.str("");
+      try {
+        Camera::ExposureTime et;
+        auto [sec,msec] = et.split( std::stod(tokens[1]) );
+        message << "exptime=" << std::stod(tokens[1]) << "s  sec=" << sec << " msec=" << msec;
+        error=NO_ERROR;
+      }
+      catch (const std::exception &e) {
+        message << e.what();
+        logwrite(function, message.str());
+        error=ERROR;
+      }
+      retstring=message.str();
+    }
+    else {
+      // ----------------------------------------------------
+      // invalid test name
+      // ----------------------------------------------------
       message.str(""); message << "unknown test: " << testname;
       this->camera.log_error( function, message.str() );
       error = ERROR;
