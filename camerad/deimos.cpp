@@ -163,40 +163,14 @@ namespace Archon {
       return HELP;
     }
 
-    // Archon connection required to set/get exptime
-    if (!archon.isconnected()) {
-      camera.log_error( function, "connection not open to controller" );
-      retstring="not_connected";
-      return ERROR;
-    }
-
     // If an arg was supplied then use it to try to set the exptime
     if (!args.empty()) {
-
-      // exposure time parameters must be defined
-      if (sci_exptime_sec_param.empty() || sci_exptime_msec_param.empty()) {
-        camera.log_error(function, "exposure time parameters not defined");
-        retstring="missing_config";
-        return ERROR;
-      }
-
       try {
-        double exptime = std::stod(args);
-
-        // split the requested exposure time into seconds and milliseconds
-        auto [sec, msec] = sci_exposure_time.split(exptime);
-
-        // set the sec and msec parameters on the controller
-        // and store the exptime in the class on success
-        if ( (set_parameter(sci_exptime_sec_param, sec)   == NO_ERROR) &&
-             (set_parameter(sci_exptime_msec_param, msec) == NO_ERROR) ) {
-          sci_exposure_time.set(exptime);
-        }
-        else throw std::runtime_error("could not set Archon parameter");
+        this->set_sci_exptime(std::stod(args));
       }
       catch (const std::exception &e) {
-        camera.log_error(function, std::string(e.what()));
-        retstring = std::to_string(sci_exposure_time.get());
+        retstring=std::string(e.what());
+        camera.log_error(function, retstring);
         return ERROR;
       }
     }
@@ -207,6 +181,45 @@ namespace Archon {
     return NO_ERROR;
   }
   /***** Archon::Interface::sci_exptime ***************************************/
+
+
+  /***** Archon::Interface::set_sci_exptime ***********************************/
+  /**
+   * @brief      set SCI exposure time  // TODO THIS COULD BE COMBINED WITH set_fcs_exptime <------------
+   * @details    This function is used internally, and is what actually sets
+   *             the exposure time.
+   * @param[in]  exptime  double-precision exposure time in seconds
+   * @throws     std::exception
+   *
+   */
+  void Interface::set_sci_exptime(double exptime) {
+    const std::string function("Archon::Interface::set_sci_exptime");
+    // Archon connection required to set/get exptime
+    if (!archon.isconnected()) {
+      throw std::runtime_error("connection not open to controller");
+    }
+    // exposure time parameters must be defined
+    if (sci_exptime_sec_param.empty() || sci_exptime_msec_param.empty()) {
+      throw std::runtime_error("SCI expsure time parameters not defined");
+    }
+    try {
+      // split the requested exposure time into seconds and milliseconds
+      auto [sec, msec] = sci_exposure_time.split(exptime);
+
+      // set the sec and msec parameters on the controller
+      // and store the exptime in the class on success
+      if ( (set_parameter(sci_exptime_sec_param, sec)   == NO_ERROR) &&
+           (set_parameter(sci_exptime_msec_param, msec) == NO_ERROR) ) {
+        sci_info.exposure_time.set(exptime);
+        sci_exposure_time.set(exptime);
+      }
+      else throw std::runtime_error("could not set SCI exposure time parameters");
+    }
+    catch (const std::exception &e) {
+      throw;
+    }
+  }
+  /***** Archon::Interface::set_sci_exptime ***********************************/
 
 
   /***** Archon::Interface::start_sci_expose **********************************/
@@ -239,18 +252,20 @@ namespace Archon {
       return ERROR;
     }
 
-    error = set_camera_mode("SCIENCE");
-
-    if (error!=NO_ERROR) {
-      logwrite(function, "error");
-      return error;
-    }
-
     // science exposure trigger parameter must be defined
     if (sci_start_param.empty()) {
       camera.log_error(function, "science exposure trigger parameter not defined");
       retstring="missing_config";
       return ERROR;
+    }
+
+    this->camera_info = this->sci_info;
+
+    error = set_camera_mode("SCIENCE");
+
+    if (error!=NO_ERROR) {
+      logwrite(function, "error");
+      return error;
     }
 
     // start SCI exposure by setting science exposure parameter = 1
@@ -261,7 +276,11 @@ namespace Archon {
 
     logwrite(function, "sci exposure started");
 
-    return NO_ERROR;
+    error = this->wait_for_exposure();
+
+    logwrite(function, "done");
+
+    return error;
   }
   /***** Archon::Interface::start_sci_expose **********************************/
 

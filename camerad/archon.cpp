@@ -4262,9 +4262,12 @@ namespace Archon {
 #ifdef LOGLEVEL_DEBUG
     SNPRINTF(message, "exposure_time=%lfs waittime=%lfs last_frame_timer=%lu prediction=%lu",
              this->camera_info.exposure_time.get(), waittime, this->last_frame_timer, prediction);
-    logwrite( function, std::string(message), LogLevel::DEBUG );
+    logwrite(function, std::string(message));
 #endif
 
+    // Wait for waittime (1s less than exposure time).
+    // This can be aborted.
+    //
     uint64_t increment=0;
     while ( (now - (waittime + start_time) < 0) && !this->camera.is_aborted() ) {
       std::this_thread::sleep_for( std::chrono::milliseconds(100) );  // sleep 100 msec = 1e7 Archon ticks
@@ -4272,11 +4275,15 @@ namespace Archon {
       now = get_clock_time();
       this->camera_info.exposure_progress = static_cast<double>(increment) / static_cast<double>(prediction - this->last_frame_timer);
       if (this->camera_info.exposure_progress < 0 || this->camera_info.exposure_progress > 1) this->camera_info.exposure_progress=1;
-      SNPRINTF(message,
-               "EXPOSURE:%d",
-               static_cast<int>(this->camera_info.exposure_time.get() -
-                               (this->camera_info.exposure_progress * this->camera_info.exposure_time.get())));
-      this->camera.async.enqueue( std::string(message) );
+      if ( (increment % 100000000) == 0 ) {
+        SNPRINTF(message,
+                 "EXPOSURE:%ld %.2lf",
+                 static_cast<uint64_t>(this->camera_info.exposure_time.get() -
+                                      (this->camera_info.exposure_progress * this->camera_info.exposure_time.get())),
+                 this->camera_info.exposure_progress);
+        this->camera.async.enqueue( std::string(message) );
+        std::cerr << message << std::endl;
+      }
     }
 
     uint64_t exposure_timeout_msec=1000;
@@ -4284,9 +4291,12 @@ namespace Archon {
       exposure_timeout_msec += 1000.0*this->camera_info.exposure_time.get();
     }
 
+    // Poll Archon's internal timer for the last bit.
+    // This can be aborted.
+    //
     bool done=false;
     while (!done && !this->camera.is_aborted()) {
-      // Poll Archon's internal timer
+
       if ( (error=this->get_timer(&timer_now)) == ERROR ) {
         logwrite(function, "ERROR could not get Archon timer");
         break;
@@ -4298,10 +4308,12 @@ namespace Archon {
       if (this->camera_info.exposure_progress < 0 || this->camera_info.exposure_progress > 1) this->camera_info.exposure_progress=1;
 
       SNPRINTF(message,
-               "EXPOSURE:%d",
-               static_cast<int>(this->camera_info.exposure_time.get() -
-                               (this->camera_info.exposure_progress * this->camera_info.exposure_time.get())));
+               "EXPOSURE:%ld %.2f",
+               static_cast<uint64_t>(this->camera_info.exposure_time.get() -
+                                    (this->camera_info.exposure_progress * this->camera_info.exposure_time.get())),
+               this->camera_info.exposure_progress);
       this->camera.async.enqueue(std::string(message));
+      std::cerr << message << std::endl;
 
       if ( (timer_now - this->last_frame_timer) >= static_cast<uint64_t>(this->camera_info.exposure_time.get()*SEC_TO_TICK) ) {
         this->finish_timer=timer_now;

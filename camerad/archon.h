@@ -290,6 +290,7 @@ namespace Archon {
 
 #ifdef INSTR_DEIMOS
         long sci_exptime(std::string args, std::string &retstring);
+        void set_sci_exptime(double exptime);
         long start_sci_expose(std::string args, std::string &retstring);
         long readout_sci(std::string args, std::string &retstring);
         long fcs_exptime(std::string args, std::string &retstring);
