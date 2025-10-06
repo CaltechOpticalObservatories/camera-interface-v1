@@ -41,21 +41,6 @@ namespace Camera {
 
     /** Camera::Camera::abort ***************************************************/
 
-    void Camera::set_abortstate(bool state) {
-        this->abort_mutex.lock();
-        this->abortstate = state;
-        this->_abortstate = state;
-        this->abort_mutex.unlock();
-    }
-
-    bool Camera::get_abortstate() {
-        bool state;
-        this->abort_mutex.lock();
-        state = this->abortstate;
-        this->abort_mutex.unlock();
-        return state;
-    }
-
 
     /** Camera::Camera::log_error ***********************************************/
     /**

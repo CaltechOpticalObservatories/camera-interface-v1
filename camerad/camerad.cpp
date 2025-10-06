@@ -529,6 +529,11 @@ void doit(Network::TcpSocket sock) {
         ret = NOTHING;
         std::string retstring; // string for return the value (where needed)
 
+        if (cmd=="help" || cmd=="?") {
+            for (const auto &s : CAMERAD_SYNTAX) { retstring.append(s); retstring.append("\n"); }
+            ret=HELP;
+        }
+        else
         if (cmd == "exit") {
             server.camera.async.enqueue("exit"); // shutdown the async message thread if running
             server.exit_cleanly(); // shutdown the server
@@ -674,25 +679,28 @@ void doit(Network::TcpSocket sock) {
 #endif
 #ifdef INSTR_DEIMOS
     else
-    if (cmd=="fcs_exptime") {
+    if (cmd==CAMERAD_FCS_EXPTIME) {
       ret = server.fcs_exptime(args, retstring);
     }
     else
-    if (cmd=="fcs_expose") {
+    if (cmd==CAMERAD_FCS_EXPOSE) {
       ret = server.fcs_expose(args, retstring);
     }
     else
-    if (cmd=="sci_exptime") {
+    if (cmd==CAMERAD_SCI_EXPTIME) {
       ret = server.sci_exptime(args, retstring);
     }
     else
-    if (cmd=="start_sci_expose") {
-      ret = server.start_sci_expose(args, retstring);
+    if (cmd==CAMERAD_SCI_EXPOSE) {
+      ret = server.sci_expose(args, retstring);
     }
     else
-    if (cmd=="stop_sci_expose") {
-      ret = ERROR;
-      retstring="not_yet_implemented";
+    if (cmd==CAMERAD_SCI_START) {
+      ret = server.sci_start(args, retstring);
+    }
+    else
+    if (cmd==CAMERAD_SCI_READOUT) {
+      ret = server.sci_readout(args, retstring);
     }
     else
     if (cmd=="pause_expose") {
@@ -762,12 +770,6 @@ void doit(Network::TcpSocket sock) {
                 sock.Write(retstring);
                 sock.Write(" ");
             }
-        } else if (cmd == "longexposure") {
-            ret = server.longexposure(args, retstring);
-            if (!retstring.empty()) {
-                sock.Write(retstring);
-                sock.Write(" ");
-            }
         } else if (cmd == "hdrshift") {
             ret = server.hdrshift(args, retstring);
             if (!retstring.empty()) {
@@ -790,13 +792,6 @@ void doit(Network::TcpSocket sock) {
 #endif
         else if (cmd == "expose") {
             ret = server.expose(args);
-        }
-        else if (cmd == "exptime") {
-            ret = server.exptime(args, retstring);
-            if (!retstring.empty()) {
-                sock.Write(retstring);
-                sock.Write(" ");
-            }
         }
         else if (!retstring.empty()) {
                 sock.Write(retstring);

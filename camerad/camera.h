@@ -39,7 +39,7 @@ namespace Camera {
         bool is_datacube;
         bool is_longerror; //!< set to return error message on command port
         bool is_cubeamps; //!< should amplifiers be written as multi-extension data cubes?
-        std::atomic<bool> _abortstate;;
+        std::atomic<bool> abortstate;
 
         std::mutex abort_mutex;
         std::stringstream lasterrorstring; //!< a place to preserve an error message
@@ -47,21 +47,19 @@ namespace Camera {
     public:
         Camera() : image_dir("/tmp"), base_name("image"), fits_naming("time"),
                    dirmode(0), image_num(0), is_datacube(false), is_longerror(false), is_cubeamps(false),
-                   _abortstate(false),
-                   autodir_state(true), abortstate(false), writekeys_when("before") {
+                   abortstate(false), autodir_state(true), writekeys_when("before") {
         }
 
 
         bool autodir_state;
         //!< if true then images are saved in a date subdir below image_dir, i.e. image_dir/YYYYMMDD/
-        bool abortstate; //!< set true to abort the current operation (exposure, readout, etc.)
 
         std::string writekeys_when; //!< when to write fits keys "before" or "after" exposure
         Common::Queue async; /// message queue object
 
-        void set_abortstate(bool state);
-
-        bool get_abortstate();
+        inline void set_abort()   { this->abortstate.store(true, std::memory_order_seq_cst); };
+        inline void clear_abort() { this->abortstate.store(false, std::memory_order_seq_cst); };
+        inline bool is_aborted()  { return this->abortstate.load(std::memory_order_seq_cst); };
 
         void set_dirmode(mode_t mode_in) { this->dirmode = mode_in; }
 
@@ -417,7 +415,7 @@ namespace Camera {
 
         std::vector<std::vector<long> > amp_section;
 
-        XxposureTime exposure_time;
+        ExposureTime exposure_time;
 
         Common::FitsKeys userkeys; /// create a FitsKeys object for FITS keys specified by the user
         Common::FitsKeys systemkeys; /// create a FitsKeys object for FITS keys imposed by the software
