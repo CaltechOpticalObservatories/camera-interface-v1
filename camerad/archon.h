@@ -219,7 +219,6 @@ namespace Archon {
         long fetch(uint64_t bufaddr, uint32_t bufblocks);
 
         long read_frame(); //!< read Archon frame buffer into host memory
-        long hread_frame();
 
         long read_frame(Camera::frame_type_t frame_type); /// read Archon frame buffer into host memory
         long write_frame(); //!< write (a previously read) Archon frame buffer to disk
@@ -291,8 +290,9 @@ namespace Archon {
 #ifdef INSTR_DEIMOS
         long sci_exptime(std::string args, std::string &retstring);
         void set_sci_exptime(double exptime);
-        long start_sci_expose(std::string args, std::string &retstring);
-        long readout_sci(std::string args, std::string &retstring);
+        long sci_expose(std::string args, std::string &retstring);
+        long sci_start(std::string args, std::string &retstring);
+        long sci_readout(std::string args, std::string &retstring);
         long fcs_exptime(std::string args, std::string &retstring);
         void set_fcs_exptime(double exptime);
         long fcs_expose(std::string args, std::string &retstring);
