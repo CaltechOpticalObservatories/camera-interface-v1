@@ -103,6 +103,56 @@ namespace Archon {
   }
   /**************** Archon::Interface::interface ******************************/
 
+
+  /***** Archon::Interface::set_exptime ***************************************/
+  /**
+   * @brief      set exposure time
+   * @details    This takes a floating point exposure time (sec) and writes it
+   *             to the sec and/or msec parameters on the Archon, as appropriate,
+   *             then updates the camera info class on success.
+   * @param[in]  exptime        exposure time in seconds
+   * @param[in]  sec_param      reference to parameter name to hold sec
+   * @param[in]  msec_param     reference to parameter name to hold msec
+   * @param[in]  info           reference to Camera::Information object
+   * @throws     std::runtime_error
+   * @throws     std::exception
+   *
+   */
+  void Interface::set_exptime(double exptime,
+                              const std::string &sec_param,
+                              const std::string &msec_param,
+                              Camera::Information &info) {
+    const std::string function("Archon::Interface::set_exptime");
+
+    // Archon connection required to set exptime
+    if (!this->archon.isconnected()) {
+      throw std::runtime_error("connection not open to controller");
+    }
+
+    // Exposure time parameters must be defined
+    if (sec_param.empty() || msec_param.empty()) {
+      throw std::runtime_error("expsure time parameters not defined");
+    }
+
+    try {
+      // Split the requested exposure time into seconds and milliseconds
+      auto [sec, msec] = info.exposure_time.split(exptime);
+
+      // Set the sec and msec parameters on the controller,
+      // store the exptime in the class on success.
+      if ( (set_parameter(sec_param, sec)   == NO_ERROR) &&
+           (set_parameter(msec_param, msec) == NO_ERROR) ) {
+        info.exposure_time.set(exptime);
+      }
+      else throw std::runtime_error("could not write exposure time parameters to controller");
+    }
+    catch (const std::exception &e) {
+      throw;
+    }
+  }
+  /***** Archon::Interface::set_exptime ***************************************/
+
+
   /***** Archon::Interface::do_power ******************************************/
   /**
    * @brief      set/get the power state

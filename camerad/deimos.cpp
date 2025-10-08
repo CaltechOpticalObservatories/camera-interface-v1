@@ -83,7 +83,9 @@ namespace Archon {
     }
 
     // read the exptime from the class
-    retstring = std::to_string(fcs_exposure_time.get());
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(3) << this->fcs_info.exposure_time.get();
+    retstring = oss.str();
 
     return NO_ERROR;
   }
@@ -100,27 +102,11 @@ namespace Archon {
    *
    */
   void Interface::set_fcs_exptime(double exptime) {
-    const std::string function("Archon::Interface::set_fcs_exptime");
-    // Archon connection required to set/get exptime
-    if (!archon.isconnected()) {
-      throw std::runtime_error("connection not open to controller");
-    }
-    // exposure time parameters must be defined
-    if (fcs_exptime_sec_param.empty() || fcs_exptime_msec_param.empty()) {
-      throw std::runtime_error("FCS expsure time parameters not defined");
-    }
     try {
-      // split the requested exposure time into seconds and milliseconds
-      auto [sec, msec] = fcs_exposure_time.split(exptime);
-
-      // set the sec and msec parameters on the controller
-      // and store the exptime in the class on success
-      if ( (set_parameter(fcs_exptime_sec_param, sec)   == NO_ERROR) &&
-           (set_parameter(fcs_exptime_msec_param, msec) == NO_ERROR) ) {
-        fcs_info.exposure_time.set(exptime);
-        fcs_exposure_time.set(exptime);
-      }
-      else throw std::runtime_error("could not set FCS exposure time parameters");
+      this->set_exptime(exptime,
+                        this->fcs_exptime_sec_param,
+                        this->fcs_exptime_msec_param,
+                        this->fcs_info);
     }
     catch (const std::exception &e) {
       throw;
@@ -263,7 +249,9 @@ namespace Archon {
     }
 
     // read the exptime from the class
-    retstring = std::to_string(sci_exposure_time.get());
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(3) << this->sci_info.exposure_time.get();
+    retstring = oss.str();
 
     return NO_ERROR;
   }
@@ -272,7 +260,7 @@ namespace Archon {
 
   /***** Archon::Interface::set_sci_exptime ***********************************/
   /**
-   * @brief      set SCI exposure time  // TODO THIS COULD BE COMBINED WITH set_fcs_exptime <------------
+   * @brief      set SCI exposure time
    * @details    This function is used internally, and is what actually sets
    *             the exposure time.
    * @param[in]  exptime  double-precision exposure time in seconds
@@ -280,27 +268,11 @@ namespace Archon {
    *
    */
   void Interface::set_sci_exptime(double exptime) {
-    const std::string function("Archon::Interface::set_sci_exptime");
-    // Archon connection required to set/get exptime
-    if (!archon.isconnected()) {
-      throw std::runtime_error("connection not open to controller");
-    }
-    // exposure time parameters must be defined
-    if (sci_exptime_sec_param.empty() || sci_exptime_msec_param.empty()) {
-      throw std::runtime_error("SCI expsure time parameters not defined");
-    }
     try {
-      // split the requested exposure time into seconds and milliseconds
-      auto [sec, msec] = sci_exposure_time.split(exptime);
-
-      // set the sec and msec parameters on the controller
-      // and store the exptime in the class on success
-      if ( (set_parameter(sci_exptime_sec_param, sec)   == NO_ERROR) &&
-           (set_parameter(sci_exptime_msec_param, msec) == NO_ERROR) ) {
-        sci_info.exposure_time.set(exptime);
-        sci_exposure_time.set(exptime);
-      }
-      else throw std::runtime_error("could not set SCI exposure time parameters");
+      this->set_exptime(exptime,
+                        this->sci_exptime_sec_param,
+                        this->sci_exptime_msec_param,
+                        this->sci_info);
     }
     catch (const std::exception &e) {
       throw;

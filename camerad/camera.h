@@ -202,7 +202,7 @@ namespace Camera {
             auto [sec,msec] = split(value);
             _sec_part       = sec;
             _msec_part      = msec;
-            _exptime_sec    = value;
+            _exptime_sec    = sec + msec/1000.0;  // store value rounded to nearest msec
           }
           catch (const std::exception &e) { throw; }
         }
