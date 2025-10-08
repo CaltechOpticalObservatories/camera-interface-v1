@@ -104,9 +104,6 @@ namespace Archon {
         Common::FitsKeys userkeys; //!< instantiate a Common object
         Common::FitsKeys systemkeys; //!< instantiate a Common object
 
-        Camera::ExposureTime fcs_exposure_time;  //!< exposure time for FCS detector
-        Camera::ExposureTime sci_exposure_time;  //!< exposure time for SCI detector
-
         Camera::Information fcs_info;   /// this is the main camera_info object
         Camera::Information sci_info;   /// this is the main camera_info object
 
@@ -244,6 +241,11 @@ namespace Archon {
 
         long power( std::string state_in, std::string &retstring );     /// wrapper for do_power
         long do_power( std::string state_in, std::string &retstring );  /// set/get Archon power state
+
+        void set_exptime(double exptime,
+                         const std::string &sec_param,
+                         const std::string &msec_param,
+                         Camera::Information &info);
 
         long expose(std::string nseq_in);
 
