@@ -13,6 +13,7 @@
 #include <sstream>
 #include "common.h"
 #include "network.h"
+#include "camera_interface.h"
 
 struct network_details {
     std::string hostname;
@@ -29,7 +30,7 @@ namespace Camera {
    * @brief    contains information for each controller
    *
    */
-  class Controller {
+  class ArchonController : public Controller {
     friend class ArchonInterface;      //!< forward declaration of parent interface
 
     // Archon hardware-based constants.
@@ -40,10 +41,10 @@ namespace Camera {
     const int NADCHAN = 4; //!< number of channels per ADC module
 
     public:
-      Controller();
-      ~Controller();
+      ArchonController();
+      ~ArchonController();
 
-      void configure_controller();
+      void configure_controller() override;
 
       typedef enum {
         FRAME_IMAGE,
@@ -58,7 +59,7 @@ namespace Camera {
 
     private:
       ArchonInterface* interface;      //!< pointer back to the parent interface
-
+      Camera::Information info;        //!< information for this controller
       Network::TcpSocket archon;       //!< this is how we talk to the Archon
 
       void set_interface(ArchonInterface* _interface);
@@ -70,6 +71,7 @@ namespace Camera {
       bool is_connected;               //!< true if controller connected
       std::atomic_flag archon_busy = ATOMIC_FLAG_INIT;  //!< indicates a thread is accessing Archon
       bool is_firmwareloaded;
+      std::string firmware;
       bool is_camera_mode;             //!< has a camera mode been selected
       int msgref;
       std::string backplaneversion;
@@ -82,6 +84,12 @@ namespace Camera {
       std::string power_status;             //!< Archon power status
       std::mutex archon_mutex;
       network_details archon_network_details;
+
+      long send_cmd(const std::string &cmd, std::string &reply);
+      long send_cmd(const std::string &cmd);
+      long fetchlog();
+      long load_acf(const std::string &filename, bool write_to_archon=true);
+      long get_status_key(const std::string &key, std::string &value);
 
       long allocate_framebuf(uint32_t reqsz);
       long read_frame(frametype_t type);

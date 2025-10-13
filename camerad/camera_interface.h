@@ -17,6 +17,12 @@ namespace Camera {
 
   class Server;  // forward declaration for Interface class
 
+  class Controller {
+    public:
+      virtual ~Controller() = default;
+      virtual void configure_controller() = 0;
+  };
+
   class Interface {
     protected:
       Camera::Server* server=nullptr;
@@ -24,6 +30,14 @@ namespace Camera {
       Common::FitsKeys systemkeys;
 
       std::unique_ptr<ExposureModeBase> exposure_mode;
+      std::unique_ptr<Controller> controller;
+
+      template <typename T>
+      T &set_controller(std::unique_ptr<T> _controller) {
+        T &controller_ref = *_controller;
+        this->controller = std::move(_controller);
+        return controller_ref;
+      }
 
       std::atomic<bool> is_producer_finished;
       std::atomic<bool> is_producer_error;
@@ -49,12 +63,12 @@ namespace Camera {
       virtual long basename( std::string args, std::string &retstring ) = 0;
       virtual long bias( std::string args, std::string &retstring ) = 0;
       virtual long bin( std::string args, std::string &retstring ) = 0;
-      virtual void configure_controller() = 0;
+      virtual void configure_controller() { if (this->controller) this->controller->configure_controller(); }
       virtual long connect_controller( std::string args, std::string &retstring ) = 0;
       virtual long disconnect_controller( std::string args, std::string &retstring ) = 0;
       virtual long exptime( std::string args, std::string &retstring ) = 0;
       virtual long expose( std::string args, std::string &retstring ) = 0;
-      virtual long load_firmware( std::string args, std::string &retstring ) = 0;
+      virtual long load_firmware( const std::string &args, std::string &retstring ) = 0;
       virtual long native( std::string args, std::string &retstring ) = 0;
       virtual long power( std::string args, std::string &retstring ) = 0;
       virtual long test( std::string args, std::string &retstring ) = 0;

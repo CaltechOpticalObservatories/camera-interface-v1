@@ -10,12 +10,9 @@
 
 namespace Camera {
 
-  ArchonInterface::ArchonInterface() {
+  ArchonInterface::ArchonInterface() :
+    controller(set_controller(std::make_unique<ArchonController>())) {
     controller.set_interface(this);
-
-    // pre-size the modtype and modversion vectors to hold the max number of modules
-    controller.modtype.resize(NMODS);
-    controller.modversion.resize(NMODS);
   }
   ArchonInterface::~ArchonInterface() {
   }
@@ -253,7 +250,7 @@ namespace Camera {
              << std::hex
              << (module-1);
 
-    if (error == NO_ERROR) error = this->archon_cmd(applystr.str());
+    if (error == NO_ERROR) error = this->controller.send_cmd(applystr.str());
 
     if (error != NO_ERROR) {
       message << "writing bias configuration: " << key << "=" << value;
@@ -286,42 +283,6 @@ namespace Camera {
     return ERROR;
   }
   /***** Camera::ArchonInterface::bin *****************************************/
-
-
-  /***** Camera::ArchonInterface::configure_controller ************************/
-  /**
-   * @brief      parse the configuration file for controller-related parameters
-   * @details    The config file has already been read into the Config class.
-   * @throws     std::runtime_error
-   *
-   */
-  void ArchonInterface::configure_controller() {
-    std::stringstream errstr;
-
-    if (this->configfile.n_rows < 1) throw std::runtime_error("empty configuration");
-
-    // iterate through each row in config file
-    for (int row=0; row < this->configfile.n_rows; row++) {
-
-      // ARCHON_IP
-      if (this->configfile.param[row]=="ARCHON_IP") {
-        controller.archon.sethost( this->configfile.arg[row] );
-      }
-
-      // ARCHON_PORT
-      if (this->configfile.param[row]=="ARCHON_PORT") {
-        try {
-          controller.archon.setport( std::stoi(this->configfile.arg[row]) );
-        }
-        catch (const std::exception &e) {
-          errstr << "parsing " << this->configfile.param[row]
-                               << "=" << this->configfile.arg[row] << ": " << e.what();
-          throw std::runtime_error(errstr.str());
-        }
-      }
-    }
-  }
-  /***** Camera::ArchonInterface::configure_controller ************************/
 
 
   /***** Camera::ArchonInterface::connect_controller **************************/
@@ -361,7 +322,7 @@ namespace Camera {
 
     // get the Archon system information for installed modules
     std::string reply;
-    error = archon_cmd( SYSTEM, reply );              // first the whole reply in one string
+    error = controller.send_cmd( SYSTEM, reply );     // first the whole reply in one string
 
     std::vector<std::string> lines, tokens;
     Tokenize( reply, lines, " " );                    // then each line in a separate token "lines"
@@ -443,7 +404,7 @@ namespace Camera {
 
     // empty the Archon log
     //
-    error = this->fetchlog();
+    error = this->controller.fetchlog();
 
     return error;
   }
@@ -667,663 +628,20 @@ namespace Camera {
   /***** Camera::ArchonInterface::expose **************************************/
 
 
-  /***** Camera::ArchonInterface::get_status_key ******************************/
+  /***** Camera::ArchonInterface::read_acf ************************************/
   /**
-   * @brief      get value for the indicated key from the Archon "STATUS" string
-   * @param[in]  key    key to extract from STATUS
-   * @param[out] value  value of key
-   * @return     ERROR | NO_ERROR
+   * @brief      loads the ACF file into host only
+   * @details    This is a wrapper to provide outside access to load the ACF
+   *             file with write_to_archon = false.
+   * @param[in]  filename  (optional) fully qualified path to ACF file. Pull from
+   *                       config file if not supplied.
+   * @return     ERROR|NO_ERROR
    *
    */
-  long ArchonInterface::get_status_key( std::string key, std::string &value ) {
-    const std::string function("Camera::ArchonInterface::get_status_key");
-    std::stringstream message;
-    std::string reply;
-
-    long error = this->archon_cmd( STATUS, reply );// first the whole reply in one string
-
-    if ( error != NO_ERROR ) return error;
-
-    std::vector<std::string> lines, tokens;
-    Tokenize( reply, lines, " " );                 // then each line in a separate token "lines"
-
-    for ( auto line : lines ) {
-      Tokenize( line, tokens, "=" );               // break each line into tokens to get KEY=value
-      if ( tokens.size() != 2 ) continue;          // need 2 tokens
-      try {
-        if ( tokens.at(0) == key ) {               // looking for the KEY
-          value = tokens.at(1);                    // found the KEY= status here
-          break;                                   // done looking
-        } else continue;
-      }
-      catch (const std::exception &e) {            // should be impossible
-        logwrite(function, "ERROR: "+std::string(e.what()));
-        return ERROR;
-      }
-    }
-    return NO_ERROR;
+  long ArchonInterface::read_acf(const std::string &filename) {
+    return( this->controller.load_acf(filename, false) );
   }
-  /***** Camera::ArchonInterface::get_status_key ******************************/
-
-
-  /***** Camera::ArchonInterface::archon_cmd **********************************/
-  /**
-   * @brief      send a command to Archon
-   * @details    This function is overloaded.
-   *             Use this form when the calling function doesn't need a reply.
-   * @param[in]  cmd    command to send
-   * @return     ERROR | BUSY | NO_ERROR
-   *
-   */
-  long ArchonInterface::archon_cmd(std::string cmd) {
-    std::string reply;
-    return( archon_cmd(cmd, reply) );
-  }
-  /***** Camera::ArchonInterface::archon_cmd **********************************/
-  /**
-   * @brief      send a command to Archon
-   * @details    This function is overloaded.
-   *             Use this form when the calling function doesn't need a reply.
-   * @param[in]  cmd    command to send
-   * @param[out] reply  string contains reply
-   * @return     ERROR | BUSY | NO_ERROR
-   *
-   */
-  long ArchonInterface::archon_cmd(std::string cmd, std::string &reply) {
-    std::string function = "ArchonInterface::archon_cmd";
-    char message[256];
-    char check[4];
-    int     retval;
-    int     error = NO_ERROR;
-
-    // nothing to do if no connection open to controller
-    if (!controller.archon.isconnected()) {
-      logwrite( function, "ERROR connection not open to controller" );
-      return ERROR;
-    }
-
-    // Blocks to protect against simultaneous access, automatically
-    // unlocks on return.
-    //
-    std::lock_guard<std::mutex> lock(controller.archon_mutex);
-
-    // The archon busy atomic flag is also needed because FETCH can keep
-    // Archon busy for longer than the duration of this function.
-    //
-    if ( controller.archon_busy.test_and_set() ) {
-      SNPRINTF(message, "ERROR Archon busy: ignored command \"%s\"", cmd.c_str());
-      logwrite(function, std::string(message));
-      return BUSY;
-    }
-
-    // build command: ">xxCOMMAND\n" where xx=hex msgref and COMMAND=command
-    //
-    char buf[256];
-    controller.msgref = (controller.msgref + 1) % 256;       // increment msgref for each new command sent
-    int len = std::snprintf(buf, sizeof(buf), ">%02X%s\n", controller.msgref, cmd.c_str());
-    std::string scmd(buf, len);
-
-    // build the command checksum: msgref used to check that reply matches command
-    //
-    SNPRINTF(check, "<%02X", controller.msgref);
-
-    // send the command
-    //
-    if ( (controller.archon.Write(scmd)) == -1) {
-      logwrite( function, "ERROR writing to camera socket");
-      return ERROR;
-    }
-
-    // For the FETCH command we don't wait for a reply, but return immediately.
-    // FETCH results in a binary response which is handled elsewhere (in read_frame).
-    // Must also distinguish this from the FETCHLOG command, for which we do wait
-    // for a normal reply.
-    //
-    // Do not clear the archon_busy flag because Archon is still busy!
-    // The read_frame() function will have to clear this flag when it is
-    // done reading the data.
-    //
-    if (cmd.size() >= 5 && memcmp(cmd.data(), "FETCH", 5)==0 &&
-       (cmd.size() < 8 || memcmp(cmd.data(), "FETCHLOG", 8) != 0)) return NO_ERROR;
-
-    // For all other commands, receive the reply
-    //
-    char* buffer = new char[64*1024+1]{};                // temporary buffer for holding Archon replies
-    reply.clear();                                       // zero reply buffer
-    do {
-      if ( (retval=controller.archon.Poll()) <= 0) {
-        if (retval==0) { SNPRINTF(message, "Poll timeout waiting for response from Archon command (maybe unrecognized command?)"); error=TIMEOUT; }
-        if (retval<0)  { SNPRINTF(message, "Poll error waiting for response from Archon command"); error=ERROR; }
-        if ( error != NO_ERROR ) logwrite( function, std::string(message) );
-        break;
-      }
-      retval = controller.archon.Read(buffer, 64*1024);  // read into temp buffer
-      if (retval <= 0) {
-        logwrite( function, "ERROR reading Archon" );
-        break;
-      }
-      buffer[retval] = '\0';                             // null-terminate bytes read
-      reply.append(buffer);                              // append read buffer into the reply string
-      if (strchr(buffer, '\n') != nullptr) break;        // exit on newline
-    } while(retval>0);
-
-    delete [] buffer;
-
-    // If there was an Archon error then clear the busy flag and get out now
-    //
-    if ( error != NO_ERROR ) {
-      controller.archon_busy.clear();
-      return error;
-    }
-
-    // The first three bytes of the reply should contain the msgref of the
-    // command, which can be used as a check that the received reply belongs
-    // to the command which was sent.
-    //
-    // Error processing command (no other information is provided by Archon)
-    //
-    if (!reply.empty() && reply[0]=='?') {
-      error = ERROR;
-      SNPRINTF(message, "Archon controller returned ERROR processing command: %s", cmd.c_str());
-      logwrite( function, std::string(message) );
-    }
-    else
-    // First 3 bytes of reply must equal checksum else reply doesn't belong to command
-    if (reply.size()<3 || std::memcmp(reply.data(), check, 3) != 0) {
-      error = ERROR;
-      std::string hdr = reply;
-      try { scmd.erase(scmd.find("\n"), 1); } catch(...) { }
-      SNPRINTF(message, "ERROR command-reply mismatch for command: %s: expected %s but received %s", scmd.c_str(), check, reply.c_str());
-      logwrite( function, std::string(message) );
-    }
-    else {
-      // command and reply are a matched pair
-      error = NO_ERROR;
-      reply.erase(0, 3);                             // strip off the msgref from the reply
-    }
-
-    // clear the busy flag
-    controller.archon_busy.clear();
-
-    return error;
-  }
-  /***** Camera::ArchonInterface::archon_cmd **********************************/
-
-
-  /***** Camera::ArchonInterface::fetchlog ************************************/
-  /**
-   * @brief  fetch the archon log entry and log the response
-   * @return NO_ERROR or ERROR,  return value from archon_cmd call
-   *
-   * Send the FETCHLOG command to, then read the reply from Archon.
-   * Fetch until the log is empty. Log the response.
-   *
-   */
-  long ArchonInterface::fetchlog() {
-    std::string function = "ArchonInterface::fetchlog";
-    std::string reply;
-    std::stringstream message;
-    long  retval;
-
-    // send FETCHLOG command while reply is not (null)
-    //
-    do {
-      if ( (retval=this->archon_cmd(FETCHLOG, reply)) != NO_ERROR ) {        // send command here
-        logwrite( function, "ERROR: calling FETCHLOG" );
-        return retval;
-      }
-      if (reply != "<null>") {
-        try {
-            reply.erase(reply.find('\n'), 1);
-        } catch(...) { }             // strip newline
-        logwrite(function, reply);                                           // log reply here
-      }
-    } while (reply != "<null>");                                             // stop when reply is (null)
-
-    return retval;
-  }
-  /***** Camera::ArchonInterface::fetchlog ************************************/
-
-
-  /***** Camera::ArchonInterface::load_acf ************************************/
-  /**
-   * @brief      loads the ACF file into configuration memory (no APPLY!)
-   * @details    This is an internal-use function which performs the detailed
-   *             steps of loading and parsing an ACF file, from disk, into
-   *             the class and Archon configuration memory. Essentially, it
-   *             performs the WCONFIG but nothing else, nothing is applied
-   *             and the timing cores are not reset. This function will be
-   *             called by load_timing() and load_firmware().
-   * @param[in]  acffile
-   * @return     ERROR or NO_ERROR
-   *
-   * This function loads the specfied file into configuration memory.
-   * While the ACF is being read, an internal database (STL map) is being
-   * created to allow lookup access to the ACF file or parameters.
-   *
-   * The [MODE_XXX] sections are also parsed and parameters as a function
-   * of mode are saved in their own database.
-   *
-   * This function only loads (WCONFIGxxx) the configuration memory; it does
-   * not apply it to the system. Therefore, this function must be followed
-   * with a LOADTIMING or APPLYALL command, for example.
-   *
-   */
-  long ArchonInterface::load_acf(std::string filename, bool write_to_archon) {
-    const std::string function("Camera::ArchonInterface::load_acf");
-    std::stringstream message;
-    std::fstream filestream;  // I/O stream class
-    std::string line;         // the line read from the acffile
-    std::string mode;
-    std::string keyword, keystring, keyvalue, keytype, keycomment;
-    std::stringstream sscmd;
-    std::string key, value;
-
-    int      linecount;  // the Archon configuration line number is required for writing back to config memory
-    long     error=NO_ERROR;
-    bool     parse_config=false;
-
-    // get the acf filename, either passed here or from loaded default
-    //
-    if ( filename.empty() ) {
-      filename = this->camera_info.firmware;
-
-    } else {
-      this->camera_info.firmware = filename;
-    }
-
-    // try to open the file
-    //
-    try {
-      filestream.open(filename, std::ios_base::in);
-    }
-    catch(const std::exception &e) {
-      logwrite( function, "ERROR opening "+filename+": "+std::string(e.what()));
-      return ERROR;
-    }
-
-    if ( ! filestream.is_open() || ! filestream.good() ) {
-      logwrite(function, "ERROR opening "+filename);
-      return ERROR;
-    }
-
-    logwrite(function, filename);
-
-    // The CPU in Archon is single threaded, so it checks for a network
-    // command, then does some background polling (reading bias voltages etc.),
-    // then checks again for a network command.  "POLLOFF" disables this
-    // background checking, so network command responses are very fast.
-    // The downside is that bias voltages, temperatures, etc. are not updated
-    // until you give a "POLLON".
-    //
-    error = this->archon_cmd(POLLOFF);
-
-    // clear configuration memory for this controller
-    //
-    if (error == NO_ERROR) error = this->archon_cmd(CLEARCONFIG);
-
-    if ( error != NO_ERROR ) {
-        logwrite( function, "ERROR: could not prepare Archon for new ACF" );
-        return error;
-    }
-
-    // Any failure after clearing the configuration memory will mean
-    // no firmware is loaded.
-    //
-    this->controller.is_firmwareloaded=false;
-
-    this->controller.modemap.clear();            // file is open, clear all modes
-
-    linecount = 0;                               // init Archon configuration line number
-
-    while ( getline(filestream, line) ) {        // note that getline discards the newline "\n" character
-
-      // don't start parsing until [CONFIG] and stop on a newline or [SYSTEM]
-      //
-      if (line == "[CONFIG]") { parse_config=true;  continue; }
-      if (line == "\n"      ) { parse_config=false; continue; }
-      if (line == "[SYSTEM]") { parse_config=false; continue; }
-
-      std::string savedline = line;              // save un-edited line for error reporting
-
-      // parse mode sections, looking for "[MODE_xxxxx]"
-      //
-      if (line.substr(0,6)=="[MODE_") {          // this is a mode section
-        try {
-          line.erase(line.find('['), 1);         // erase the opening square bracket
-          line.erase(line.find(']'), 1);         // erase the closing square bracket
-        }
-        catch(const std::exception &e) {
-          logwrite(function, "ERROR parsing \""+savedline+"\": "+std::string(e.what())+": expected [MODE_xxxx]");
-          filestream.close();
-          return ERROR;
-        }
-        if ( ! line.empty() ) {                  // What's remaining should be MODE_xxxxx
-          mode = line.substr(5);                 // everything after "MODE_" is the mode name
-          std::transform( mode.begin(), mode.end(), mode.begin(), ::toupper );    // make uppercase
-
-          // got a mode, now check if one of this name has already been located
-          // and put into the modemap
-          //
-          if ( this->controller.modemap.find(mode) != this->controller.modemap.end() ) {
-            logwrite(function, "ERROR duplicate definition of mode "+mode+": load aborted");
-	          filestream.close();
-            return ERROR;
-          }
-          else {
-            parse_config = true;
-            message.str(""); message << "detected mode: " << mode; logwrite(function, message.str());
-            this->controller.modemap[mode].rawenable=-1;    // initialize to -1, require it be set somewhere in the ACF
-                                                 // this also ensures something is saved in the modemap for this mode
-          }
-
-        }
-        else {                                   // somehow there's no xxx left after removing "[MODE_" and "]"
-          logwrite(function, "ERROR malformed mode section \""+savedline+"\": expected [MODE_xxxx]");
-          filestream.close();
-          return ERROR;
-        }
-      }
-
-      // Everything else is for parsing configuration lines so if we didn't get [CONFIG] then
-      // skip to the next line.
-      //
-      if (!parse_config) continue;
-
-      // replace any TAB characters with a space
-      //
-      string_replace_char(line, "\t", " ");
-
-      // replace any backslash characters with a forward slash
-      //
-      string_replace_char(line, "\\", "/");
-
-      // erase all quotes
-      try {
-          line.erase( std::remove(line.begin(), line.end(), '"'), line.end() );
-      } catch(...) { }
-
-      // Initialize key, value strings used to form WCONFIG KEY=VALUE command.
-      // As long as key stays empty then the WCONFIG command is not written to the Archon.
-      // This is what keeps TAGS: in the [MODE_xxxx] sections from being written to Archon,
-      // because these do not populate key.
-      //
-      key="";
-      value="";
-
-      //  ************************************************************
-      // Store actual Archon parameters in their own STL map IN ADDITION to the map
-      // in which all other keywords are store, so that they can be accessed in
-      // a different way.  Archon PARAMETER KEY=VALUE paris are formatted as:
-      // PARAMETERn=ParameterName=value
-      // where "PARAMETERn" is the key and "ParameterName=value" is the value.
-      // However, it is logical to access them by ParameterName only. That is what the
-      // parammap is for, hence the need for this STL map indexed on only the "ParameterName"
-      // portion of the value. Conversely, the configmap is indexed by the key.
-      //
-      // parammap stores ONLY the parameters, which are identified as PARAMETERxx="paramname=value"
-      // configmap stores every configuration line sent to Archon (which includes parameters)
-      //
-      // In order to modify these keywords in Archon, the entire above phrase
-      // (KEY=VALUE pair) must be preserved along with the line number on which it
-      // occurs in the config file.
-      // ************************************************************
-
-      // Look for TAGS: in the .acf file mode sections
-      //
-      // If tag is "ACF:" then it's a .acf line (could be a parameter or configuration)
-      //
-      if (line.compare(0,4,"ACF:")==0) {
-        std::vector<std::string> tokens;
-        line = line.substr(4);              // strip off the "ACF:" portion
-        std::string acf_key, acf_value;
-
-        try {
-          Tokenize(line, tokens, "="); // separate into tokens by "="
-
-          if (tokens.size() == 1) {                    // KEY=, the VALUE is empty
-            acf_key   = tokens[0];
-            acf_value = "";
-
-          } else if (tokens.size() == 2) {             // KEY=VALUE
-                acf_key   = tokens[0];
-                acf_value = tokens[1];
-
-          } else {
-                logwrite(function, "ERROR malformed ACF line \""+savedline+": expected KEY=VALUE");
-	              filestream.close();
-                return ERROR;
-          }
-
-          bool keymatch = false;
-
-          // If this key is in the main parammap then store it in the modemap's parammap for this mode
-          if (this->controller.parammap.find( acf_key ) != this->controller.parammap.end()) {
-            this->controller.modemap[mode].parammap[ acf_key ].name  = acf_key;
-            this->controller.modemap[mode].parammap[ acf_key ].value = acf_value;
-            keymatch = true;
-          }
-
-          // If this key is in the main configmap, then store it in the modemap's configmap for this mode
-          //
-          if (this->controller.configmap.find( acf_key ) != this->controller.configmap.end()) {
-            this->controller.modemap[mode].configmap[ acf_key ].value = acf_value;
-            keymatch = true;
-          }
-
-          // If this key is neither in the parammap nor in the configmap then return an error
-          //
-          if ( ! keymatch ) {
-            message.str("");
-            message << "[MODE_" << mode << "] ACF directive: " << acf_key << "=" << acf_value << " is not a valid parameter or configuration key";
-            logwrite(function, message.str());
-            filestream.close();
-            return ERROR;
-          }
-
-        } catch (const std::exception &e) {
-          logwrite(function, "ERROR extracting KEY=VAUE pair from \""+savedline+"\": "+std::string(e.what()));
-          filestream.close();
-          return ERROR;
-        }
-        // end if (line.compare(0,4,"ACF:")==0)
-
-      } else if (line.compare(0,5,"ARCH:")==0) {
-          // The "ARCH:" tag is for internal (Archon_interface) variables
-          // using the KEY=VALUE format.
-          //
-          std::vector<std::string> tokens;
-          line = line.substr(5);                                            // strip off the "ARCH:" portion
-          Tokenize(line, tokens, "=");                                      // separate into KEY, VALUE tokens
-          if (tokens.size() != 2) {
-            logwrite(function, "ERROR malformed ARCH line \""+savedline+"\": expected ARCH:KEY=VALUE");
-	          filestream.close();
-            return ERROR;
-          }
-          if ( tokens[0] == "NUM_DETECT" ) {
-            this->controller.modemap[mode].geometry.num_detect = std::stoi( tokens[1] );
-
-          } else if ( tokens[0] == "HORI_AMPS" ) {
-            this->controller.modemap[mode].geometry.amps[0] = std::stoi( tokens[1] );
-
-          } else if ( tokens[0] == "VERT_AMPS" ) {
-            this->controller.modemap[mode].geometry.amps[1] = std::stoi( tokens[1] );
-
-          } else {
-            logwrite(function, "ERROR unrecognized internal parameter "+tokens[0]);
-	          filestream.close();
-            return ERROR;
-          }
-          // end else if (line.compare(0,5,"ARCH:")==0)
-
-      } else if (line.compare(0,5,"FITS:")==0) {
-          // the "FITS:" tag is used to write custom keyword entries of the form "FITS:KEYWORD=VALUE/COMMENT"
-          //
-          std::vector<std::string> tokens;
-          line = line.substr(5);           // strip off the "FITS:" portion
-
-          // First, tokenize on the equal sign "=".
-          // The token left of "=" is the keyword. Immediate right is the value
-          Tokenize(line, tokens, "=");
-          if (tokens.size() != 2) {    // need at least two tokens at this point
-            logwrite(function, "ERROR malformed FITS command "+savedline+": expected KEYWORD=VALUE/COMMENT");
-            filestream.close();
-            return ERROR;
-          }
-          keyword   = tokens[0].substr(0,8); // truncate keyword to 8 characters
-          keystring = tokens[1];                    // tokenize the rest in a moment
-          keycomment = "";                          // initialize comment, assumed empty unless specified below
-
-          // Next, tokenize on the slash "/".
-          // The token left of "/" is the value. Anything to the right is a comment.
-          //
-          Tokenize(keystring, tokens, "/");
-
-          if (tokens.empty()) {          // no tokens found means no "/" characeter which means no comment
-            keyvalue = keystring;        // therefore the keyvalue is the entire string
-          }
-
-          if (not tokens.empty()) {         // at least one token
-            keyvalue = tokens[0];
-          }
-
-          if (tokens.size() == 2) {      // If there are two tokens here then the second is a comment
-            keycomment = tokens[1];
-          }
-
-          if (tokens.size() > 2) {       // everything below this has been covered
-            logwrite(function, "ERROR malformed FITS command "+savedline+": expected KEYWORD=VALUE/COMMENT");
-            logwrite(function, "ERROR too many \"/\" in comment string? "+keystring);
-            filestream.close();
-            return ERROR;
-          }
-
-          // Save all the user keyword information in a map for later
-          this->controller.modemap[mode].acfkeys.keydb[keyword].keyword    = keyword;
-          this->controller.modemap[mode].acfkeys.keydb[keyword].keytype    = this->camera_info.userkeys.get_keytype(keyvalue);
-          this->controller.modemap[mode].acfkeys.keydb[keyword].keyvalue   = keyvalue;
-          this->controller.modemap[mode].acfkeys.keydb[keyword].keycomment = keycomment;
-          // end if (line.compare(0,5,"FITS:")==0)
-          //
-          // ----- all done looking for "TAGS:" -----
-          //
-
-      } else if ( (line.compare(0,11,"PARAMETERS=")!=0) &&   // not the "PARAMETERS=xx line
-            (line.compare(0, 9,"PARAMETER"  )==0) ) {  // but must start with "PARAMETER"
-          // If this is a PARAMETERn=ParameterName=value KEY=VALUE pair...
-          //
-
-          std::vector<std::string> tokens;
-          Tokenize(line, tokens, "=");                  // separate into PARAMETERn, ParameterName, value tokens
-
-          if (tokens.size() != 3) {
-            logwrite(function, "ERROR malformed parameter line "+savedline+": expected PARAMETERn=Param=value");
-            filestream.close();
-            return ERROR;
-          }
-
-          // Tokenize broke everything up at the "=" and
-          // we need all three parts, but we also need a version containing the last
-          // two parts together, "ParameterName=value" so re-assemble them here.
-          //
-          std::stringstream paramnamevalue;
-          paramnamevalue << tokens[1] << "=" << tokens[2];             // reassemble ParameterName=value string
-
-          // build an STL map "configmap" indexed on PARAMETERn, the part before the first "=" sign
-          //
-          this->controller.configmap[ tokens[0] ].line  = linecount;              // configuration line number
-          this->controller.configmap[ tokens[0] ].value = paramnamevalue.str();   // configuration value for PARAMETERn
-
-          // build an STL map "parammap" indexed on ParameterName so that we can look up by the actual name
-          //
-          this->controller.parammap[ tokens[1] ].key   = tokens[0];    // PARAMETERn
-          this->controller.parammap[ tokens[1] ].name  = tokens[1];    // ParameterName
-          this->controller.parammap[ tokens[1] ].value = tokens[2];    // value
-          this->controller.parammap[ tokens[1] ].line  = linecount;    // line number
-
-          // assemble a KEY=VALUE pair used to form the WCONFIG command
-          key   = tokens[0];                                      // PARAMETERn
-          value = paramnamevalue.str();                           // ParameterName=value
-          // end If this is a PARAMETERn=ParameterName=value KEY=VALUE pair...
-
-      } else {
-          // ...otherwise, for all other KEY=VALUE pairs, there is only the value and line number
-          // to be indexed by the key. Some lines may be equal to blank, e.g. "CONSTANTx=" so that
-          // only one token is made
-          //
-          std::vector<std::string> tokens;
-          // Tokenize will return a size=1 even if there are no delimiters,
-          // so work around this by first checking for delimiters
-          // before calling Tokenize.
-          //
-          if (line.find_first_of('=', 0) == std::string::npos) {
-            continue;
-          }
-
-          Tokenize(line, tokens, "=");                            // separate into KEY, VALUE tokens
-          if (tokens.empty()) {
-            continue;                                             // nothing to do here if no tokens (ie no "=")
-          }
-
-          key = tokens[0];                                        // not empty so at least one token is the KEY
-          value.clear();                                          // VALUE can be empty (e.g. labels not required)
-
-          if ( tokens.size() > 1 ) {                              // at least one more token is the value
-            value = tokens[1];                                    // VALUE (there is a second token)
-          }
-
-          if ( tokens.size() > 2 ) {                              // more tokens are possible
-            for ( size_t i=2; i<tokens.size(); ++i ) {            // loop through remaining tokens
-              value += "=" + tokens[i];                           // and put them back together as the VALUE
-            }
-          }
-
-          this->controller.configmap[ tokens[0] ].line  = linecount;
-          this->controller.configmap[ tokens[0] ].value = value;
-      } // end else
-
-      // Form the WCONFIG command to Archon and
-      // write the config line to the controller memory (if key is not empty).
-      //
-      if ( !key.empty() ) {                                     // value can be empty but key cannot
-        sscmd.str("");
-        sscmd << "WCONFIG"
-              << std::uppercase << std::setfill('0') << std::setw(4) << std::hex
-              << linecount
-              << key << "=" << value << "\n";
-        // send the WCONFIG command here
-        if (error == NO_ERROR) error = this->archon_cmd(sscmd.str());
-        linecount++;
-      } // end if ( !key.empty() && !value.empty() )
-    } // end while ( getline(filestream, line) )
-
-    this->controller.configlines = linecount;  // save the number of configuration lines
-
-    // re-enable background polling
-    //
-    if (error == NO_ERROR) error = this->archon_cmd(POLLON);
-
-    filestream.close();
-    if (error == NO_ERROR) {
-      logwrite(function, "loaded Archon config file OK");
-      this->controller.is_firmwareloaded = true;
-
-      // add to systemkeys keyword database
-      //
-      std::stringstream keystr;
-      keystr << "FIRMWARE=" << filename << "// controller firmware";
-      this->systemkeys.addkey( keystr.str() );
-    }
-
-    // If there was an Archon error then read the Archon error log
-    //
-    if (error != NO_ERROR) error = this->fetchlog();
-
-    this->controller.is_camera_mode = false;         // require that a mode be selected after loading new firmware
-
-    return error;
-  }
-  /***** Camera::ArchonInterface::load_acf ************************************/
+  /***** Camera::ArchonInterface::read_acf ************************************/
 
 
   /***** Camera::ArchonInterface::load_firmware *******************************/
@@ -1337,7 +655,7 @@ namespace Camera {
    * @return     ERROR|NO_ERROR
    *
    */
-  long ArchonInterface::load_firmware( const std::string args, std::string &retstring ) {
+  long ArchonInterface::load_firmware(const std::string &args, std::string &retstring) {
     // Help
     //
     if (args=="?" || args=="help") {
@@ -1356,21 +674,26 @@ namespace Camera {
    * @return     ERROR|NO_ERROR
    *
    */
-  long ArchonInterface::load_firmware( const std::string acffile ) {
-    const std::string function("Camera::ArchonInterface::load_firmware");
-
+  long ArchonInterface::load_firmware(const std::string &acffile) {
     // load the ACF file and write to Archon configuration memory
     //
-    long error = this->load_acf( acffile, true );
+    long error = this->controller.load_acf(acffile);
 
     // Parse and apply the complete system configuration from configuration memory.
     // Detector power will be off after this.
     //
-    if (error == NO_ERROR) error = this->archon_cmd(APPLYALL);
+    if (error == NO_ERROR) error = this->controller.send_cmd(APPLYALL);
 
-    if ( error != NO_ERROR ) this->fetchlog();
+    // read/clear Archon's internal error log
+    //
+    if (error != NO_ERROR) this->controller.fetchlog();
 
-    // TODO set camera mode and any defaults (see NIRC2)
+    // set the mode to DEFAULT
+    //
+    if (error == NO_ERROR) error = this->set_camera_mode(std::string("DEFAULT"));
+
+    // TODO set exptime
+    // TODO other instrument-specific defaults?
 
     return error;
   }
@@ -1380,6 +703,9 @@ namespace Camera {
   /***** Camera::ArchonInterface::load_timing *********************************/
   /**
    * @brief      loads the ACF file and applies the timing script and parameters only
+   * @details    This version fits the general description of all virtual functions
+   *             inherited by the Camera::Interface base class and is overridden
+   *             by an Archon-specific implementation.
    * @param      acffile, specified ACF to load
    * @param      retstring, reference to string for return values
    * @return     ERROR | NO_ERROR | HELP
@@ -1400,7 +726,6 @@ namespace Camera {
       retstring.append( "  which parses and compiles only the timing script and parameters.\n" );
       return HELP;
     }
-
     return( this->load_timing(args) );
   }
   /***** Camera::ArchonInterface::load_timing *********************************/
@@ -1415,18 +740,60 @@ namespace Camera {
    * which parses and compiles only the timing script and parameters.
    *
    */
-  long ArchonInterface::load_timing( const std::string args ) {
+  long ArchonInterface::load_timing(const std::string &filename) {
     // load the ACF file into configuration memory
     //
-    long error = this->load_acf( args );
+    long error = this->controller.load_acf( filename );
 
     // parse timing script and parameters and apply them to the system
     //
-    if (error == NO_ERROR) error = this->archon_cmd(LOADTIMING);
+    if (error == NO_ERROR) error = this->controller.send_cmd(LOADTIMING);
 
     return error;
   }
   /***** Camera::ArchonInterface::load_timing *********************************/
+
+
+  /***** Camera::ArchonInterface::set_camera_mode *****************************/
+  /**
+   * @brief      set a camera "mode"
+   * @details    Allowable camera modes are defined in the ACF file and specify
+   *             a set of camera settings which can be used to change camera
+   *             settings.
+   *             This version fits the general description of all virtual functions
+   *             inherited by the Camera::Interface base class and is overridden
+   *             by an Archon-specific implementation.
+   * @param[in]  args       requested mode name (case-insensitive)
+   * @param[out  retstring  current mode name
+   * @return     ERROR|NO_ERROR
+   *
+   */
+  long ArchonInterface::set_camera_mode(std::string args, std::string &retstring) {
+    const std::string function("Camera::ArchonInterface::set_camera_mode");
+    // Help
+    //
+    if (args=="?" || args=="help") {
+      retstring = CAMERAD_MODE;
+      retstring.append( " <name>\n" );
+      retstring.append( "  Applies camera settings associated with MODE_<name> specified in the ACF file.\n");
+      return HELP;
+    }
+    return( this->set_camera_mode(args) );
+  }
+  /***** Camera::ArchonInterface::set_camera_mode *****************************/
+  /**
+   * @brief      set a camera "mode"
+   * @details    This version is for internal use.
+   * @param[in]  mode       requested mode name (must be capitalized)
+   * @return     ERROR|NO_ERROR
+   *
+   */
+  long ArchonInterface::set_camera_mode(const std::string &mode) {
+    const std::string function("Camera::ArchonInterface::set_camera_mode");
+    logwrite(function, "not yet implemented");
+    return ERROR;
+  }
+  /***** Camera::ArchonInterface::set_camera_mode *****************************/
 
 
   /***** Camera::ArchonInterface::native **************************************/
@@ -1434,13 +801,13 @@ namespace Camera {
    * @brief      send native commands directly to Archon and log result
    * @details    sends the command directly to Archon but does not parse any
    *             reply. @TODO publish the reply?
-   * @param[in]  cmd  command to send to Archon
-   * @return     ERROR|NO_ERROR|BUSY, return from archon_cmd() call
+   * @param[in]  args       command to send to Archon Controller
+   * @param[out] retstring  reply from Archon
+   * @return     ERROR|NO_ERROR|BUSY, return from controller.send_cmd() call
    *
    */
   long ArchonInterface::native( const std::string args, std::string &retstring ) {
     const std::string function("Camera::ArchonInterface::native");
-    std::string reply;
 
     // Help
     //
@@ -1452,10 +819,10 @@ namespace Camera {
       return HELP;
     }
 
-    long error = archon_cmd(args, reply);
+    long error = this->controller.send_cmd(args, retstring);
 
-    if (!reply.empty()) {
-      logwrite(function, reply);
+    if (!retstring.empty()) {
+      logwrite(function, retstring);
       // TODO publish the reply?
     }
 
@@ -1499,14 +866,14 @@ namespace Camera {
     if ( !args.empty() ) {
       if ( caseCompareString(args, "on") ) {
         // send POWERON command to Archon and wait 2s to ensure stable
-        if ( (error=this->archon_cmd( POWERON )) == NO_ERROR ) {
+        if ( (error=this->controller.send_cmd( POWERON )) == NO_ERROR ) {
           std::this_thread::sleep_for( std::chrono::seconds(2) );
         }
       }
       else
       if ( caseCompareString(args, "off") ) {
         // send POWEROFF command to Archon and wait 200ms to ensure off
-        if ( (error=this->archon_cmd( POWEROFF )) == NO_ERROR ) {
+        if ( (error=this->controller.send_cmd( POWEROFF )) == NO_ERROR ) {
           std::this_thread::sleep_for( std::chrono::milliseconds(200) );
         }
       }
@@ -1523,7 +890,7 @@ namespace Camera {
     // Read the Archon power state directly from Archon
     //
     std::string power;
-    error = get_status_key( "POWER", power );
+    error = this->controller.get_status_key( "POWER", power );
 
     if ( error != NO_ERROR ) return ERROR;
 
@@ -1622,7 +989,7 @@ namespace Camera {
 
 
   long ArchonInterface::read_frame() {
-    controller.read_frame(Camera::Controller::FRAME_IMAGE);
+    controller.read_frame(Camera::ArchonController::FRAME_IMAGE);
     return NO_ERROR;
   }
 

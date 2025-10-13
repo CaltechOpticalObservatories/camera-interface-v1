@@ -279,11 +279,19 @@ namespace Camera {
         ret = interface->test(args, retstring);
       }
 #ifdef CONTROLLER_ARCHON
-      // This differs from the universal "load_firmware". See details
-      // in Camera::ArchonInterface::load_timing() function header.
+      // These are Archon-controller-specific functions, so the interface
+      // is cast appropriately.
       else
       if ( cmd == CAMERAD_LOADTIMING ) {
         dynamic_cast<ArchonInterface*>(interface)->load_timing(args, retstring);
+      }
+      else
+      if ( cmd == CAMERAD_READACF ) {
+        dynamic_cast<ArchonInterface*>(interface)->read_acf(args);
+      }
+      else
+      if ( cmd == CAMERAD_MODE ) {
+        dynamic_cast<ArchonInterface*>(interface)->set_camera_mode(args, retstring);
       }
 #endif
 #ifdef CONTROLLER_BOB

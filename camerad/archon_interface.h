@@ -63,7 +63,7 @@ namespace Camera {
   };
 
   class ArchonInterface : public Interface {
-    friend Controller;
+    friend ArchonController;
 
     public:
       ArchonInterface();
@@ -78,12 +78,11 @@ namespace Camera {
       long basename( const std::string args, std::string &retstring ) override;
       long bias( const std::string args, std::string &retstring ) override;
       long bin( const std::string args, std::string &retstring ) override;
-      void configure_controller() override;
       long connect_controller( const std::string args, std::string &retstring ) override;
       long disconnect_controller( const std::string args, std::string &retstring ) override;
       long exptime( const std::string args, std::string &retstring ) override;
       long expose( const std::string args, std::string &retstring ) override;
-      long load_firmware( const std::string args, std::string &retstring ) override;
+      long load_firmware( const std::string &args, std::string &retstring ) override;
       long native( const std::string args, std::string &retstring ) override;
       long power( const std::string args, std::string &retstring ) override;
       long test( const std::string args, std::string &retstring ) override;
@@ -96,15 +95,19 @@ namespace Camera {
       // found in the base class.
       //
       long disconnect_controller();
-      long load_firmware(const std::string acffile);
+      long load_firmware(const std::string &acffile);
       long allocate_framebuf(uint32_t reqsz);
       long load_timing(std::string cmd, std::string &reply);
+      long read_acf(const std::string &filename);
       long read_frame();
+      long set_camera_mode(std::string args, std::string &retstring);
+      long set_camera_mode(const std::string &mode);
 
       char* get_framebuf() { return controller.framebuf; }
 
     private:
-      Controller controller;
+      ArchonController &controller;      //!< for hardware operations with the Archon controller
+
       std::string_view QUIET = "quiet";  // allows sending commands without logging
       const int NMODS = 12;              //!< number of modules per controller
 
@@ -118,12 +121,7 @@ namespace Camera {
       //
       long connect_controller(const std::string& devices_in);
       template <class T> long get_configmap_value(std::string key_in, T& value_out);
-      long get_status_key(std::string key, std::string &value);
-      long load_acf(std::string filename, bool write_to_archon=true);
-      long load_timing(std::string cmd);
-      long archon_cmd(std::string cmd, std::string &reply);
-      long archon_cmd(std::string cmd);
-      long fetchlog();
+      long load_timing(const std::string &filename);
 
   };
 

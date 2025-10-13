@@ -26,6 +26,7 @@ int main( int argc, char** argv ) {
     Daemon::daemonize( "camerad", "/tmp", "/dev/null", "/tmp/camerad.stderr", "", false );
     std::cerr << get_timestamp() << "  (" << function << ") daemonized. child process running" << std::endl;
   }
+  else logwrite(function, "starting");
 
   // the child process instantiates a Server object
   //

@@ -36,12 +36,14 @@ const std::string CAMERAD_LOADTIMING("loadtiming");
 const std::string CAMERAD_LONGERROR("longerror");
 const std::string CAMERAD_MEX("mex");
 const std::string CAMERAD_MEXAMPS("mexamps");
+const std::string CAMERAD_MODE("mode");
 const std::string CAMERAD_MODEXPTIME("modexptime");
 const std::string CAMERAD_NATIVE("native");
 const std::string CAMERAD_OPEN("open");  const int CAMERAD_OPEN_TIMEOUT(10000);
 const std::string CAMERAD_PAUSE("pause");
 const std::string CAMERAD_POWER("power");
 const std::string CAMERAD_PREEXPOSURES("preexposures");
+const std::string CAMERAD_READACF("readacf");
 const std::string CAMERAD_READOUT("readout");
 const std::string CAMERAD_RESUME("resume");
 const std::string CAMERAD_SHUTTER("shutter");
@@ -73,16 +75,18 @@ const std::vector<std::string> CAMERAD_SYNTAX = {
                                                   CAMERAD_INTERFACE,
                                                   CAMERAD_ISOPEN,
                                                   CAMERAD_KEY,
-                                                  CAMERAD_LOAD,
+                                                  CAMERAD_LOAD+" [ ? | <acffile> ]",
                                                   CAMERAD_LOADTIMING,
                                                   CAMERAD_LONGERROR,
                                                   CAMERAD_MEX,
                                                   CAMERAD_MEXAMPS,
+                                                  CAMERAD_MODE+" [ ? | <mode> ]",
                                                   CAMERAD_MODEXPTIME,
                                                   CAMERAD_NATIVE+" ? | [<DEV>|<CHAN>] <CMD> [ <ARG1> [ < ARG2> [ <ARG3> [ <ARG4> ] ] ] ]",
                                                   CAMERAD_OPEN+" [ ? | <devlist> ]",
                                                   CAMERAD_PAUSE,
                                                   CAMERAD_PREEXPOSURES,
+                                                  CAMERAD_READACF+" [ ? | <acffile> ]",
                                                   CAMERAD_READOUT+" [ ? ] | [ <dev#> | <chan> [ <amp> ] ]",
                                                   CAMERAD_RESUME,
                                                   CAMERAD_SHUTTER+" [ ? | enable | 1 | disable | 0 ]",
