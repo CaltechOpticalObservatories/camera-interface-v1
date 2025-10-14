@@ -762,6 +762,120 @@ namespace Camera {
   /***** Camera::ArchonController::get_status_key *****************************/
 
 
+  /***** Camera::ArchonController::set_power **********************************/
+  /**
+   * @brief      turn on|off controller bias power supplies
+   * @param[in]  state  0=off, 1=on
+   * @return     ERROR|NO_ERROR
+   *
+   */
+  long ArchonController::set_power(int state) {
+    const std::string function("Camera::ArchonController::power");
+    long error=NO_ERROR;
+
+    // must be connected
+    if (!this->archon.isconnected()) {
+      logwrite(function, "ERROR connection not open to controller");
+      return ERROR;
+    }
+
+    // set power according to state
+    switch( state ) {
+      case 0:   // send POWEROFF command to Archon and wait 200ms to ensure off
+                if ( (error=this->send_cmd(POWEROFF)) == NO_ERROR ) {
+                  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+                }
+                break;
+      case 1:   // send POWERON command to Archon and wait 2s to ensure stable
+                if ( (error=this->send_cmd(POWERON)) == NO_ERROR ) {
+                  std::this_thread::sleep_for(std::chrono::seconds(2));
+                }
+                break;
+      default:  logwrite(function, "ERROR expected 0|1");
+                return ERROR;
+    }
+
+    // get_power on return sets the class power_status variable
+    return( this->get_power() );
+  }
+  /***** Camera::ArchonController::set_power **********************************/
+
+
+  /***** Camera::ArchonController::get_power **********************************/
+  /**
+   * @brief      get Archon power status
+   * @details    This version only sets the class variable power_status.
+   * @return     ERROR|NO_ERROR
+   *
+   */
+  long ArchonController::get_power() {
+    std::string dontcare;
+    return( this->get_power(dontcare) );
+  }
+  /***** Camera::ArchonController::get_power **********************************/
+  /**
+   * @brief      get Archon power status
+   * @details    This version returns the power_status.
+   * @param[in]  power  reference to string to return the power_status
+   * @return     ERROR|NO_ERROR
+   *
+   */
+  long ArchonController::get_power(std::string &power) {
+    const std::string function("Camera::ArchonController::get_power");
+
+    // Read the Archon power state directly from Archon,
+    // which will be a string representation of an integer.
+    std::string power_status_key;
+    if (this->get_status_key("POWER", power_status_key) != NO_ERROR) {
+      logwrite(function, "ERROR getting status key: POWER");
+      return ERROR;
+    }
+
+    // convert that string into a real integer
+    int status=-1;
+    try { status = std::stoi( power_status_key ); }
+    catch (const std::exception &e) {
+      logwrite(function, "ERROR parsing status key \""+power_status_key+"\": "+std::string(e.what()));
+      return ERROR;
+    }
+
+    // convert that integer into a human readable string
+    // set the power status (or not) depending on the value extracted from the STATUS message
+    switch( status ) {
+      case -1:                                  // no POWER token found in status message
+        logwrite(function, "ERROR finding power in Archon status message" );
+        return ERROR;
+      case  0:                                  // usually an internal error
+        this->power_status = "UNKNOWN";
+        break;
+      case  1:                                  // no configuration applied
+        this->power_status = "NOT_CONFIGURED";
+        break;
+      case  2:                                  // power is off
+        this->power_status = "OFF";
+        break;
+      case  3:                                  // some modules powered, some not
+        this->power_status = "INTERMEDIATE";
+        break;
+      case  4:                                  // power is on
+        this->power_status = "ON";
+        break;
+      case  5:                                  // system is in standby
+        this->power_status = "STANDBY";
+        break;
+      default:                                  // should be impossible
+        logwrite(function, "ERROR unknown power status: "+power_status_key);
+        return ERROR;
+    }
+
+    // return variable is the class power status
+    power = this->power_status;
+
+    return NO_ERROR;
+  }
+  /***** Camera::ArchonController::power **************************************/
+
+
   /***** Camera::ArchonController::allocate_framebuf **************************/
   /**
    * @brief      allocate memory for frame buffer

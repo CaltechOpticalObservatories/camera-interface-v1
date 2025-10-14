@@ -32,12 +32,26 @@ namespace Camera {
       std::unique_ptr<ExposureModeBase> exposure_mode;
       std::unique_ptr<Controller> controller;
 
+      /***** Camera::Interface::set_controller ********************************/
+      /**
+       * @brief      Sets the controller and returns a typed reference to it
+       * @details    This template function takes ownership of a controller via
+       *             unique_ptr and stores it in the base class, while returning
+       *             a reference to the derived controller type. This allows the
+       *             base class to manage lifetime while derived classes maintain
+       *             typed access without repeated downcasts.
+       * @tparam     T            the derived controller type
+       * @param[in]  _controller  unique_ptr to the controller instance
+       * @return     reference to the controller with its derived type
+       *
+       */
       template <typename T>
       T &set_controller(std::unique_ptr<T> _controller) {
         T &controller_ref = *_controller;
         this->controller = std::move(_controller);
         return controller_ref;
       }
+      /***** Camera::Interface::set_controller ********************************/
 
       std::atomic<bool> is_producer_finished;
       std::atomic<bool> is_producer_error;

@@ -67,7 +67,6 @@ namespace Camera {
 
     public:
       ArchonInterface();
-      ~ArchonInterface() override;
 
       // These are virtual functions inherited by the Camera::Interface base class
       // and have their own controller-specific implementations which are

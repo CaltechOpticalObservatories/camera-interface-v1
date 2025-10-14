@@ -10,12 +10,22 @@
 
 namespace Camera {
 
+  /***** Camera::ArchonInterface::ArchonInterface *****************************/
+  /**
+   * @brief      ArchonInterface constructor
+   * @details    Initializes the controller member by creating an ArchonController
+   *             instance and passing it to set_controller(). The set_controller()
+   *             function transfers ownership to the base class while returning a
+   *             typed reference that is stored in the controller member variable.
+   *             This allows the base class to manage the controller's lifetime
+   *             while this derived class retains convenient typed access.
+   */
   ArchonInterface::ArchonInterface() :
     controller(set_controller(std::make_unique<ArchonController>())) {
+    // provides Controller access to my Interface
     controller.set_interface(this);
   }
-  ArchonInterface::~ArchonInterface() {
-  }
+  /***** Camera::ArchonInterface::ArchonInterface *****************************/
 
 
   /***** Camera::ArchonInterface::abort ***************************************/
@@ -657,7 +667,6 @@ namespace Camera {
    */
   long ArchonInterface::load_firmware(const std::string &args, std::string &retstring) {
     // Help
-    //
     if (args=="?" || args=="help") {
       retstring = CAMERAD_LOAD;
       retstring.append( " <acf-file>\n" );
@@ -665,6 +674,7 @@ namespace Camera {
       retstring.append( "  Archon power will be off after this operation.\n" );
       return HELP;
     }
+    // call the work function
     return load_firmware(args);
   }
   /***** Camera::ArchonInterface::load_firmware *******************************/
@@ -718,7 +728,6 @@ namespace Camera {
    */
   long ArchonInterface::load_timing( const std::string args, std::string &retstring ) {
     // Help
-    //
     if (args.empty() || args=="?" || args=="help") {
       retstring = CAMERAD_LOADTIMING;
       retstring.append( " <timing.acf>\n" );
@@ -726,11 +735,13 @@ namespace Camera {
       retstring.append( "  which parses and compiles only the timing script and parameters.\n" );
       return HELP;
     }
+    // call the work function
     return( this->load_timing(args) );
   }
   /***** Camera::ArchonInterface::load_timing *********************************/
   /**
    * @brief      loads the ACF file and applies the timing script and parameters only
+   * @details    This version calls the controller class functions to do the load.
    * @param      acffile, specified ACF to load
    * @return     ERROR | NO_ERROR
    *
@@ -771,13 +782,13 @@ namespace Camera {
   long ArchonInterface::set_camera_mode(std::string args, std::string &retstring) {
     const std::string function("Camera::ArchonInterface::set_camera_mode");
     // Help
-    //
     if (args=="?" || args=="help") {
       retstring = CAMERAD_MODE;
       retstring.append( " <name>\n" );
       retstring.append( "  Applies camera settings associated with MODE_<name> specified in the ACF file.\n");
       return HELP;
     }
+    // call the work function
     return( this->set_camera_mode(args) );
   }
   /***** Camera::ArchonInterface::set_camera_mode *****************************/
@@ -810,7 +821,6 @@ namespace Camera {
     const std::string function("Camera::ArchonInterface::native");
 
     // Help
-    //
     if (args.empty() || args=="?" || args=="help") {
       retstring = CAMERAD_NATIVE;
       retstring.append( " <cmd>\n" );
@@ -818,7 +828,7 @@ namespace Camera {
       retstring.append( "  to confirm that it did reply.\n" );
       return HELP;
     }
-
+    // call the work function
     long error = this->controller.send_cmd(args, retstring);
 
     if (!retstring.empty()) {
@@ -834,18 +844,15 @@ namespace Camera {
   /***** Camera::ArchonInterface::power ***************************************/
   /**
    * @brief      turn on controller bias power supplies
-   * @param[in]  args
-   * @param[out] retstring
+   * @param[in]  args       requested state or help, on|off|?
+   * @param[out] retstring  contains power_status string on success
    * @return     ERROR | NO_ERROR | HELP
    *
    */
-  long ArchonInterface::power( const std::string args, std::string &retstring ) {
+  long ArchonInterface::power(const std::string args, std::string &retstring) {
     const std::string function("Camera::ArchonInterface::power");
-    std::stringstream message;
-    long error=NO_ERROR;
 
     // Help
-    //
     if (args=="?" || args=="help") {
       retstring = CAMERAD_POWER;
       retstring.append( " [ on | off ]\n" );
@@ -854,89 +861,29 @@ namespace Camera {
       return HELP;
     }
 
-    // nothing to do if no connection open to controller
-    if (!this->controller.archon.isconnected()) {
-      logwrite( function, "ERROR connection not open to controller" );
-      return ERROR;
-    }
-
-
-    // set the Archon power state as requested
-    //
+    // parse the requested state
     if ( !args.empty() ) {
-      if ( caseCompareString(args, "on") ) {
-        // send POWERON command to Archon and wait 2s to ensure stable
-        if ( (error=this->controller.send_cmd( POWERON )) == NO_ERROR ) {
-          std::this_thread::sleep_for( std::chrono::seconds(2) );
-        }
-      }
+      int state=0;
+      if ( caseCompareString(args, "on") )  state=1;
       else
-      if ( caseCompareString(args, "off") ) {
-        // send POWEROFF command to Archon and wait 200ms to ensure off
-        if ( (error=this->controller.send_cmd( POWEROFF )) == NO_ERROR ) {
-          std::this_thread::sleep_for( std::chrono::milliseconds(200) );
-        }
-      }
+      if ( caseCompareString(args, "off") ) state=0;
       else {
         logwrite(function, "ERROR expected {ON|OFF}");
         return ERROR;
       }
-      if ( error != NO_ERROR ) {
+      // set the requested Archon power state
+      if (this->controller.set_power(state) != NO_ERROR) {
         logwrite( function, "ERROR setting Archon power "+args);
         return ERROR;
       }
     }
 
-    // Read the Archon power state directly from Archon
-    //
-    std::string power;
-    error = this->controller.get_status_key( "POWER", power );
+    // read the power status from the controller
+    long error = this->controller.get_power(retstring);
 
-    if ( error != NO_ERROR ) return ERROR;
+    logwrite(function, retstring);
 
-    int status=-1;
-
-    try { status = std::stoi( power ); }
-    catch (const std::exception &e) {
-      logwrite(function, "ERROR: "+std::string(e.what()));
-      return ERROR;
-    }
-
-    // set the power status (or not) depending on the value extracted from the STATUS message
-    //
-    switch( status ) {
-      case -1:                                                  // no POWER token found in status message
-        logwrite(function, "ERROR finding power in Archon status message" );
-        return ERROR;
-      case  0:                                                  // usually an internal error
-        this->controller.power_status = "UNKNOWN";
-        break;
-      case  1:                                                  // no configuration applied
-        this->controller.power_status = "NOT_CONFIGURED";
-        break;
-      case  2:                                                  // power is off
-        this->controller.power_status = "OFF";
-        break;
-      case  3:                                                  // some modules powered, some not
-        this->controller.power_status = "INTERMEDIATE";
-        break;
-      case  4:                                                  // power is on
-        this->controller.power_status = "ON";
-        break;
-      case  5:                                                  // system is in standby
-        this->controller.power_status = "STANDBY";
-        break;
-      default:                                                  // should be impossible
-        logwrite(function, "ERROR unknown power status: "+std::to_string(status));
-        return ERROR;
-    }
-
-    message.str(""); message << "POWER:" << this->controller.power_status;
-//  this->camera.async.enqueue( message.str() );
-
-    retstring = this->controller.power_status;
-
-    return NO_ERROR;
+    return error;
   }
   /***** Camera::ArchonInterface::power ***************************************/
 

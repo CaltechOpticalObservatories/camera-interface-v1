@@ -90,6 +90,9 @@ namespace Camera {
       long fetchlog();
       long load_acf(const std::string &filename, bool write_to_archon=true);
       long get_status_key(const std::string &key, std::string &value);
+      long set_power(int state);
+      long get_power();
+      long get_power(std::string &power);
 
       long allocate_framebuf(uint32_t reqsz);
       long read_frame(frametype_t type);
