@@ -10,6 +10,7 @@
 #include "camera_interface.h"          //!< defines Camera::Interface base class
 #include "archon_controller.h"
 #include "archon_exposure_modes.h"
+#include "camera_information.h"
 
 constexpr int MAXADCCHANS =   16;              //!< max number of ADC channels per controller (4 mod * 4 ch/mod)
 constexpr int MAXADMCHANS =   72;              //!< max number of ADM channels per controller (4 mod * 18 ch/mod)
@@ -62,6 +63,7 @@ namespace Camera {
     std::shared_ptr<char[]> rawpixels;         // Archon frame buffer(s)
   };
 
+
   class ArchonInterface : public Interface {
     friend ArchonController;
 
@@ -80,6 +82,7 @@ namespace Camera {
       long connect_controller( const std::string args, std::string &retstring ) override;
       long disconnect_controller( const std::string args, std::string &retstring ) override;
       long exptime( const std::string args, std::string &retstring ) override;
+      void set_exptime(double exptime) override;
       long expose( const std::string args, std::string &retstring ) override;
       long load_firmware( const std::string &args, std::string &retstring ) override;
       long native( const std::string args, std::string &retstring ) override;
@@ -102,10 +105,14 @@ namespace Camera {
       long set_camera_mode(std::string args, std::string &retstring);
       long set_camera_mode(const std::string &mode);
 
-      char* get_framebuf() { return controller.framebuf; }
+      char* get_framebuf() { return controller->framebuf; }
 
     private:
-      ArchonController &controller;      //!< for hardware operations with the Archon controller
+      /** @var     controller
+       *  @brief   for hardware operations with the Archon controller
+       *  @details typed pointer to Archon-specific controller
+       */
+      ArchonController* controller;
 
       std::string_view QUIET = "quiet";  // allows sending commands without logging
       const int NMODS = 12;              //!< number of modules per controller

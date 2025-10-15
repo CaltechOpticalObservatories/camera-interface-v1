@@ -14,6 +14,7 @@
 #include "common.h"
 #include "network.h"
 #include "camera_interface.h"
+#include "camera_information.h"
 
 struct network_details {
     std::string hostname;
@@ -23,6 +24,31 @@ struct network_details {
 namespace Camera {
 
   class ArchonInterface;
+
+  /***** Camera::ArchonInterface::ArchonExposureTime **************************/
+  /**
+   * @class    ArchonExposureTime
+   * @brief    derived class inherits from ExposureTime base class
+   * @details  Adds Archon-specific functions because the Archon separates
+   *           seconds and milliseconds.
+   *
+   */
+  class ArchonExposureTime : public ExposureTime {
+    protected:
+      uint32_t sec_part;
+      uint32_t msec_part;
+    public:
+      ArchonExposureTime() : ExposureTime(), sec_part(0), msec_part(0) { }
+
+      // override the base class
+      void set(double value) override;
+
+      // unique to the derived class
+      std::pair<uint32_t,uint32_t> get_pair() const;
+      std::pair<uint32_t,uint32_t> split(double value);
+  };
+  /***** Camera::ArchonInterface::ArchonExposureTime **************************/
+
 
   /***** Camera::ArchonInterface::Controller **********************************/
   /**
@@ -46,6 +72,9 @@ namespace Camera {
 
       void configure_controller() override;
 
+      void   set_exptime(double exptime);
+      double get_exptime() const { return( this->exposure_time->get() ); }
+
       typedef enum {
         FRAME_IMAGE,
         FRAME_RAW,
@@ -61,6 +90,7 @@ namespace Camera {
       ArchonInterface* interface;      //!< pointer back to the parent interface
       Camera::Information info;        //!< information for this controller
       Network::TcpSocket archon;       //!< this is how we talk to the Archon
+      ArchonExposureTime* exposure_time;
 
       void set_interface(ArchonInterface* _interface);
 
@@ -84,6 +114,9 @@ namespace Camera {
       std::string power_status;             //!< Archon power status
       std::mutex archon_mutex;
       network_details archon_network_details;
+
+      std::string sec_param;                //!< Archon parameter for exposure time seconds
+      std::string msec_param;               //!< Archon parameter for exposure time milliseconds
 
       long send_cmd(const std::string &cmd, std::string &reply);
       long send_cmd(const std::string &cmd);

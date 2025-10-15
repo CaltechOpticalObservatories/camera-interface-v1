@@ -13,17 +13,16 @@ namespace Camera {
   /***** Camera::ArchonInterface::ArchonInterface *****************************/
   /**
    * @brief      ArchonInterface constructor
-   * @details    Initializes the controller member by creating an ArchonController
-   *             instance and passing it to set_controller(). The set_controller()
-   *             function transfers ownership to the base class while returning a
-   *             typed reference that is stored in the controller member variable.
-   *             This allows the base class to manage the controller's lifetime
-   *             while this derived class retains convenient typed access.
+   *
    */
-  ArchonInterface::ArchonInterface() :
-    controller(set_controller(std::make_unique<ArchonController>())) {
-    // provides Controller access to my Interface
-    controller.set_interface(this);
+  ArchonInterface::ArchonInterface() {
+    {
+    auto ptr=std::make_unique<ArchonController>();    // create an Archon-specific Controller object
+    this->controller=ptr.get();                       // store typed pointer
+    Interface::controller = std::move(ptr);           // transfer ownership to base class
+    }
+
+    controller->set_interface(this);                  // provides Controller access to my Interface
   }
   /***** Camera::ArchonInterface::ArchonInterface *****************************/
 
@@ -134,7 +133,7 @@ namespace Camera {
 
     // must have loaded firmware
     //
-    if ( ! this->controller.is_firmwareloaded ) {
+    if ( ! this->controller->is_firmwareloaded ) {
       logwrite( function, "ERROR firmware not loaded" );
       return ERROR;
     }
@@ -177,7 +176,7 @@ namespace Camera {
     // Use the module type to get LV or HV Bias
     // and start building the bias configuration string.
     //
-    switch ( this->controller.modtype[ module-1 ] ) {
+    switch ( this->controller->modtype[ module-1 ] ) {
       case 0:
         message.str(""); message << "module " << module << " not installed";
         logwrite( function, message.str() );
@@ -249,7 +248,7 @@ namespace Camera {
 
     // Write the config line to update the bias voltage
     //
-    error = this->controller.write_config_key(key.c_str(), value.c_str(), changed);
+    error = this->controller->write_config_key(key.c_str(), value.c_str(), changed);
 
     // Now send the APPLYMODx command
     //
@@ -260,7 +259,7 @@ namespace Camera {
              << std::hex
              << (module-1);
 
-    if (error == NO_ERROR) error = this->controller.send_cmd(applystr.str());
+    if (error == NO_ERROR) error = this->controller->send_cmd(applystr.str());
 
     if (error != NO_ERROR) {
       message << "writing bias configuration: " << key << "=" << value;
@@ -309,14 +308,14 @@ namespace Camera {
     long error;
 
     // nothing to do if already connected
-    if ( controller.archon.isconnected() ) {
+    if ( controller->archon.isconnected() ) {
       logwrite(function, "camera connection already open");
       return NO_ERROR;
     }
 
     // initialize camera connection
     try {
-      if ( controller.archon.Connect() < 0 ) throw std::runtime_error("could not connect");
+      if ( controller->archon.Connect() < 0 ) throw std::runtime_error("could not connect");
     }
     catch (const std::exception &e) {
       logwrite(function, "ERROR "+std::string(e.what()));
@@ -325,14 +324,14 @@ namespace Camera {
     }
 
     message.str("");
-    message << "socket connection to host " << controller.archon.gethost()
-            << " port " << controller.archon.getport()
-            << " established on fd " << controller.archon.getfd();
+    message << "socket connection to host " << controller->archon.gethost()
+            << " port " << controller->archon.getport()
+            << " established on fd " << controller->archon.getfd();
     logwrite(function, message.str());
 
     // get the Archon system information for installed modules
     std::string reply;
-    error = controller.send_cmd( SYSTEM, reply );     // first the whole reply in one string
+    error = controller->send_cmd( SYSTEM, reply );    // first the whole reply in one string
 
     std::vector<std::string> lines, tokens;
     Tokenize( reply, lines, " " );                    // then each line in a separate token "lines"
@@ -348,7 +347,7 @@ namespace Camera {
       // get the module number
       //
       if ( tokens[0].compare( 0, 9, "BACKPLANE" ) == 0 ) {
-        if ( tokens[1] == "VERSION" ) this->controller.backplaneversion = tokens[2];
+        if ( tokens[1] == "VERSION" ) this->controller->backplaneversion = tokens[2];
         continue;
       }
 
@@ -380,8 +379,8 @@ namespace Camera {
       //
       if ( (module > 0) && (module <= NMODS) ) {
         try {
-          this->controller.modtype.at(module-1)    = type;       // store the type in a vector indexed by module
-          this->controller.modversion.at(module-1) = version;    // store the type in a vector indexed by module
+          this->controller->modtype.at(module-1)    = type;      // store the type in a vector indexed by module
+          this->controller->modversion.at(module-1) = version;   // store the type in a vector indexed by module
         }
         catch (const std::exception &e) {
           message.str(""); message << "requested module " << module << " out of range {1:" << NMODS << "}";
@@ -400,8 +399,8 @@ namespace Camera {
       int adchans=0;
       if ( type ==  2 ) adchans = ( adchans < MAXADCCHANS ? MAXADCCHANS : adchans );  // ADC module (type=2) found
       if ( type == 17 ) adchans = ( adchans < MAXADMCHANS ? MAXADMCHANS : adchans );  // ADM module (type=17) found
-      controller.gain.resize( adchans );
-      controller.offset.resize( adchans );
+      controller->gain.resize( adchans );
+      controller->offset.resize( adchans );
 
       // Check that the AD modules are installed in the correct slot
       //
@@ -414,7 +413,7 @@ namespace Camera {
 
     // empty the Archon log
     //
-    error = this->controller.fetchlog();
+    error = this->controller->fetchlog();
 
     return error;
   }
@@ -439,8 +438,8 @@ namespace Camera {
     const std::string function("Camera::ArchonInterface::get_configmap_value");
     std::stringstream message;
 
-    if ( this->controller.configmap.find(key_in) != this->controller.configmap.end() ) {
-      std::istringstream( this->controller.configmap[key_in].value  ) >> value_out;
+    if ( this->controller->configmap.find(key_in) != this->controller->configmap.end() ) {
+      std::istringstream( this->controller->configmap[key_in].value  ) >> value_out;
       return NO_ERROR;
     }
     else {
@@ -482,7 +481,7 @@ namespace Camera {
    */
   long ArchonInterface::disconnect_controller() {
     const std::string function("Camera::ArchonInterface::disconnect_controller");
-    long error = controller.archon.Close();
+    long error = controller->archon.Close();
     if (error == NO_ERROR) {
       logwrite(function, "Archon connection terminated");
     }
@@ -501,98 +500,60 @@ namespace Camera {
    *             unit can be optionally set here
    * @param[in]  exptime_in  "<time> [ s | ms ]" exposure time in current units
    * @param[out] retstring   return string
-   * @return     ERROR | NO_ERROR
-   *
-   * This function calls "set_parameter()" and "get_parameter()" using
-   * the "exptime" parameter (which must already be defined in the ACF file).
+   * @return     ERROR | NO_ERROR | HELP
    *
    */
   long ArchonInterface::exptime( const std::string args, std::string &retstring ) {
     const std::string function("Camera::ArchonInterface::exptime");
     std::stringstream message;
-    logwrite(function, "not yet implemented");
-    long ret=NO_ERROR;
-/***
-    if ( !exptime_in.empty() ) {
-      if ( exptime_in.find(".") != std::string::npos ) {
-      logwrite( function, "must be a whole number" );
-      retstring="invalid_argument";
-      return ERROR;
-      }
-      std::vector<std::string> tokens;
-      Tokenize( exptime_in, tokens, " " );
+    // Help
+    if (args=="?" || args=="help") {
+      retstring = CAMERAD_EXPTIME;
+      retstring.append( " [ <exptime> ]\n" );
+      retstring.append( "  get or optionally set the exposure time in floating point units of sec\n" );
+      return HELP;
+    }
+
+    // If an arg was supplied then use it to try to set the exptime
+    if (!args.empty()) {
       try {
-        uint32_t exptime=0;
-        std::string unit;
-        if ( tokens.size() > 0 ) exptime = static_cast<uint32_t>( std::stoul( tokens.at(0) ) );
-        if ( tokens.size() > 1 ) unit    = tokens.at(1);
-        if ( tokens.size() < 1 || tokens.size() > 2 ) {
-          logwrite( function, "expected <exptime> [ s | ms ]" );
-          retstring="invalid_argument";
-          return ERROR;
-        }
-
-        if ( exptime < 0 || exptime > Archon::MAX_EXPTIME ) throw std::out_of_range("value out of range");
-
-        // If a unit was supplied then call longexposure() to handle that
-        //
-        if ( ! unit.empty() ) {
-          if ( unit=="s" )  ret = this->longexposure( "true", retstring );
-          else
-          if ( unit=="ms" ) ret = this->longexposure( "false", retstring );
-          else {
-            logwrite( function, "expected <exptime> [ s | ms ]" );
-            return ERROR;
-          }
-          // longexposure() could fail if there's an error talking to Archon
-          // or if longexposure is not supported by the ACF.
-          //
-          if ( ret != NO_ERROR ) {
-            logwrite( function, "unable to set selected unit. exptime not set." );
-            retstring="invalid_argument";
-            return ERROR;
-          }
-        }
-
-        // set the parameter on the Archon
-        //
-        std::stringstream cmd;
-        cmd << "exptime " << tokens.at(0);
-        ret = this->set_parameter( cmd.str() );
-
-        // If Archon was updated then update the class
-        //
-        if ( ret == NO_ERROR ) {
-          if ( ! unit.empty() ) this->camera_info.exposure_time.unit( unit );
-          this->camera_info.exposure_time.value( exptime );
-        }
+        this->set_exptime(std::stod(args));
       }
-      catch (std::exception &e) {
-        message.str(""); message << "parsing exposure time: " << exptime_in << ": " << e.what();
-        logwrite( function, message.str() );
+      catch (const std::exception &e) {
+        retstring=std::string(e.what());
+        logwrite(function, "ERROR: "+retstring);
         return ERROR;
       }
     }
 
-    // add exposure time to system keys db
-    //
-    message.str(""); message << "EXPTIME=" << this->camera_info.exposure_time.value()
-                             << " // exposure time in " << this->camera_info.exposure_time.unit();
-    this->systemkeys.addkey( message.str() );
+    // read the exptime from the class
+    std::ostringstream oss;
+    oss << std::fixed << std::setprecision(3) << this->controller->exposure_time->get();
+    retstring = oss.str();
 
-    // prepare the return value
-    //
-    message.str(""); message << this->camera_info.exposure_time.value() << " " << this->camera_info.exposure_time.unit();
-    retstring = message.str();
-
-    message.str(""); message << "exposure time is " << retstring;
-    logwrite(function, message.str());
-
-    return ret;
-***/
-    return ERROR;
+    return NO_ERROR;
   }
   /***** Camera::ArchonInterface::exptime *************************************/
+
+
+  /***** Camera::ArchonInterface::set_exptime *********************************/
+  /**
+   * @brief      set the exposure time
+   * @details    This function is used internally and is what actually sets
+   *             the exposure time.
+   * @param[in]  exptime  double-precision exposure time in seconds
+   * @throws     std::exception
+   *
+   */
+  void ArchonInterface::set_exptime(double exptime) {
+    try {
+      this->controller->set_exptime(exptime);
+    }
+    catch (const std::exception &e) {
+      throw;
+    }
+  }
+  /***** Camera::ArchonInterface::set_exptime *********************************/
 
 
   /***** Camera::ArchonInterface::expose **************************************/
@@ -649,7 +610,7 @@ namespace Camera {
    *
    */
   long ArchonInterface::read_acf(const std::string &filename) {
-    return( this->controller.load_acf(filename, false) );
+    return( this->controller->load_acf(filename, false) );
   }
   /***** Camera::ArchonInterface::read_acf ************************************/
 
@@ -687,16 +648,16 @@ namespace Camera {
   long ArchonInterface::load_firmware(const std::string &acffile) {
     // load the ACF file and write to Archon configuration memory
     //
-    long error = this->controller.load_acf(acffile);
+    long error = this->controller->load_acf(acffile);
 
     // Parse and apply the complete system configuration from configuration memory.
     // Detector power will be off after this.
     //
-    if (error == NO_ERROR) error = this->controller.send_cmd(APPLYALL);
+    if (error == NO_ERROR) error = this->controller->send_cmd(APPLYALL);
 
     // read/clear Archon's internal error log
     //
-    if (error != NO_ERROR) this->controller.fetchlog();
+    if (error != NO_ERROR) this->controller->fetchlog();
 
     // set the mode to DEFAULT
     //
@@ -754,11 +715,11 @@ namespace Camera {
   long ArchonInterface::load_timing(const std::string &filename) {
     // load the ACF file into configuration memory
     //
-    long error = this->controller.load_acf( filename );
+    long error = this->controller->load_acf( filename );
 
     // parse timing script and parameters and apply them to the system
     //
-    if (error == NO_ERROR) error = this->controller.send_cmd(LOADTIMING);
+    if (error == NO_ERROR) error = this->controller->send_cmd(LOADTIMING);
 
     return error;
   }
@@ -814,7 +775,7 @@ namespace Camera {
    *             reply. @TODO publish the reply?
    * @param[in]  args       command to send to Archon Controller
    * @param[out] retstring  reply from Archon
-   * @return     ERROR|NO_ERROR|BUSY, return from controller.send_cmd() call
+   * @return     ERROR|NO_ERROR|BUSY, return from controller->send_cmd() call
    *
    */
   long ArchonInterface::native( const std::string args, std::string &retstring ) {
@@ -829,7 +790,7 @@ namespace Camera {
       return HELP;
     }
     // call the work function
-    long error = this->controller.send_cmd(args, retstring);
+    long error = this->controller->send_cmd(args, retstring);
 
     if (!retstring.empty()) {
       logwrite(function, retstring);
@@ -872,14 +833,14 @@ namespace Camera {
         return ERROR;
       }
       // set the requested Archon power state
-      if (this->controller.set_power(state) != NO_ERROR) {
+      if (this->controller->set_power(state) != NO_ERROR) {
         logwrite( function, "ERROR setting Archon power "+args);
         return ERROR;
       }
     }
 
     // read the power status from the controller
-    long error = this->controller.get_power(retstring);
+    long error = this->controller->get_power(retstring);
 
     logwrite(function, retstring);
 
@@ -930,13 +891,13 @@ namespace Camera {
    *
    */
   long ArchonInterface::allocate_framebuf(uint32_t reqsz) {
-    return controller.allocate_framebuf(reqsz);
+    return controller->allocate_framebuf(reqsz);
   }
   /***** Camera::ArchonInterface::allocate_framebuf ***************************/
 
 
   long ArchonInterface::read_frame() {
-    controller.read_frame(Camera::ArchonController::FRAME_IMAGE);
+    controller->read_frame(Camera::ArchonController::FRAME_IMAGE);
     return NO_ERROR;
   }
 

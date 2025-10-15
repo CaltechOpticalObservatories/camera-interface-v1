@@ -10,6 +10,7 @@
 
 namespace Camera {
 
+
   /***** Camera::ArchonController::ArchonController ***************************/
   /**
    * @brief      ArchonController constructor
@@ -24,6 +25,13 @@ namespace Camera {
     // pre-size the modtype and modversion vectors to hold the max number of modules
     modtype.resize(NMODS);
     modversion.resize(NMODS);
+
+    {
+    auto ptr=std::make_unique<ArchonExposureTime>();  // create pointer to ArchonExposureTime object
+    this->exposure_time=ptr.get();
+    this->info.exposure_time=std::move(ptr);          // transfer ownership to info
+    }
+
   }
   /***** Camera::ArchonController::ArchonController ***************************/
 
@@ -90,6 +98,45 @@ namespace Camera {
     }
   }
   /***** Camera::ArchonController::configure_controller ***********************/
+
+
+  /***** Camera::ArchonController::set_exptime ********************************/
+  /**
+   * @brief      set the exposure time on the controller
+   * @details    This takes a floating point exposure time (sec) and writes it
+   *             to the sec and/or msec parameters on the Archon, as appropriate.
+   * @param[in]  exptime        exposure time in seconds
+   * @throws     std::runtime_error
+   * @throws     std::exception
+   *
+   */
+  void ArchonController::set_exptime(double exptime) {
+    // nothing to do if no connection open to controller
+    if (!archon.isconnected()) {
+      throw std::runtime_error("connection not open to controller");
+    }
+
+    // exposure time parameters must be defined
+    if (this->sec_param.empty() || this->msec_param.empty()) {
+      throw std::runtime_error("exposure time parameters not defined");
+    }
+
+    try {
+      // split the requested exposure time into seconds and milliseconds
+      auto [sec, msec] = this->exposure_time->split(exptime);
+
+      // Set the sec and msec parameters on the controller,
+      // store the exptime in the class on success.
+//    if ( (set_parameter(sec_param, sec)   == NO_ERROR) &&     //TODO haven't created these functions yet!
+//         (set_parameter(msec_param, msec) == NO_ERROR) ) {
+//      this->exposure_time->set(exptime);
+//    }
+    }
+    catch (const std::exception &e) {
+      throw;
+    }
+  }
+  /***** Camera::ArchonController::set_exptime ********************************/
 
 
   /***** Camera::ArchonController::send_cmd ***********************************/
@@ -1080,5 +1127,76 @@ namespace Camera {
     return NO_ERROR;
   }
   /***** Camera::ArchonController::parse_system_configuration *****************/
+
+
+  /***** Camera::ArchonExposureTime::split ************************************/
+  /**
+   * @brief      split the exposure time into sec+msec
+   * @details    Exposure time is represented as double precision seconds
+   *             but the Archon needs whole number seconds and/or milliseconds.
+   *             Archon parameters are limited to 20-bits. When it fits,
+   *             assign the exposure time to msec only, otherwise overflow
+   *             into sec.
+   *             This is only a tool and does not set any class variables.
+   * @param[in]  value  double precision seconds
+   * @return     pair{sec,msec}
+   * @throws     std::runtime_error
+   */
+  std::pair<uint32_t,uint32_t> ArchonExposureTime::split(double value) {
+    if (std::isnan(value)) throw std::runtime_error("value not a number");
+    if (value < 0) throw std::runtime_error("value can't be negative");
+
+    uint32_t totmsec;  // total exposure time in msec
+    uint32_t sec;      // whole number of seconds
+    uint32_t msec;     // whole number of msec
+
+    // total exposure time in msec
+    totmsec = static_cast<uint32_t>(std::round(value*1000.0));
+
+    // if it fits in 20 bits then assign it all to msec
+    if (totmsec <= 0xFFFFF) {
+      sec  = 0;
+      msec = totmsec;
+    }
+    else
+    // otherwise assign it to seconds
+    if (totmsec/1000 <= 0xFFFFF) {
+      sec  = totmsec / 1000;
+      msec = totmsec % 1000;
+    }
+    else throw std::runtime_error("value exceeds 2^20 sec");
+
+    // return the pair
+    return {sec,msec};
+  }
+  /***** Camera::ArchonExposureTime::split ************************************/
+
+  /***** Camera::ArchonExposureTime::set **************************************/
+  /**
+   * @brief      set the exposure time
+   * @details    This uses the class split() tool and sets class variables.
+   * @param[in]  value  double precision seconds
+   * @throws     std::runtime_error
+   */
+  void ArchonExposureTime::set(double value) {
+    try {
+      auto [sec,msec]   = split(value);
+      this->sec_part    = sec;
+      this->msec_part   = msec;
+      this->exptime_sec = sec + msec/1000.0;  // store value rounded to nearest msec
+    }
+    catch (const std::exception &e) { throw; }
+  }
+  /***** Camera::ArchonExposureTime::set **************************************/
+
+  /***** Camera::ArchonExposureTime::get_pair *********************************/
+  /**
+   * @brief      return the sec,msec parts as a pair
+   * @return     sec,msec
+   */
+  std::pair<uint32_t,uint32_t> ArchonExposureTime::get_pair() const {
+    return {this->sec_part, this->msec_part};
+  }
+  /***** Camera::ArchonExposureTime::get_pair *********************************/
 
 }
