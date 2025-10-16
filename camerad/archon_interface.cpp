@@ -385,6 +385,7 @@ namespace Camera {
         catch (const std::exception &e) {
           message.str(""); message << "requested module " << module << " out of range {1:" << NMODS << "}";
           logwrite( function, message.str() );
+          return ERROR;
         }
       }
       else {                                          // else should never happen
