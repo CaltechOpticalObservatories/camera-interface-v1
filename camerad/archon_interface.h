@@ -12,8 +12,6 @@
 #include "archon_exposure_modes.h"
 #include "camera_information.h"
 
-constexpr int MAXADCCHANS =   16;              //!< max number of ADC channels per controller (4 mod * 4 ch/mod)
-constexpr int MAXADMCHANS =   72;              //!< max number of ADM channels per controller (4 mod * 18 ch/mod)
 constexpr int BLOCK_LEN   = 1024;              //!< Archon block size
 constexpr int REPLY_LEN   =  100 * BLOCK_LEN;  //!< Reply buffer size (over-estimate)
 
@@ -126,7 +124,6 @@ namespace Camera {
       // found in the base class.
       //
       long connect_controller(const std::string& devices_in);
-      template <class T> long get_configmap_value(std::string key_in, T& value_out);
       long load_timing(const std::string &filename);
 
   };

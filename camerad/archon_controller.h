@@ -16,6 +16,30 @@
 #include "camera_interface.h"
 #include "camera_information.h"
 
+constexpr int MAXADCCHANS =   16;              //!< max number of ADC channels per controller (4 mod * 4 ch/mod)
+constexpr int MAXADMCHANS =   72;              //!< max number of ADM channels per controller (4 mod * 18 ch/mod)
+
+/**
+ * Archon Module Types
+ */
+constexpr int MODTYPE_NONE    =  0;
+constexpr int MODTYPE_DRIVER  =  1;
+constexpr int MODTYPE_ADC     =  2;
+constexpr int MODTYPE_LVBIAS  =  3;
+constexpr int MODTYPE_HVBIAS  =  4;
+constexpr int MODTYPE_HEATER  =  5;
+constexpr int MODTYPE_HS      =  7;
+constexpr int MODTYPE_HVXBIAS =  8;
+constexpr int MODTYPE_LVXBIAS =  9;
+constexpr int MODTYPE_LVDS    = 10;
+constexpr int MODTYPE_HEATERX = 11;
+constexpr int MODTYPE_XVBIAS  = 12;
+constexpr int MODTYPE_ADF     = 13;
+constexpr int MODTYPE_ADX     = 14;
+constexpr int MODTYPE_ADLN    = 15;
+constexpr int MODTYPE_UNKNOWN = 16;
+constexpr int MODTYPE_ADM     = 17;
+
 struct network_details {
     std::string hostname;
     int port;
@@ -72,9 +96,6 @@ namespace Camera {
 
       void configure_controller() override;
 
-      void   set_exptime(double exptime);
-      double get_exptime() const { return( this->exposure_time->get() ); }
-
       typedef enum {
         FRAME_IMAGE,
         FRAME_RAW,
@@ -118,10 +139,15 @@ namespace Camera {
       std::string sec_param;                //!< Archon parameter for exposure time seconds
       std::string msec_param;               //!< Archon parameter for exposure time milliseconds
 
+      void connect();
+      void bias(const int &mod, const int &chan, float &volts, const bool &should_write);
+      void set_exptime(double exptime);
+      double get_exptime() const { return( this->exposure_time->get() ); }
       long send_cmd(const std::string &cmd, std::string &reply);
       long send_cmd(const std::string &cmd);
       long fetchlog();
       long load_acf(const std::string &filename, bool write_to_archon=true);
+      template <class T> void get_configmap_value(const std::string &key_in, T &value_out);
       long get_status_key(const std::string &key, std::string &value);
       long set_power(int state);
       long get_power();

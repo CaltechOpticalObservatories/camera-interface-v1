@@ -76,13 +76,13 @@ namespace Camera {
 
       // ARCHON_IP
       if (this->interface->configfile.param[row]=="ARCHON_IP") {
-        archon.sethost( this->interface->configfile.arg[row] );
+        this->archon.sethost( this->interface->configfile.arg[row] );
       }
       else
       // ARCHON_PORT
       if (this->interface->configfile.param[row]=="ARCHON_PORT") {
         try {
-          archon.setport( std::stoi(this->interface->configfile.arg[row]) );
+          this->archon.setport( std::stoi(this->interface->configfile.arg[row]) );
         }
         catch (const std::exception &e) {
           errstr << "parsing " << this->interface->configfile.param[row]
@@ -100,6 +100,229 @@ namespace Camera {
   /***** Camera::ArchonController::configure_controller ***********************/
 
 
+  /***** Camera::ArchonController::connect ************************************/
+  /**
+   * @brief      parse the configuration file for controller-related parameters
+   * @details    The config file has already been read into the Config class.
+   * @throws     std::runtime_error
+   *
+   */
+  void ArchonController::connect() {
+    const std::string function("Camera::ArchonController::connect");
+
+    // nothing to do if already connected
+    if ( this->archon.isconnected() ) {
+      logwrite(function, "camera connection already open");
+      return;
+    }
+
+    // initialize camera connection
+    try {
+      this->archon.Connect();
+    }
+    catch (const std::exception &e) {
+      throw;
+    }
+
+    std::stringstream message;
+    message << "socket connection to host " << this->archon.gethost()
+            << " port " << this->archon.getport()
+            << " established on fd " << this->archon.getfd();
+    logwrite(function, message.str());
+
+    // get the Archon system information for installed modules
+    std::string reply;
+    if (this->send_cmd(SYSTEM, reply) != NO_ERROR) {   // first the whole reply in one string
+      throw std::runtime_error("getting SYSTEM information");
+    }
+
+    std::vector<std::string> lines, tokens;
+    Tokenize( reply, lines, " " );              // then each line in a separate token "lines"
+
+    for ( const auto &line : lines ) {
+      Tokenize( line, tokens, "_=" );           // finally break each line into tokens to get module, type and version
+      if ( tokens.size() != 3 ) continue;       // need 3 tokens
+
+      std::string version;
+      int module=0;
+      int type=0;
+
+      // get the module number
+      //
+      if ( tokens[0].compare( 0, 9, "BACKPLANE" ) == 0 ) {
+        if ( tokens[1] == "VERSION" ) this->backplaneversion = tokens[2];
+        continue;
+      }
+
+      // get the module and type of each module from MODn_TYPE
+      //
+      if ( (tokens[0].compare( 0, 3, "MOD" ) == 0) && (tokens[1] == "TYPE") ) {
+        try {
+          module = std::stoi(tokens[0].substr(3));
+          type   = std::stoi(tokens[2]);
+        }
+        catch (const std::exception &e) {
+          logwrite(function, "ERROR parsing module/type from \""+line+"\": "+std::string(e.what()));
+          throw std::runtime_error("unexpected SYSTEM information");
+        }
+      }
+      else continue;
+
+      // get the module version
+      //
+      if (tokens[1] == "VERSION") version = tokens[2]; else version = "";
+
+      // now store it permanently
+      //
+      if ( (module > 0) && (module <= NMODS) ) {
+        try {
+          this->modtype.at(module-1)    = type;      // store the type in a vector indexed by module
+          this->modversion.at(module-1) = version;   // store the type in a vector indexed by module
+        }
+        catch (const std::exception &e) {
+          message.str(""); message << "requested module " << module << " out of range {1:" << NMODS << "}";
+          logwrite( function, message.str() );
+          throw std::runtime_error("invalid module number");
+        }
+      }
+      else {                                          // else should never happen
+        message.str(""); message << "module " << module << " outside range {1:" << NMODS << "}";
+        logwrite( function, message.str() );
+        throw std::runtime_error("invalid module number");
+      }
+
+      // Use the module type to resize the gain and offset vectors,
+      // but always use the largest possible value allowed.
+      //
+      int adchans=0;
+      if (type == MODTYPE_ADC) adchans = ( adchans < MAXADCCHANS ? MAXADCCHANS : adchans );
+      if (type == MODTYPE_ADM) adchans = ( adchans < MAXADMCHANS ? MAXADMCHANS : adchans );
+      this->gain.resize( adchans );
+      this->offset.resize( adchans );
+
+      // Check that the AD modules are installed in the correct slot
+      //
+      if ( (type == MODTYPE_ADC || type == MODTYPE_ADM) && (module < 5 || module > 8) ) {
+        message.str(""); message << "AD module (type=" << type << ") cannot be in slot " << module << ". Use slots 5-8";
+        logwrite( function, message.str() );
+        throw std::runtime_error(message.str());
+      }
+    } // end for ( auto line : lines )
+
+    // empty the Archon log
+    //
+    this->fetchlog();
+  }
+  /***** Camera::ArchonController::connect ************************************/
+
+
+  /***** Camera::ArchonController::bias ***************************************/
+  /**
+   * @brief      parse the configuration file for controller-related parameters
+   * @details    The config file has already been read into the Config class.
+   * @throws     std::runtime_error
+   *
+   */
+  void ArchonController::bias(const int &mod, const int &chan, float &volts, const bool &should_write) {
+    const std::string function("Camera::ArchonController::bias");
+    std::ostringstream oss;
+    std::ostringstream biasconfig;
+
+    // nothing to do if no connection open to controller
+    if (!this->archon.isconnected()) {
+      throw std::runtime_error("connection not open to controller");
+    }
+
+    // Check that the module number is valid
+    if ( (mod < 0) || (mod > NMODS) ) {
+      oss << "module " << mod << ": outside range {0:" << NMODS << "}";
+      throw std::runtime_error(oss.str());
+    }
+
+    // Use the module type to get LV or HV Bias
+    // and start building the bias configuration string.
+    float vmin, vmax;
+    switch ( this->modtype[ mod-1 ] ) {
+      case MODTYPE_NONE:
+        oss << "module " << mod << " not installed";
+        throw std::runtime_error(oss.str());
+      case MODTYPE_LVBIAS:
+      case MODTYPE_LVXBIAS:
+        biasconfig << "MOD" << mod << "/LV";
+        vmin = -14.0;
+        vmax = +14.0;
+        break;
+      case MODTYPE_HVBIAS:
+      case MODTYPE_HVXBIAS:
+        biasconfig << "MOD" << mod << "/HV";
+        vmin =   0.0;
+        vmax = +31.0;
+        break;
+      default:
+        oss << "module " << mod << " not a bias board";
+        throw std::runtime_error(oss.str());
+    }
+
+    // Check that the channel number is valid
+    // and add it to the bias configuration string.
+    if ( (chan < 1) || (chan > 30) ) {
+      oss << "bias channel " << mod << ": outside range {1:30}";
+      throw std::runtime_error(oss.str());
+    }
+    if ( (chan > 0) && (chan < 25) ) {
+      biasconfig << "LC_V" << chan;
+    }
+    if ( (chan > 24) && (chan < 31) ) {
+      biasconfig << "HC_V" << (chan-24);
+    }
+
+    if (should_write) {
+      bool changed=false;
+      try {
+        // check requested voltage is within range
+        if ( (volts < vmin) || (volts > vmax) ) {
+          oss << volts << " outside range {" << vmin << ":" << vmax << "}";
+          throw std::runtime_error(oss.str());
+        }
+        // write the configuration line to update the bias voltage
+        std::string key = biasconfig.str();
+        std::string val = std::to_string(volts);
+        this->write_config_key(key.c_str(), val.c_str(), changed);
+
+        // send the APPLYMODx command
+        std::ostringstream applyoss;
+        applyoss << "APPLYMOD"
+                 << std::setfill('0')
+                 << std::setw(2)
+                 << std::hex
+                 << (mod-1);
+        long error = this->send_cmd(applyoss.str());
+        if (error != NO_ERROR) {
+          oss << "writing bias configuration " << key << "=" << val;
+          throw std::runtime_error(oss.str());
+        }
+        else if (!changed) {
+          oss << "bias configuration " << key << "=" << val << " unchanged";
+          logwrite(function, oss.str());
+          return;
+        }
+        else {
+          oss << "updated bias configuration " << key << "=" << val;
+          logwrite(function, oss.str());
+          return;
+        }
+      }
+      catch (const std::exception &e) {
+        throw;
+      }
+    }
+
+    // read the configuration
+    this->get_configmap_value(biasconfig.str(), volts);
+  }
+  /***** Camera::ArchonController::bias ***************************************/
+
+
   /***** Camera::ArchonController::set_exptime ********************************/
   /**
    * @brief      set the exposure time on the controller
@@ -112,7 +335,7 @@ namespace Camera {
    */
   void ArchonController::set_exptime(double exptime) {
     // nothing to do if no connection open to controller
-    if (!archon.isconnected()) {
+    if (!this->archon.isconnected()) {
       throw std::runtime_error("connection not open to controller");
     }
 
@@ -169,7 +392,7 @@ namespace Camera {
     int     error = NO_ERROR;
 
     // nothing to do if no connection open to controller
-    if (!archon.isconnected()) {
+    if (!this->archon.isconnected()) {
       logwrite( function, "ERROR connection not open to controller" );
       return ERROR;
     }
@@ -201,7 +424,7 @@ namespace Camera {
 
     // send the command
     //
-    if ( (archon.Write(scmd)) == -1) {
+    if ( (this->archon.Write(scmd)) == -1) {
       logwrite( function, "ERROR writing to camera socket");
       return ERROR;
     }
@@ -223,13 +446,13 @@ namespace Camera {
     char* buffer = new char[64*1024+1]{};                // temporary buffer for holding Archon replies
     reply.clear();                                       // zero reply buffer
     do {
-      if ( (retval=archon.Poll()) <= 0) {
+      if ( (retval=this->archon.Poll()) <= 0) {
         if (retval==0) { SNPRINTF(message, "Poll timeout waiting for response from Archon command (maybe unrecognized command?)"); error=TIMEOUT; }
         if (retval<0)  { SNPRINTF(message, "Poll error waiting for response from Archon command"); error=ERROR; }
         if ( error != NO_ERROR ) logwrite( function, std::string(message) );
         break;
       }
-      retval = archon.Read(buffer, 64*1024);  // read into temp buffer
+      retval = this->archon.Read(buffer, 64*1024);       // read into temp buffer
       if (retval <= 0) {
         logwrite( function, "ERROR reading Archon" );
         break;
@@ -768,6 +991,32 @@ namespace Camera {
     return error;
   }
   /***** Camera::ArchonController::load_acf ***********************************/
+
+
+  /***** Camera::ArchonController::get_configmap_value ************************/
+  /**
+   * @brief      get the VALUE from configmap for a givenn KEY and assign to a variable
+   * @param[in]  key_in is the KEY
+   * @param[out] value_out reference to variable to contain the VALUE
+   * @throws     std::runtime_error
+   *
+   * This is a template class function so the &value_out reference can be any type.
+   * Throws runtime_error if the key_in KEY is not found, otherwise the VALUE
+   * associated with key_in is assigned to &value_out.
+   *
+   */
+  template <class T>
+  void ArchonController::get_configmap_value(const std::string &key_in, T &value_out) {
+    if ( this->configmap.find(key_in) != this->configmap.end() ) {
+      std::istringstream( this->configmap[key_in].value  ) >> value_out;
+    }
+    else {
+      std::ostringstream oss;
+      oss << "key \"" << key_in << "\" not in configuration";
+      throw std::runtime_error(oss.str());
+    }
+  }
+  /***** Camera::ArchonController::get_configmap_value ************************/
 
 
   /***** Camera::ArchonController::get_status_key *****************************/
