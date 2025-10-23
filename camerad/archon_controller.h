@@ -159,6 +159,19 @@ namespace Camera {
       long write_config_key(const char* key, int newvalue, bool &changed);
 
       /**
+       * @var     struct bias_config_t
+       * @details structure of bias configuration info
+       */
+      struct bias_config_t {
+	std::string key;
+	float vmin;
+	float vmax;
+      };
+
+      bias_config_t get_bias_config(int mod, int chan) const;
+      std::string make_applymod_command(int mod) const;
+
+      /**
        * @var     struct geometry_t geometry[]
        * @details structure of geometry which is unique to each observing mode
        */
