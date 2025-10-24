@@ -29,7 +29,7 @@ namespace Camera {
       Server();
       ~Server();
 
-      Interface* interface;
+      std::unique_ptr<Interface> interface;
 
       int blkport;
 

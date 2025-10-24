@@ -7,22 +7,7 @@
 
 #include "camera_server.h"
 
-// The CONTROLLER_xxxx is defined by the CMakeLists file 
-// and selects which Interface implementation to use.
-//
-#ifdef CONTROLLER_ARCHON
-  #include "archon_interface.h"
-  using ControllerType = Camera::ArchonInterface;
-#elif CONTROLLER_ASTROCAM
-  #include "astrocam_interface.h"
-  using ControllerType = Camera::AstroCamInterface;
-#else
-  #error "ERROR controller not defined"
-#endif
-
-
 namespace Camera {
-
 
   /***** Camera::Server::Server ***********************************************/
   /**
@@ -30,13 +15,12 @@ namespace Camera {
    *
    */
   Server::Server() :
-    interface(nullptr),
     blkport(-1),
     id_pool(N_THREADS),
     cmd_num(0)
   {
-    interface = new ControllerType();   // instantiate specific controller implementation
-    interface->set_server(this);        // pointer back to this Server instance
+    interface=Camera::Interface::create();  // factory funcion creates the appropriate interface type
+    interface->set_server(this);            // pointer back to this Server instance
   }
   /***** Camera::Server::Server ***********************************************/
 
@@ -47,7 +31,6 @@ namespace Camera {
    *
    */
   Server::~Server() {
-    delete interface;
   }
   /***** Camera::Server::~Server **********************************************/
 
@@ -278,28 +261,32 @@ namespace Camera {
       if ( cmd == CAMERAD_TEST ) {
         ret = interface->test(args, retstring);
       }
-#ifdef CONTROLLER_ARCHON
-      // These are Archon-controller-specific functions, so the interface
-      // is cast appropriately.
+      /**
+       * instrument-specific commands
+       */
+      else
+      if ( cmd == "hispec_expose" ) {
+        ret = interface->instrument_cmd(cmd, args, retstring);
+      }
+      /**
+       * controller-specific commands
+       */
       else
       if ( cmd == CAMERAD_LOADTIMING ) {
-        dynamic_cast<ArchonInterface*>(interface)->load_timing(args, retstring);
+        ret = interface->controller_cmd(cmd, args, retstring);
       }
       else
       if ( cmd == CAMERAD_READACF ) {
-        dynamic_cast<ArchonInterface*>(interface)->read_acf(args);
+        ret = interface->controller_cmd(cmd, args, retstring);
       }
       else
       if ( cmd == CAMERAD_MODE ) {
-        dynamic_cast<ArchonInterface*>(interface)->set_camera_mode(args, retstring);
+        ret = interface->controller_cmd(cmd, args, retstring);
       }
-#endif
-#ifdef CONTROLLER_BOB
       else
       if ( cmd == "bob" ) {
-        dynamic_cast<BobInterface*>(interface)->bob_only();
+        ret = interface->controller_cmd(cmd, args, retstring);
       }
-#endif
 
       // unknown commands generate an error
       //

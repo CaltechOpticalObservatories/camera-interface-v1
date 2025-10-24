@@ -27,6 +27,40 @@ namespace Camera {
   /***** Camera::ArchonInterface::ArchonInterface *****************************/
 
 
+  /***** Camera::ArchonInterface::controller_cmd ******************************/
+  /**
+   * @brief      dispatcher for Archon-specific commands
+   * @details    This allows dispatching Archon controller specific commands by
+   *             receiving the commands and args and calling the appropriate
+   *             controller-specific function.
+   * @param[in]  cmd        command
+   * @param[in]  args       argument list
+   * @param[out] retstring  return string
+   * @return     ERROR|NO_ERROR|HELP
+   *
+   */
+  long ArchonInterface::controller_cmd(const std::string &cmd,
+                                       const std::string &args,
+                                       std::string &retstring) {
+    if ( cmd == CAMERAD_LOADTIMING ) {
+      return this->load_timing(args, retstring);
+    }
+    else
+    if ( cmd == CAMERAD_READACF ) {
+      return this->read_acf(args);
+    }
+    else
+    if ( cmd == CAMERAD_MODE ) {
+      return this->set_camera_mode(args, retstring);
+    }
+    else {
+      retstring="unrecognized command";
+      return ERROR;
+    }
+  }
+  /***** Camera::ArchonInterface::controller_cmd ******************************/
+
+
   /***** Camera::ArchonInterface::abort ***************************************/
   /**
    * @brief

@@ -10,8 +10,11 @@ set( CAMERAD_DIR ${PROJECT_BASE_DIR}/camerad )
 
 set( CMAKE_CXX_STANDARD 17 )
 
-include_directories( ${PROJECT_BASE_DIR}/utils )
-include_directories( ${PROJECT_BASE_DIR}/common )
+include_directories(${CAMERAD_DIR}
+                    ${CAMERAD_DIR}/Instruments
+                    ${PROJECT_BASE_DIR}/utils
+                    ${PROJECT_BASE_DIR}/common
+		    )
 link_directories( ${PROJECT_BASE_DIR}/lib )
 
 # ----------------------------------------------------------------------------
@@ -22,7 +25,7 @@ option(CONTROLLER "Choose controller type { bob joe archon astrocam }")
 # bob
 # ----------------------------------------------------------------------------
 if (CONTROLLER STREQUAL "bob")
-  message (STATUS "building for Bob")
+  message (STATUS "controller: Bob")
   add_definitions(-DCONTROLLER_BOB)
   set (INTERFACE_SOURCES
       ${CAMERAD_DIR}/bob_interface.cpp
@@ -31,7 +34,7 @@ if (CONTROLLER STREQUAL "bob")
 # joe
 # ----------------------------------------------------------------------------
 elseif (CONTROLLER STREQUAL "joe")
-  message (STATUS "building for Joe")
+  message (STATUS "controller: Joe")
   add_definitions(-DCONTROLLER_JOE)
   set (INTERFACE_SOURCES
       ${CAMERAD_DIR}/joe_interface.cpp
@@ -40,7 +43,7 @@ elseif (CONTROLLER STREQUAL "joe")
 # Archon
 # ----------------------------------------------------------------------------
 elseif (CONTROLLER STREQUAL "archon")
-  message (STATUS "building for Archon")
+  message (STATUS "controller: Archon")
   add_definitions(-DCONTROLLER_ARCHON)
   set (INTERFACE_TARGET archon)
   set (INTERFACE_SOURCES
@@ -52,7 +55,7 @@ elseif (CONTROLLER STREQUAL "archon")
 # AstroCam ARC-64/66 PCI/e
 # ----------------------------------------------------------------------------
 elseif (CONTROLLER STREQUAL "astrocam")
-  message (STATUS "building for AstroCam GenIII PCI/PCIe")
+  message (STATUS "controller: AstroCam GenIII PCI/PCIe")
   add_definitions (-DCONTROLLER_ASTROCAM)
   set (INTERFACE_TARGET astrocam)
   set (ARCAPI_DIR "${PROJECT_BASE_DIR}/ARC")
@@ -93,13 +96,36 @@ else()
 endif()
 
 # ----------------------------------------------------------------------------
+# default instrument is none
+# ----------------------------------------------------------------------------
+option(INSTRUMENT "Choose instrument { generic ... }")
+if (INSTRUMENT)
+  message(STATUS "instrument: ${INSTRUMENT}")
+  include(Instruments/${INSTRUMENT}/${INSTRUMENT}.cmake)
+else()
+  message(STATUS "instrument: none")
+  set (INSTRUMENT_SOURCES "")
+  # If no instrument is defined then include the factory for the specified controller
+  if (CONTROLLER STREQUAL "archon")
+    set (INSTRUMENT_SOURCES ${CAMERAD_DIR}/archon_interface_factory.cpp)
+  elseif (CONTROLLER STREQUAL "astrocam")
+    set (INSTRUMENT_SOURCES ${CAMERAD_DIR}/astrocam_interface_factory.cpp)
+  elseif (CONTROLLER STREQUAL "bob")
+    set (INSTRUMENT_SOURCES ${CAMERAD_DIR}/bob_interface_factory.cpp)
+  elseif (CONTROLLER STREQUAL "joe")
+    set (INSTRUMENT_SOURCES ${CAMERAD_DIR}/joe_interface_factory.cpp)
+  endif()
+endif()
+
+# ----------------------------------------------------------------------------
 # Camera Interface Base
 # ----------------------------------------------------------------------------
 list (APPEND INTERFACE_SOURCES
   ${CAMERAD_DIR}/camera_interface.cpp
   ${CAMERAD_DIR}/image_process.cpp
+  ${INSTRUMENT_SOURCES}
   )
-add_library(${INTERFACE_TARGET} ${INTERFACE_SOURCES})
+add_library(${INTERFACE_TARGET} ${INTERFACE_SOURCES} ${INSTRUMENT_SOURCES})
 target_link_libraries(${INTERFACE_TARGET}
                       common
                       )

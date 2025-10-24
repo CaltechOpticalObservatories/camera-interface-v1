@@ -91,6 +91,12 @@ namespace Camera {
       void image_acquisition_thread() override;
       void image_processing_thread() override;
 
+      // Archon controller command dispatcher
+      //
+      long controller_cmd(const std::string &cmd,
+                          const std::string &args,
+                          std::string &retstring) override;
+
       // These functions are specific to the Archon Interface and are not
       // found in the base class.
       //
