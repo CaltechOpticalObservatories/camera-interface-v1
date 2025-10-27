@@ -168,25 +168,26 @@ namespace Camera {
       }
       else continue;
 
+      // validate module number
+      //
+      if (module<1 || module>NMODS) {
+        message.str(""); message << "module " << module << " outside range {1:" << NMODS << "}";
+        logwrite( function, message.str() );
+        throw std::runtime_error("invalid module number");
+      }
+
       // get the module version
       //
       if (tokens[1] == "VERSION") version = tokens[2]; else version = "";
 
       // now store it permanently
       //
-      if ( (module > 0) && (module <= NMODS) ) {
-        try {
-          this->modtype.at(module-1)    = type;      // store the type in a vector indexed by module
-          this->modversion.at(module-1) = version;   // store the type in a vector indexed by module
-        }
-        catch (const std::exception &e) {
-          message.str(""); message << "requested module " << module << " out of range {1:" << NMODS << "}";
-          logwrite( function, message.str() );
-          throw std::runtime_error("invalid module number");
-        }
+      try {
+        this->modtype.at(module-1)    = type;      // store the type in a vector indexed by module
+        this->modversion.at(module-1) = version;   // store the type in a vector indexed by module
       }
-      else {                                          // else should never happen
-        message.str(""); message << "module " << module << " outside range {1:" << NMODS << "}";
+      catch (const std::exception &e) {
+        message.str(""); message << "requested module " << module << " out of range {1:" << NMODS << "}";
         logwrite( function, message.str() );
         throw std::runtime_error("invalid module number");
       }
