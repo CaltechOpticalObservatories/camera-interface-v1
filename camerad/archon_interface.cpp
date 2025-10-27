@@ -61,6 +61,19 @@ namespace Camera {
   /***** Camera::ArchonInterface::controller_cmd ******************************/
 
 
+  /***** Camera::ArchonInterface::configure_interface *************************/
+  /**
+   * @brief      extract+apply interface-specific parameters from config file
+   * @throws     std::runtime_error
+   *
+   */
+  void ArchonInterface::configure_interface() {
+    const std::string function("Camera::ArchonInterface::configure_interface");
+    logwrite(function, "");
+  }
+  /***** Camera::ArchonInterface::configure_interface *************************/
+
+
   /***** Camera::ArchonInterface::abort ***************************************/
   /**
    * @brief

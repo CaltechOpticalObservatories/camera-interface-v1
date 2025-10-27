@@ -39,7 +39,8 @@ int main( int argc, char** argv ) {
     camerad.interface->configfile.read_config();
     camerad.configure_server();
     camerad.interface->configure_controller();
-//  camerad.interface->configure_interface();
+    camerad.interface->configure_interface();
+    camerad.interface->configure_instrument();
   }
   catch (const std::exception &e) {
     logwrite(function, "ERROR configuring system: "+std::string(e.what()));

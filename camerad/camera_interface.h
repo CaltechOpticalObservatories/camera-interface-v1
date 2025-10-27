@@ -56,6 +56,8 @@ namespace Camera {
       // These virtual functions have interface-specific implementations
       // and must be implemented by derived classes, implemented in xxxx_interface.cpp
       //
+      virtual void configure_interface() = 0;
+      virtual void configure_instrument() { }
       virtual long abort( std::string args, std::string &retstring ) = 0;
       virtual long autodir( std::string args, std::string &retstring ) = 0;
       virtual long basename( std::string args, std::string &retstring ) = 0;

@@ -23,6 +23,9 @@ namespace Camera {
       long instrument_cmd(const std::string &cmd,
                           const std::string &args,
                           std::string &retstring) override;
+
+      void configure_instrument() override;
+
     private:
       // these are HISPEC-specific functions
       long hispec_expose(const std::string &args, std::string &retstring);

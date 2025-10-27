@@ -72,6 +72,7 @@ namespace Camera {
       // and have their own controller-specific implementations which are
       // implemented in archon_interface.cpp.
       //
+      void configure_interface() override;
       long abort( const std::string args, std::string &retstring ) override;
       long autodir( const std::string args, std::string &retstring ) override;
       long basename( const std::string args, std::string &retstring ) override;

@@ -43,7 +43,8 @@ namespace Camera {
    *
    */
   void Server::configure_server() {
-    std::stringstream errstr;
+    const std::string function("Camera::Server::configure_server");
+    logwrite(function, "");
 
     if (interface->configfile.n_rows < 1) throw std::runtime_error("empty configuration");
 
@@ -56,9 +57,10 @@ namespace Camera {
           this->blkport = std::stoi( interface->configfile.arg[row] );
         }
         catch (const std::exception &e) {
-          errstr << "parsing " << interface->configfile.param[row]
-                               << "=" << interface->configfile.arg[row] << ": " << e.what();
-          throw std::runtime_error(errstr.str());
+          std::ostringstream oss;
+          oss << "parsing " << interface->configfile.param[row]
+                            << "=" << interface->configfile.arg[row] << ": " << e.what();
+          throw std::runtime_error(oss.str());
         }
       }
     }

@@ -35,6 +35,19 @@ namespace Camera {
   /***** Camera::Hispec::instrument_cmd ***************************************/
 
 
+  /***** Camera::Hispec::configure_instrument *********************************/
+  /**
+   * @brief      extract+apply instrument-specific parameters from config file
+   * @throws     std::runtime_error
+   *
+   */
+  void Hispec::configure_instrument() {
+    const std::string function("Camera::Hispec::configure_instrument");
+    logwrite(function, "");
+  }
+  /***** Camera::Hispec::configure_instrument *********************************/
+
+
   /***** Camera::Hispec::hispec_expose ****************************************/
   /**
    * @brief      placeholder for example HISPEC-only function

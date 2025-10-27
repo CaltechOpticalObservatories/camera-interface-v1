@@ -67,7 +67,8 @@ namespace Camera {
    *
    */
   void ArchonController::configure_controller() {
-    std::stringstream errstr;
+    const std::string function("Camera::ArchonController::configure_controller");
+    logwrite(function, "");
 
     if (this->interface->configfile.n_rows < 1) throw std::runtime_error("empty configuration");
 
@@ -85,9 +86,10 @@ namespace Camera {
           this->archon.setport( std::stoi(this->interface->configfile.arg[row]) );
         }
         catch (const std::exception &e) {
-          errstr << "parsing " << this->interface->configfile.param[row]
-                               << "=" << this->interface->configfile.arg[row] << ": " << e.what();
-          throw std::runtime_error(errstr.str());
+          std::ostringstream oss;
+          oss << "parsing " << this->interface->configfile.param[row]
+                            << "=" << this->interface->configfile.arg[row] << ": " << e.what();
+          throw std::runtime_error(oss.str());
         }
       }
       else
