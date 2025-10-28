@@ -86,9 +86,9 @@ namespace Camera {
     // Archon hardware-based constants.
     // These shouldn't change unless there is a significant hardware change.
     //
-    const int NBUFS = 3; //!< total number of frame buffers  //TODO rename to maxnbufs?
-    const int NMODS = 12; //!< number of modules per controller
-    const int NADCHAN = 4; //!< number of channels per ADC module
+    static constexpr int MAXNBUFS = 3;    //!< total number of frame buffers
+    static constexpr int MAXNMODS = 12;   //!< number of modules per controller
+    static constexpr int MAXNADCHAN = 4;  //!< number of channels per ADC module
 
     public:
       ArchonController();
@@ -115,6 +115,7 @@ namespace Camera {
 
       void set_interface(ArchonInterface* _interface);
 
+      int activebufs;                  //!< number of active frame buffers
       char* framebuf;                  //!< local frame buffer read from Archon
       uint32_t framebuf_bytes;         //!< size of framebuf in bytes
       frametype_t frametype;
@@ -137,16 +138,19 @@ namespace Camera {
       std::mutex archon_mutex;
       network_details archon_network_details;
 
-      std::string sec_param;                //!< Archon parameter for exposure time seconds
-      std::string msec_param;               //!< Archon parameter for exposure time milliseconds
+      std::string sec_param;                //!< parameter name for exposure time seconds
+      std::string msec_param;               //!< parameter name for exposure time milliseconds
+      std::string expose_param;             //!< parameter name to trigger exposure when set =1
 
       void connect();
       void bias(const int &mod, const int &chan, float &volts, const bool &should_write);
+      long expose(const int &nexp);
+      long get_frame_status();
       long get_timer(uint64_t &timer);
       void set_exptime(double exptime);
-      long set_parameter(const std::string &parameter, const long &value);
-      long prep_parameter(const std::string &parameter, const long &value);
-      long load_parameter(const std::string &parameter, const long &value);
+      long set_parameter(const std::string &parameter, const int &value);
+      long prep_parameter(const std::string &parameter, const int &value);
+      long load_parameter(const std::string &parameter, const int &value);
       double get_exptime() const { return( this->exposure_time->get() ); }
       long send_cmd(const std::string &cmd, std::string &reply);
       long send_cmd(const std::string &cmd);
@@ -201,6 +205,34 @@ namespace Camera {
       };
 
       /**
+       * @var     struct frameinfo_t frame
+       * @details structure to contain Archon results from "FRAME" command
+       */
+      struct frameinfo_t {
+        std::atomic<int>      index;          // index of newest buffer data
+        std::atomic<int>      currentframe;   // frame of newest buffer data
+        int      next_index;                  // index of next buffer
+        std::string timer;                    // current hex 64 bit internal timer
+        int      rbuf;                        // current buffer locked for reading
+        int      wbuf;                        // current buffer locked for writing
+        std::vector<int>      bufsample;      // sample mode 0=16 bit, 1=32 bit
+        std::vector<int>      bufcomplete;    // buffer complete, 1=ready to read
+        std::vector<int>      bufmode;        // buffer mode: 0=top 1=bottom 2=split
+        std::vector<uint64_t> bufbase;        // buffer base address for fetching
+        std::vector<int>      bufframen;      // buffer frame number
+        std::vector<int>      bufwidth;       // buffer width
+        std::vector<int>      bufheight;      // buffer height
+        std::vector<int>      bufpixels;      // buffer pixel progress
+        std::vector<int>      buflines;       // buffer line progress
+        std::vector<int>      bufrawblocks;   // buffer raw blocks per line
+        std::vector<int>      bufrawlines;    // buffer raw lines
+        std::vector<int>      bufrawoffset;   // buffer raw offset
+        std::vector<uint64_t> buftimestamp;   // buffer hex 64 bit timestamp
+        std::vector<uint64_t> bufretimestamp; // buf trigger rising edge time stamp
+        std::vector<uint64_t> buffetimestamp; // buf trigger falling edge time stamp
+      } frameinfo;
+
+      /**
        * config_line_t is a struct for the configfile key=value map, used to
        * store the configuration line and its associated line number.
        */
@@ -241,6 +273,12 @@ namespace Camera {
       } modeinfo_t;
 
       std::map<std::string, modeinfo_t> modemap;
+
+      /** @var      int lastframe
+       *  @details  the last (I.E. previous) frame number acquired
+       */
+      int lastframe;
+      uint64_t lasttimestamp;
 
       long parse_system_configuration(const std::string &message);
   };

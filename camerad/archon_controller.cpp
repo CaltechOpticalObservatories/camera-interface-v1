@@ -17,14 +17,15 @@ namespace Camera {
    */
   ArchonController::ArchonController() :
     interface(nullptr),
+    activebufs(3),
     framebuf(nullptr),
     framebuf_bytes(0),
     is_connected(false),
     is_firmwareloaded(false)
   {
     // pre-size the modtype and modversion vectors to hold the max number of modules
-    modtype.resize(NMODS);
-    modversion.resize(NMODS);
+    modtype.resize(MAXNMODS);
+    modversion.resize(MAXNMODS);
 
     {
     auto ptr=std::make_unique<ArchonExposureTime>();  // create pointer to ArchonExposureTime object
@@ -172,8 +173,8 @@ namespace Camera {
 
       // validate module number
       //
-      if (module<1 || module>NMODS) {
-        message.str(""); message << "module " << module << " outside range {1:" << NMODS << "}";
+      if (module<1 || module>MAXNMODS) {
+        message.str(""); message << "module " << module << " outside range {1:" << MAXNMODS << "}";
         logwrite( function, message.str() );
         throw std::runtime_error("invalid module number");
       }
@@ -189,7 +190,7 @@ namespace Camera {
         this->modversion.at(module-1) = version;   // store the type in a vector indexed by module
       }
       catch (const std::exception &e) {
-        message.str(""); message << "requested module " << module << " out of range {1:" << NMODS << "}";
+        message.str(""); message << "requested module " << module << " out of range {1:" << MAXNMODS << "}";
         logwrite( function, message.str() );
         throw std::runtime_error("invalid module number");
       }
@@ -232,8 +233,8 @@ namespace Camera {
     std::ostringstream oss;
 
     // Check that the module number is valid
-    if ( (mod < 0) || (mod > NMODS) ) {
-      oss << "module " << mod << ": outside range {0:" << NMODS << "}";
+    if ( (mod < 0) || (mod > MAXNMODS) ) {
+      oss << "module " << mod << ": outside range {0:" << MAXNMODS << "}";
       throw std::runtime_error(oss.str());
     }
 
@@ -360,6 +361,153 @@ namespace Camera {
   /***** Camera::ArchonController::bias ***************************************/
 
 
+  /***** Camera::ArchonController::expose *************************************/
+  /**
+   * @brief      trigger an exposure by setting the expose_param = nexp
+   * @param[in]  nexp
+   * @return     ERROR|NO_ERROR
+   *
+   */
+  long ArchonController::expose(const int &nexp) {
+    return( this->set_parameter(this->expose_param, nexp) );
+  }
+  /***** Camera::ArchonController::expose *************************************/
+
+
+  /***** Camera::ArchonController::get_frame_status ***************************/
+  /**
+   * @brief      get Archon frame buffer status from FRAME command
+   * @details    Sends the "FRAME" command to Archon, reads and parses the reply
+   *             into framestatus structure.
+   * @return     ERROR|NO_ERROR
+   *
+   */
+  long ArchonController::get_frame_status() {
+    const std::string function("Camera::ArchonController::get_frame_status");
+    std::string reply;
+    char message[512];
+    long  error=NO_ERROR;
+
+    // send FRAME command to get frame buffer status
+    //
+    if ( (error = this->send_cmd(FRAME, reply)) ) {
+      if (error==ERROR) logwrite(function, "ERROR sending FRAME command");  // don't log here if BUSY
+      return error;
+    }
+
+    // use direct pointer indexing for speed
+    //
+    const char* reply_ptr = reply.c_str();
+    const char* reply_end = reply_ptr + reply.length();
+
+    // reply is a continuous string of key=value pairs "TIMER=xxxx RBUF=xxxx " ... etc.
+    // Find the key by reading chars up to the equal sign.
+    //
+    while (reply_ptr < reply_end) {
+
+      // skip whitespace
+      while (reply_ptr < reply_end && *reply_ptr==' ') reply_ptr++;
+      if (reply_ptr > reply_end) break;
+
+      // find key
+      const char* key_start = reply_ptr;
+      while (reply_ptr < reply_end && *reply_ptr != '=' && *reply_ptr != ' ') reply_ptr++;
+      if (reply_ptr >= reply_end || *reply_ptr != '=') break;
+
+      size_t key_len = reply_ptr - key_start;
+      reply_ptr++;  // skip "="
+
+      // find value
+      const char* value_start = reply_ptr;
+      while (reply_ptr < reply_end && *reply_ptr != ' ') reply_ptr++;
+      size_t valuelen = reply_ptr - value_start;
+
+      // TIMER=XXXX pattern
+      if (key_len==5 && key_start[0]=='T' && std::strncmp(key_start, "TIMER", 5)==0) {
+        this->frameinfo.timer.assign(value_start, valuelen);
+      }
+      else
+      if (key_len==4) {
+        // RBUF=XXXX pattern
+        if (key_start[0]=='R' && std::strncmp(key_start, "RBUF", 4)==0) {
+          this->frameinfo.rbuf = std::atoi(value_start);
+        }
+        else
+        // WBUF=XXXX pattern
+        if (key_start[0]=='W' && std::strncmp(key_start, "WBUF", 4)==0) {
+          this->frameinfo.wbuf = std::atoi(value_start);
+        }
+      }
+      else
+      // BUFnXXXX=XXXX pattern...
+      if (key_len>3 && key_start[0]=='B' && key_start[1]=='U' && key_start[2]=='F') {
+        int bufnum = key_start[3]-'1';  // convert to 0-based
+
+        // match suffix
+        const char* suffix = key_start+4;
+        size_t suffix_len = key_len-4;
+
+        switch (suffix_len) {
+          case 4:  // BUFnBASE, MODE
+            if (std::strncmp(suffix, "BASE", 4)==0) this->frameinfo.bufbase[bufnum] = std::strtoul(value_start, nullptr, 10);
+            else
+            if (std::strncmp(suffix, "MODE", 4)==0) this->frameinfo.bufmode[bufnum] = std::atoi(value_start);
+            break;
+          case 5:  // BUFnFRAME, WIDTH, LINES
+            if (std::strncmp(suffix, "FRAME", 5)==0) this->frameinfo.bufframen[bufnum] = std::atoi(value_start);
+            else
+            if (std::strncmp(suffix, "WIDTH", 5)==0) this->frameinfo.bufwidth[bufnum] = std::atoi(value_start);
+            else
+            if (std::strncmp(suffix, "LINES", 5)==0) this->frameinfo.buflines[bufnum] = std::atoi(value_start);
+            break;
+          case 6:  // BUFnSAMPLE, PIXELS, HEIGHT
+            if (std::strncmp(suffix, "SAMPLE", 6)==0) this->frameinfo.bufsample[bufnum] = std::atoi(value_start);
+            else
+            if (std::strncmp(suffix, "PIXELS", 6)==0) this->frameinfo.bufpixels[bufnum] = std::atoi(value_start);
+            else
+            if (std::strncmp(suffix, "HEIGHT", 6)==0) this->frameinfo.bufheight[bufnum] = std::atoi(value_start);
+            break;
+          case 8:  // BUFnCOMPLETE
+            if (std::strncmp(suffix, "COMPLETE", 8)==0) this->frameinfo.bufcomplete[bufnum] = std::atoi(value_start);
+            break;
+          case 9:  // BUFnTIMESTAMP
+            if (std::strncmp(suffix, "TIMESTAMP", 9)==0) this->frameinfo.buftimestamp[bufnum] = std::strtoull(value_start, nullptr, 16);
+            break;
+          case 11: // BUFnRETIMESTAMP, FETIMESTAMP
+            if (std::strncmp(suffix, "RETIMESTAMP", 11)==0) this->frameinfo.bufretimestamp[bufnum] = std::strtoull(value_start, nullptr, 16);
+            else
+            if (std::strncmp(suffix, "FETIMESTAMP", 11)==0) this->frameinfo.buffetimestamp[bufnum] = std::strtoull(value_start, nullptr, 16);
+            break;
+        } // end switch(suffix_len)
+      } // end if BUFnXXXX pattern
+    } // end looping through reply
+
+    int completed_index = -1;
+    int newestframe=0, newestbuf;
+
+    for (int i = 0; i < MAXNBUFS; ++i) {
+      if (this->frameinfo.bufframen[i] > newestframe) {
+        this->frameinfo.currentframe.store(this->frameinfo.bufframen[i]);
+        if (this->frameinfo.bufcomplete[i]) {
+          newestframe = this->frameinfo.bufframen[i];
+          completed_index = i;
+        }
+      }
+    }
+
+    this->lastframe = newestframe;
+
+    if (completed_index != -1) {
+      this->lasttimestamp = this->frameinfo.buftimestamp[completed_index];
+      this->frameinfo.index.store(completed_index);
+      this->frameinfo.next_index = (completed_index + 1) % this->activebufs;
+    }
+
+    return error;
+  }
+  /***** Camera::ArchonController::get_frame_status ***************************/
+
+
   /***** Camera::ArchonController::get_timer **********************************/
   /**
    * @brief      read the 64 bit interal timer from the Archon controller
@@ -459,11 +607,11 @@ namespace Camera {
   /**
    * @brief      set a parameter using FASTPREP, FASTLOADPARAM
    * @param[in]  parameter  reference to string parameter name
-   * @param[in]  value      reference to long value
+   * @param[in]  value      reference to int value
    * @return     ERROR|NO_ERROR
    *
    */
-  long ArchonController::set_parameter(const std::string &parameter, const long &value) {
+  long ArchonController::set_parameter(const std::string &parameter, const int &value) {
     const std::string function("Camera::ArchonController::set_parameter");
     try {
       this->prep_parameter(parameter, value);
@@ -482,17 +630,17 @@ namespace Camera {
   /**
    * @brief      sends Archon command FASTPREPPARAM <parameter> <value>
    * @param[in]  parameter  reference to string parameter name (64 chars)
-   * @param[in]  value      reference to long value in range {0:1048575}
+   * @param[in]  value      reference to int value in range {0:1048575}
    * @throws     std::runtime_error
    * @return     ERROR|NO_ERROR
    *
    */
-  long ArchonController::prep_parameter(const std::string &parameter, const long &value) {
+  long ArchonController::prep_parameter(const std::string &parameter, const int &value) {
     if (value < 0 || value > 0xFFFFF ) {
       throw std::runtime_error("prep_parameter \""+std::to_string(value)+"\" outside range {0:1048575}");
     }
     char cmd[88];
-    SNPRINTF(cmd, "FASTPREPPARAM %s %ld", parameter.c_str(), value);
+    SNPRINTF(cmd, "FASTPREPPARAM %s %d", parameter.c_str(), value);
     return ( this->send_cmd(cmd) );
   }
   /***** Camera::ArchonController::prep_parameter *****************************/
@@ -502,17 +650,17 @@ namespace Camera {
   /**
    * @brief      sends Archon command FASTLOADPARAM <parameter> <value>
    * @param[in]  parameter  reference to string parameter name (64 chars)
-   * @param[in]  value      reference to long value in range {0:1048575}
+   * @param[in]  value      reference to int value in range {0:1048575}
    * @throws     std::runtime_error
    * @return     ERROR|NO_ERROR
    *
    */
-  long ArchonController::load_parameter(const std::string &parameter, const long &value) {
+  long ArchonController::load_parameter(const std::string &parameter, const int &value) {
     if (value < 0 || value > 0xFFFFF ) {
       throw std::runtime_error("load_parameter \""+std::to_string(value)+"\" outside range {0:1048575}");
     }
     char cmd[88];
-    SNPRINTF(cmd, "FASTLOADPARAM %s %ld", parameter.c_str(), value);
+    SNPRINTF(cmd, "FASTLOADPARAM %s %d", parameter.c_str(), value);
     return ( this->send_cmd(cmd) );
   }
   /***** Camera::ArchonController::load_parameter *****************************/
@@ -1487,7 +1635,7 @@ namespace Camera {
 
       // now store it permanently
       //
-      if ( (module > 0) && (module <= NMODS) ) {
+      if ( (module > 0) && (module <= MAXNMODS) ) {
         try {
           this->modtype.at(module-1)    = type;       // store the type in a vector indexed by module
           this->modversion.at(module-1) = version;    // store the type in a vector indexed by module
@@ -1495,13 +1643,13 @@ namespace Camera {
         }
         catch (const std::out_of_range &e) {
           std::stringstream err;
-          err << "ERROR module " << module << " out of range {1:" << NMODS << "}";
+          err << "ERROR module " << module << " out of range {1:" << MAXNMODS << "}";
           logwrite( function, err.str() );
         }
       }
       else {                                          // else should never happen
         std::stringstream err;
-        err << "ERROR module " << module << " outside range {1:" << NMODS << "}";
+        err << "ERROR module " << module << " outside range {1:" << MAXNMODS << "}";
         logwrite( function, err.str() );
         return ERROR;
       }

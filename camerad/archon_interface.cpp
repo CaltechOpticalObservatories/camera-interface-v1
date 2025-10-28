@@ -50,6 +50,10 @@ namespace Camera {
       return this->read_acf(args);
     }
     else
+    if ( cmd == "setp" ) {
+      return this->set_parameter(args, retstring);
+    }
+    else
     if ( cmd == CAMERAD_MODE ) {
       return this->set_camera_mode(args, retstring);
     }
@@ -576,6 +580,51 @@ namespace Camera {
   /***** Camera::ArchonInterface::set_camera_mode *****************************/
 
 
+  /***** Camera::ArchonInterface::set_parameter *******************************/
+  /**
+   * @brief      general description of load firmware
+   * @details    This version fits the general description of all virtual functions
+   *             inherited by the Camera::Interface base class and is overridden
+   *             by an Archon-specific implementation.
+   * @param[in]  args       fully qualified path of ACF
+   * @param[out] retstring  contains help on request, otherwise not used
+   * @return     ERROR|NO_ERROR
+   *
+   */
+  long ArchonInterface::set_parameter(const std::string &args, std::string &retstring) {
+    const std::string function("Camera::ArchonInterface::set_parameter");
+
+    // Help
+    if (args=="?" || args=="help") {
+      retstring = "setp";
+      retstring.append( " <name> <value>\n" );
+      retstring.append( "  Sets Archon parameter <name> to <value>.\n" );
+      retstring.append( "  <value> must be in range {0:1048575}.\n" );
+      return HELP;
+    }
+
+    // tokenize args, expect two: <name> <value>
+    std::vector<std::string> tokens;
+    Tokenize(args, tokens, " ");
+
+    if (tokens.size() != 2) {
+      logwrite(function, "ERROR expected <name> <value>");
+      return ERROR;
+    }
+
+    // set the parameter value on the controller
+    try {
+      long value = std::stol(tokens[1]);
+      return( this->controller->set_parameter(tokens[0], value) );
+    }
+    catch (const std::exception &e) {
+      logwrite(function, std::string(e.what()));
+      return ERROR;
+    }
+  }
+  /***** Camera::ArchonInterface::set_parameter *******************************/
+
+
   /***** Camera::ArchonInterface::native **************************************/
   /**
    * @brief      send native commands directly to Archon and log result
@@ -756,17 +805,35 @@ namespace Camera {
    */
   void ArchonInterface::image_acquisition_thread(int nexp) {
     const std::string function("Camera::ArchonInterface::image_acquisition_thread");
+    char message[256];
     logwrite(function, "");
 
-    this->camera_info.start_time = get_timestamp();              // system time when exposure starts (YYYY-MM-DDTHH:MM:SS.sss)
+    this->camera_info.start_time = get_timestamp();               // system time when exposure starts (YYYY-MM-DDTHH:MM:SS.sss)
 
-//  this->set_fitstime(this->camera_info.start_time);            // sets camera.fitstime (YYYYMMDDHHMMSS) used for filename
-//  get_fitsname(this->camera_info.fits_name);                   // assemble the FITS filename
-//  this->add_filename_key();                                    // add filename to system keys database
+//  this->set_fitstime(this->camera_info.start_time);             // sets camera.fitstime (YYYYMMDDHHMMSS) used for filename
+//  get_fitsname(this->camera_info.fits_name);                    // assemble the FITS filename
+//  this->add_filename_key();                                     // add filename to system keys database
 
     logwrite(function, "exposure started");
 
-    this->camera_info.systemkeys.keydb = this->systemkeys.keydb;
+    this->camera_info.systemkeys.keydb = this->systemkeys.keydb;  // copy systemkeys databases into camera_info
+
+    if (nexp > 1) {
+      SNPRINTF(message, "starting sequence of %d frames. lastframe=%d", nexp, this->controller->lastframe);
+      logwrite(function, std::string(message));
+    }
+
+    //
+    // *** initiate the exposure here ***
+    //
+
+    this->controller->get_frame_status();
+    long error = this->controller->expose(nexp);
+    if (error != NO_ERROR) {
+      logwrite(function, "could not initiate exposure");
+      return;
+    }
+    logwrite(function, "exposure started");
 
   }
   /***** Camera::ArchonInterface::image_acquisition_thread ********************/
