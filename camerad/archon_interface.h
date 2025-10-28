@@ -104,6 +104,7 @@ namespace Camera {
       long disconnect_controller();
       long load_firmware(const std::string &acffile);
       long allocate_framebuf(uint32_t reqsz);
+      long get_parameter(const std::string &args, std::string &retstring);
       long load_timing(std::string cmd, std::string &reply);
       long read_acf(const std::string &filename);
       long read_frame();

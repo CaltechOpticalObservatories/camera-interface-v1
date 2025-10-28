@@ -146,6 +146,7 @@ namespace Camera {
       void bias(const int &mod, const int &chan, float &volts, const bool &should_write);
       long expose(const int &nexp);
       long get_frame_status();
+      template<typename T> T get_parameter(const std::string &parameter);
       long get_timer(uint64_t &timer);
       void set_exptime(double exptime);
       long set_parameter(const std::string &parameter, const int &value);

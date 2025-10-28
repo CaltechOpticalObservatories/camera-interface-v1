@@ -50,6 +50,10 @@ namespace Camera {
       return this->read_acf(args);
     }
     else
+    if ( cmd == "getp" ) {
+      return this->get_parameter(args, retstring);
+    }
+    else
     if ( cmd == "setp" ) {
       return this->set_parameter(args, retstring);
     }
@@ -411,6 +415,44 @@ namespace Camera {
   /***** Camera::ArchonInterface::expose **************************************/
 
 
+  /***** Camera::ArchonInterface::get_parameter *******************************/
+  /**
+   * @brief      get an Archon parameter value from Configuration
+   * @param[in]  args       expected string "<parametername>"
+   * @param[out] retstring  contains help on request, otherwise not used
+   * @return     ERROR|NO_ERROR
+   *
+   */
+  long ArchonInterface::get_parameter(const std::string &args, std::string &retstring) {
+    const std::string function("Camera::ArchonInterface::get_parameter");
+
+    // Help
+    if (args=="?" || args=="help") {
+      retstring = "getp";
+      retstring.append( " <name>\n" );
+      retstring.append( "  Reads Archon parameter <name> from configuration memory.\n" );
+      return HELP;
+    }
+
+    // args should contain only a single word, the parameter name
+    if (args.find_first_of(" \t\n\r") != std::string::npos) {
+      logwrite(function, "ERROR expected <name>");
+      return ERROR;
+    }
+
+    // get the parameter value from the controller
+    try {
+      retstring = this->controller->get_parameter<std::string>(args);
+      return NO_ERROR;
+    }
+    catch (const std::exception &e) {
+      logwrite(function, std::string(e.what()));
+      return ERROR;
+    }
+  }
+  /***** Camera::ArchonInterface::get_parameter *******************************/
+
+
   /***** Camera::ArchonInterface::read_acf ************************************/
   /**
    * @brief      loads the ACF file into host only
@@ -582,11 +624,8 @@ namespace Camera {
 
   /***** Camera::ArchonInterface::set_parameter *******************************/
   /**
-   * @brief      general description of load firmware
-   * @details    This version fits the general description of all virtual functions
-   *             inherited by the Camera::Interface base class and is overridden
-   *             by an Archon-specific implementation.
-   * @param[in]  args       fully qualified path of ACF
+   * @brief      write Archon parameter to configuration memory
+   * @param[in]  args       expected string "<parametername> <value>"
    * @param[out] retstring  contains help on request, otherwise not used
    * @return     ERROR|NO_ERROR
    *
@@ -814,8 +853,6 @@ namespace Camera {
 //  get_fitsname(this->camera_info.fits_name);                    // assemble the FITS filename
 //  this->add_filename_key();                                     // add filename to system keys database
 
-    logwrite(function, "exposure started");
-
     this->camera_info.systemkeys.keydb = this->systemkeys.keydb;  // copy systemkeys databases into camera_info
 
     if (nexp > 1) {
@@ -823,18 +860,28 @@ namespace Camera {
       logwrite(function, std::string(message));
     }
 
+    this->controller->get_frame_status();
+
     //
     // *** initiate the exposure here ***
     //
 
-    this->controller->get_frame_status();
     long error = this->controller->expose(nexp);
+
     if (error != NO_ERROR) {
       logwrite(function, "could not initiate exposure");
       return;
     }
     logwrite(function, "exposure started");
 
+/***
+    while (error==NO_ERROR && !is_aborted && nexp > 0) {
+      // read frames and put them into queue
+      nexp--;
+    }
+ ***/
+
+    logwrite(function, "complete");
   }
   /***** Camera::ArchonInterface::image_acquisition_thread ********************/
 

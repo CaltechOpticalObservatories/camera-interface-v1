@@ -508,6 +508,75 @@ namespace Camera {
   /***** Camera::ArchonController::get_frame_status ***************************/
 
 
+  /***** Camera::ArchonController::get_parameter ******************************/
+  /**
+   * @brief      gets parameter value from Archon configuration memory
+   * @details    This template function sends an RCONFIG command to Archon
+   *             and returns a string. Another template version returns int.
+   * @param[in]  parameter
+   * @return     string value of parameter
+   * @throws     std::runtime_error
+   *
+   */
+  template<> std::string ArchonController::get_parameter<std::string>(const std::string &parameter) {
+    const std::string function("Archon::Interface::read_parameter");
+
+    // requested parameter must be in the parammap
+    //
+    if (this->parammap.find(parameter.c_str()) == this->parammap.end()) {
+      throw std::runtime_error("parameter \""+parameter+"\" not found in ACF");
+    }
+
+    // form the RCONFIG command to send to Archon
+    //
+    std::ostringstream cmd;
+    cmd << "RCONFIG"
+        << std::uppercase << std::setfill('0') << std::setw(4) << std::hex
+        << this->parammap[parameter.c_str()].line;
+
+    std::string reply;
+
+    // send RCONFIG command to Archon
+    //
+    if (this->send_cmd(cmd.str(), reply) != NO_ERROR) {
+      throw std::runtime_error("sending "+cmd.str());
+    }
+    strip_newline(reply);
+
+    // reply should now be of the form PARAMETERn=PARAMNAME=VALUE
+    // check for that format by making sure it starts with PARAMETER
+    // and contains two equal '=' signs
+    //
+    if ( (std::count(reply.begin(), reply.end(), '=') != 2) ||
+         (reply.substr(0,9) != "PARAMETER") ) {
+      throw std::runtime_error("malformed reply \""+reply+"\": expected PARAMETERn=NAME=VALUE");
+    }
+
+    // return just the VALUE here (find from the right)
+    //
+    size_t loc = reply.rfind('=');
+    return reply.substr(++loc);
+  }
+  /***** Camera::ArchonController::get_parameter ******************************/
+  /**
+   * @brief      gets parameter value from Archon configuration memory
+   * @details    This template version uses the string version and returns an integer.
+   * @param[in]  parameter
+   * @return     int value of parameter
+   * @throws     std::runtime_error|std::exception
+   *
+   */
+  template<> int ArchonController::get_parameter<int>(const std::string &parameter) {
+    try {
+      return std::stoi( this->get_parameter<std::string>(parameter) );
+    }
+    catch (const std::exception &e) {
+      throw;
+    }
+  }
+  /***** Camera::ArchonController::get_parameter ******************************/
+
+
   /***** Camera::ArchonController::get_timer **********************************/
   /**
    * @brief      read the 64 bit interal timer from the Archon controller
