@@ -132,6 +132,7 @@ namespace Camera {
       std::string gain;
       int configlines;                      //!< number of configuration lines in ACF
       int n_hdrshift;
+      uint64_t last_frame_timer;            //!< Archon timer of last frame
       std::string power_status;             //!< Archon power status
       std::mutex archon_mutex;
       network_details archon_network_details;
@@ -141,7 +142,11 @@ namespace Camera {
 
       void connect();
       void bias(const int &mod, const int &chan, float &volts, const bool &should_write);
+      long get_timer(uint64_t &timer);
       void set_exptime(double exptime);
+      long set_parameter(const std::string &parameter, const long &value);
+      long prep_parameter(const std::string &parameter, const long &value);
+      long load_parameter(const std::string &parameter, const long &value);
       double get_exptime() const { return( this->exposure_time->get() ); }
       long send_cmd(const std::string &cmd, std::string &reply);
       long send_cmd(const std::string &cmd);

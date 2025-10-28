@@ -360,6 +360,62 @@ namespace Camera {
   /***** Camera::ArchonController::bias ***************************************/
 
 
+  /***** Camera::ArchonController::get_timer **********************************/
+  /**
+   * @brief      read the 64 bit interal timer from the Archon controller
+   * @details    Sends the "TIMER" command to Archon, reads back the reply, and
+   *             stores the value as (unsigned long int) in the reference param.
+   *             This is an internal 64 bit timer/counter. One tick of the counter
+   *             is 10 ns.
+   * @param[out] timer  reference to timer value
+   * @return     ERROR|NO_ERROR
+   *
+   */
+  long ArchonController::get_timer(uint64_t &timer) {
+    const std::string function("Camera::ArchonController::get_timer");
+    std::string reply;
+
+    // send TIMER command
+    //
+    long error = this->send_cmd(TIMER, reply);
+    if (error != NO_ERROR) {
+      logwrite(function, "could not read Archon TIMER");
+      return error;
+    }
+
+    std::vector<std::string> tokens;
+    Tokenize(reply, tokens, "=");                   // Tokenize the reply
+
+    // Response should be "TIMER=xxxx\n" so there needs
+    // to be two tokens
+    //
+    if (tokens.size() != 2) {
+      logwrite(function, "unrecognized response \""+reply+"\": expected TIMER=xxxx");
+      return ERROR;
+    }
+
+    // Second token must be a hexidecimal string
+    //
+    strip_newline(tokens[1]);
+    if (!std::all_of(tokens[1].begin(), tokens[1].end(), ::isxdigit)) {
+      logwrite(function, "value \""+tokens[1]+"\" not a hexadecimal string");
+      return ERROR;
+    }
+
+    // convert from hex string to integer and save return value
+    //
+    try { timer = std::stoul(tokens[1], nullptr, 16);
+    }
+    catch (const std::exception &e) {
+      logwrite(function, std::string(e.what()));
+      return ERROR;
+    }
+
+    return NO_ERROR;
+  }
+  /***** Camera::ArchonController::get_timer **********************************/
+
+
   /***** Camera::ArchonController::set_exptime ********************************/
   /**
    * @brief      set the exposure time on the controller
@@ -399,6 +455,69 @@ namespace Camera {
   /***** Camera::ArchonController::set_exptime ********************************/
 
 
+  /***** Camera::ArchonController::set_parameter ******************************/
+  /**
+   * @brief      set a parameter using FASTPREP, FASTLOADPARAM
+   * @param[in]  parameter  reference to string parameter name
+   * @param[in]  value      reference to long value
+   * @return     ERROR|NO_ERROR
+   *
+   */
+  long ArchonController::set_parameter(const std::string &parameter, const long &value) {
+    const std::string function("Camera::ArchonController::set_parameter");
+    try {
+      this->prep_parameter(parameter, value);
+      this->load_parameter(parameter, value);
+      return NO_ERROR;
+    }
+    catch (const std::exception &e) {
+      logwrite(function, "ERROR: "+std::string(e.what()));
+      return ERROR;
+    }
+  }
+  /***** Camera::ArchonController::set_parameter ******************************/
+
+
+  /***** Camera::ArchonController::prep_parameter *****************************/
+  /**
+   * @brief      sends Archon command FASTPREPPARAM <parameter> <value>
+   * @param[in]  parameter  reference to string parameter name (64 chars)
+   * @param[in]  value      reference to long value in range {0:1048575}
+   * @throws     std::runtime_error
+   * @return     ERROR|NO_ERROR
+   *
+   */
+  long ArchonController::prep_parameter(const std::string &parameter, const long &value) {
+    if (value < 0 || value > 0xFFFFF ) {
+      throw std::runtime_error("prep_parameter \""+std::to_string(value)+"\" outside range {0:1048575}");
+    }
+    char cmd[88];
+    SNPRINTF(cmd, "FASTPREPPARAM %s %ld", parameter.c_str(), value);
+    return ( this->send_cmd(cmd) );
+  }
+  /***** Camera::ArchonController::prep_parameter *****************************/
+
+
+  /***** Camera::ArchonController::load_parameter *****************************/
+  /**
+   * @brief      sends Archon command FASTLOADPARAM <parameter> <value>
+   * @param[in]  parameter  reference to string parameter name (64 chars)
+   * @param[in]  value      reference to long value in range {0:1048575}
+   * @throws     std::runtime_error
+   * @return     ERROR|NO_ERROR
+   *
+   */
+  long ArchonController::load_parameter(const std::string &parameter, const long &value) {
+    if (value < 0 || value > 0xFFFFF ) {
+      throw std::runtime_error("load_parameter \""+std::to_string(value)+"\" outside range {0:1048575}");
+    }
+    char cmd[88];
+    SNPRINTF(cmd, "FASTLOADPARAM %s %ld", parameter.c_str(), value);
+    return ( this->send_cmd(cmd) );
+  }
+  /***** Camera::ArchonController::load_parameter *****************************/
+
+
   /***** Camera::ArchonController::send_cmd ***********************************/
   /**
    * @brief      send a command to Archon
@@ -423,10 +542,9 @@ namespace Camera {
    */
   long ArchonController::send_cmd(const std::string &cmd, std::string &reply) {
     std::string function = "Camera::ArchonController::send_cmd";
-    char message[256];
     char check[4];
-    int     retval;
-    int     error = NO_ERROR;
+    int  retval;
+    int  error = NO_ERROR;
 
     // nothing to do if no connection open to controller
     if (!this->archon.isconnected()) {
@@ -442,9 +560,8 @@ namespace Camera {
     // The archon busy atomic flag is also needed because FETCH can keep
     // Archon busy for longer than the duration of this function.
     //
-    if ( archon_busy.test_and_set() ) {
-      SNPRINTF(message, "ERROR Archon busy: ignored command \"%s\"", cmd.c_str());
-      logwrite(function, std::string(message));
+    if ( this->archon_busy.test_and_set() ) {
+      logwrite(function, "ERROR Archon busy: ignored command \""+cmd+"\"");
       return BUSY;
     }
 
@@ -463,6 +580,7 @@ namespace Camera {
     //
     if ( (this->archon.Write(scmd)) == -1) {
       logwrite( function, "ERROR writing to camera socket");
+      this->archon_busy.clear();
       return ERROR;
     }
 
@@ -480,16 +598,16 @@ namespace Camera {
 
     // For all other commands, receive the reply
     //
-    char* buffer = new char[64*1024+1]{};                // temporary buffer for holding Archon replies
+    constexpr size_t BUFSZ = 64*1024;
+    char* buffer = new char[BUFSZ+1]{};                  // temporary buffer for holding Archon replies
     reply.clear();                                       // zero reply buffer
     do {
       if ( (retval=this->archon.Poll()) <= 0) {
-        if (retval==0) { SNPRINTF(message, "Poll timeout waiting for response from Archon command (maybe unrecognized command?)"); error=TIMEOUT; }
-        if (retval<0)  { SNPRINTF(message, "Poll error waiting for response from Archon command"); error=ERROR; }
-        if ( error != NO_ERROR ) logwrite( function, std::string(message) );
+        if (retval==0) { logwrite(function, "Poll timeout waiting for response from Archon command (maybe unrecognized command?)"); error=TIMEOUT; }
+        if (retval<0)  { logwrite(function, "Poll error waiting for response from Archon command"); error=ERROR; }
         break;
       }
-      retval = this->archon.Read(buffer, 64*1024);       // read into temp buffer
+      retval = this->archon.Read(buffer, BUFSZ);         // read into temp buffer
       if (retval <= 0) {
         logwrite( function, "ERROR reading Archon" );
         break;
@@ -504,7 +622,7 @@ namespace Camera {
     // If there was an Archon error then clear the busy flag and get out now
     //
     if ( error != NO_ERROR ) {
-      archon_busy.clear();
+      this->archon_busy.clear();
       return error;
     }
 
@@ -516,8 +634,7 @@ namespace Camera {
     //
     if (!reply.empty() && reply[0]=='?') {
       error = ERROR;
-      SNPRINTF(message, "Archon controller returned ERROR processing command: %s", cmd.c_str());
-      logwrite( function, std::string(message) );
+      logwrite(function, "ERROR from Archon processing \""+cmd+"\"");
     }
     else
     // First 3 bytes of reply must equal checksum else reply doesn't belong to command
@@ -525,8 +642,7 @@ namespace Camera {
       error = ERROR;
       std::string hdr = reply;
       try { scmd.erase(scmd.find("\n"), 1); } catch(...) { }
-      SNPRINTF(message, "ERROR command-reply mismatch for command: %s: expected %s but received %s", scmd.c_str(), check, reply.c_str());
-      logwrite( function, std::string(message) );
+      logwrite(function, "ERROR command-reply mismatch for \""+cmd+"\": expected "+check+" but received "+reply);
     }
     else {
       // command and reply are a matched pair
@@ -535,7 +651,7 @@ namespace Camera {
     }
 
     // clear the busy flag
-    archon_busy.clear();
+    this->archon_busy.clear();
 
     return error;
   }

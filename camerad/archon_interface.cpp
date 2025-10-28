@@ -399,7 +399,7 @@ namespace Camera {
     int nseq_remaining = nseq;
 
     while (nseq_remaining-- > 0) {
-      do_expose(camera_info.nexp);
+      do_expose(this->camera_info.nexp);
     }
 
     return NO_ERROR;
@@ -730,7 +730,7 @@ namespace Camera {
     // The producer triggers the exposure and collect images into a FIFO queue.
     // The consumer pops images out of the queue for processing.
     //
-    std::thread producer(&ArchonInterface::image_acquisition_thread, this);
+    std::thread producer(&ArchonInterface::image_acquisition_thread, this, nexp);
     std::thread consumer(&ArchonInterface::image_processing_thread, this);
 
     producer.join();
@@ -749,11 +749,25 @@ namespace Camera {
 
   /***** Camera::ArchonInterface::image_acquisition_thread ********************/
   /**
+   * @brief      triggers exposure, collects and pushes frames into a queue
+   * @details    This is run in the producer thread.
+   * @param[in]  nexp
    *
    */
-  void ArchonInterface::image_acquisition_thread() {
+  void ArchonInterface::image_acquisition_thread(int nexp) {
     const std::string function("Camera::ArchonInterface::image_acquisition_thread");
-    logwrite(function, "here");
+    logwrite(function, "");
+
+    this->camera_info.start_time = get_timestamp();              // system time when exposure starts (YYYY-MM-DDTHH:MM:SS.sss)
+
+//  this->set_fitstime(this->camera_info.start_time);            // sets camera.fitstime (YYYYMMDDHHMMSS) used for filename
+//  get_fitsname(this->camera_info.fits_name);                   // assemble the FITS filename
+//  this->add_filename_key();                                    // add filename to system keys database
+
+    logwrite(function, "exposure started");
+
+    this->camera_info.systemkeys.keydb = this->systemkeys.keydb;
+
   }
   /***** Camera::ArchonInterface::image_acquisition_thread ********************/
 

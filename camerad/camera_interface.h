@@ -75,7 +75,7 @@ namespace Camera {
       virtual long test( std::string args, std::string &retstring ) = 0;
 
       virtual long do_expose(int nexp) = 0;
-      virtual void image_acquisition_thread() = 0;
+      virtual void image_acquisition_thread(int nexp) = 0;
       virtual void image_processing_thread() = 0;
 
       virtual long instrument_cmd(const std::string &cmd,

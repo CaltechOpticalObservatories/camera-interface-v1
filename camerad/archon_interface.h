@@ -89,7 +89,7 @@ namespace Camera {
       long test( const std::string args, std::string &retstring ) override;
 
       long do_expose(int nexp) override;
-      void image_acquisition_thread() override;
+      void image_acquisition_thread(int nexp) override;
       void image_processing_thread() override;
 
       // Archon controller command dispatcher
