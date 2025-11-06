@@ -13,8 +13,13 @@
 
 namespace Camera {
 
+  /**
+   * @namespace  all recognized exposure modes for Hispec
+   */
   namespace HispecExposureMode {
     constexpr const char* FASTREADOUT = "FASTREADOUT";
+    constexpr const char* SLOWREADOUT = "SLOWREADOUT";
+    constexpr const char* ALLMODES[] = {FASTREADOUT, SLOWREADOUT};
   }
 
   class Hispec;
@@ -24,6 +29,16 @@ namespace Camera {
       ExposureModeFastReadout(Camera::ArchonInterface* iface)
         : ExposureModeTemplate<Camera::ArchonInterface>(iface) {
           type=HispecExposureMode::FASTREADOUT;
+        }
+
+    long expose() override;
+  };
+
+  class ExposureModeSlowReadout : public ExposureModeTemplate<Camera::ArchonInterface> {
+    public:
+      ExposureModeSlowReadout(Camera::ArchonInterface* iface)
+        : ExposureModeTemplate<Camera::ArchonInterface>(iface) {
+          type=HispecExposureMode::SLOWREADOUT;
         }
 
     long expose() override;

@@ -82,25 +82,6 @@ namespace Camera {
   /***** Camera::ArchonInterface::configure_interface *************************/
 
 
-  std::vector<std::string> ArchonInterface::get_exposure_modes() {
-    std::vector<std::string> vec;
-    for (const auto &v : Camera::ArchonExposureMode::ALLMODES) { vec.push_back(v); }
-    return vec;
-  }
-
-  long ArchonInterface::set_exposure_mode(const std::string &modestr) {
-    const std::string function("Camera::ArchonInterface::set_exposure_mode");
-
-    const std::map<std::string, std::function<std::unique_ptr<ExposureMode>(ArchonInterface*)>> factories = {
-      {"raw",  [](ArchonInterface* iface) { return std::make_unique<ExposureModeRaw>(iface); }},
-      {"ccd",  [](ArchonInterface* iface) { return std::make_unique<ExposureModeCCD>(iface); }},
-      {"rxrv", [](ArchonInterface* iface) { return std::make_unique<ExposureModeRXRV>(iface); }}
-    };
-    this->exposuremode = std::make_unique<ExposureModeCCD>(this);  // THIS IS OK
-    return NO_ERROR;
-  }
-
-
   /***** Camera::ArchonInterface::abort ***************************************/
   /**
    * @brief
@@ -437,10 +418,9 @@ namespace Camera {
 
   /***** Camera::ArchonInterface::exposure_mode *******************************/
   /**
-   * @brief      
-   * @details    
-   * @param[in]  args       
-   * @param[out] retstring  
+   * @brief      interface function to set/get the exposure mode
+   * @param[in]  args       requested mode
+   * @param[out] retstring  contains current mode
    * @return     ERROR | NO_ERROR | HELP
    *
    */
@@ -450,8 +430,14 @@ namespace Camera {
     // Help
     if (args=="?" || args=="help") {
       retstring = CAMERAD_EXPOSUREMODE;
-      retstring.append( " <tbd>\n" );
-      retstring.append( "  TBD\n" );
+      retstring.append( " [ <mode> ]\n" );
+      retstring.append( "  Set or get current exposure mode.\n" );
+      retstring.append( "  Valid modes are: {" );
+
+      auto modes = this->get_exposure_modes();
+      for (const auto &mode : modes) { retstring.append(" "); retstring.append(mode); }
+
+      retstring.append( " }\n" );
       return HELP;
     }
 
@@ -467,26 +453,7 @@ namespace Camera {
     }
 
     // otherwise something was specified so try to set exposure mode
-
-    long error=NO_ERROR;
-
-    if (args==ArchonExposureMode::RAW) this->exposuremode = std::make_unique<ExposureModeRaw>(this);
-    else
-    if (args==ArchonExposureMode::CCD) this->exposuremode = std::make_unique<ExposureModeCCD>(this);
-    else
-    if (args==ArchonExposureMode::RXRV) this->exposuremode = std::make_unique<ExposureModeRXRV>(this);
-    else {
-      logwrite(function, "ERROR unrecognized exposure mode \""+args+"\"");
-      auto modes=this->get_exposure_modes();
-      retstring="{";
-      for (const auto &m : modes) {
-        retstring.append(" ");
-        retstring.append(m);
-      }
-      retstring.append(" }");
-      return ERROR;
-      error=ERROR;
-    }
+    long error=set_exposure_mode(args);
 
     // always return current mode
     if (!this->exposuremode || this->exposuremode->get_type().empty()) {
@@ -501,6 +468,52 @@ namespace Camera {
     return error;
   }
   /***** Camera::ArchonInterface::exposure_mode *******************************/
+
+
+  /***** Camera::ArchonInterface::get_exposure_modes **************************/
+  /**
+   * @brief      return a vector of strings of recognized exposure modes
+   * @return     vector<string>
+   *
+   */
+  std::vector<std::string> ArchonInterface::get_exposure_modes() {
+    std::vector<std::string> modes;
+    for (const auto &mode : Camera::ArchonExposureMode::ALLMODES) { modes.push_back(mode); }
+    return modes;
+  }
+  /***** Camera::ArchonInterface::get_exposure_modes **************************/
+
+
+  /***** Camera::ArchonInterface::set_exposure_mode ***************************/
+  /**
+   * @brief      actually sets the exposure mode
+   * @details    This creates the appropriate exposure mode object for the
+   *             requested exposure mode, providing access to that mode's functions.
+   * @param[in]  modein  string representing the exposure mode
+   * @return     ERROR|NO_ERROR
+   *
+   */
+  long ArchonInterface::set_exposure_mode(const std::string &modein) {
+
+    if (modein==ArchonExposureMode::RAW) {
+      this->exposuremode = std::make_unique<ExposureModeRaw>(this);
+    }
+    else
+    if (modein==ArchonExposureMode::CCD) {
+      this->exposuremode = std::make_unique<ExposureModeCCD>(this);
+    }
+    else
+    if (modein==ArchonExposureMode::RXRV) {
+      this->exposuremode = std::make_unique<ExposureModeRXRV>(this);
+    }
+    else {
+      logwrite("Camera::ArchonInterface::set_exposure_mode",
+               "ERROR unrecognized exposure mode \""+modein+"\"");
+      return ERROR;
+    }
+    return NO_ERROR;
+  }
+  /***** Camera::ArchonInterface::set_exposure_mode ***************************/
 
 
   /***** Camera::ArchonInterface::get_parameter *******************************/
@@ -844,23 +857,15 @@ namespace Camera {
   long ArchonInterface::test( const std::string args, std::string &retstring ) {
     const std::string function("Camera::ArchonInterface::test");
 
-    // initialize the exposure mode to ExposureModeCCD and call that expose
-    //
-    logwrite(function, "----- calling exposuremode->expose() for exposure mode CCD -----");
-    this->exposuremode = std::make_unique<ExposureModeCCD>(this);
-    if (this->exposuremode) this->exposuremode->test();
-    if (this->exposuremode) this->exposuremode->expose();
-
-    // initialize the exposure mode to ExposureModeRXRV and call that expose
-    //
-    logwrite(function, "----- calling exposuremode->expose() for exposure mode RXRV -----");
-    this->exposuremode = std::make_unique<ExposureModeRXRV>(this);
-    if (this->exposuremode) this->exposuremode->expose();
-
     if (!this->exposuremode) {
       logwrite(function, "ERROR exposure mode undefined!");
       return ERROR;
     }
+
+    logwrite(function, "calling exposuremode->expose() for mode"+this->exposuremode->get_type());
+
+    this->exposuremode->test();
+    this->exposuremode->expose();
 
     return NO_ERROR;
   }

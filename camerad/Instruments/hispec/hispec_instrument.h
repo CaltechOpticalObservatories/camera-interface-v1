@@ -26,9 +26,13 @@ namespace Camera {
 
       void configure_instrument() override;
 
+      std::vector<std::string> get_exposure_modes() override;
+      long set_exposure_mode(const std::string &modein) override;
+
     private:
       // these are HISPEC-specific functions
-      long hispec_expose(const std::string &args, std::string &retstring);
+      long hispec_this(const std::string &args, std::string &retstring);
+      long hispec_that(const std::string &args, std::string &retstring);
   };
   /***** Camera::Hispec *******************************************************/
 }

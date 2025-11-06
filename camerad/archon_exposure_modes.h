@@ -13,12 +13,14 @@
 
 namespace Camera {
 
+  /**
+   * @namespace  all recognized exposure modes
+   */
   namespace ArchonExposureMode {
     constexpr const char* RAW = "RAW";
     constexpr const char* CCD = "CCD";
     constexpr const char* RXRV = "RXRV";
     constexpr const char* ALLMODES[] = {RAW, CCD, RXRV};
-    constexpr size_t NUM_MODES = sizeof(ALLMODES)/sizeof(ALLMODES[0]);
   };
 
   class ArchonInterface;     // forward declaration

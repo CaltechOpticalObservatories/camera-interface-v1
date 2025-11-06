@@ -271,11 +271,11 @@ namespace Camera {
        * instrument-specific commands
        */
       else
-      if ( cmd == "hispec_expose" ) {
+      if ( cmd == "hispec_this" ) {
         ret = interface->instrument_cmd(cmd, args, retstring);
       }
       else
-      if ( cmd == "hispec_mode_fast" ) {
+      if ( cmd == "hispec_that" ) {
         ret = interface->instrument_cmd(cmd, args, retstring);
       }
       /**

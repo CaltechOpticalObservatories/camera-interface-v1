@@ -17,9 +17,22 @@ namespace Camera {
    */
   long ExposureModeFastReadout::expose() {
     const std::string function("Camera::ExposureModeFastReadout::expose");
-    logwrite(function, "hi");
+    logwrite(function, "meep meep");
     return NO_ERROR;
   }
   /***** Camera::ExposureModeFastReadout::expose *****************************/
+
+
+  /***** Camera::ExposureModeSlowReadout::expose *****************************/
+  /**
+   * @brief  implementation of hispec-specific expose for SlowReadout
+   *
+   */
+  long ExposureModeSlowReadout::expose() {
+    const std::string function("Camera::ExposureModeSlowReadout::expose");
+    logwrite(function, "sloooow down");
+    return NO_ERROR;
+  }
+  /***** Camera::ExposureModeSlowReadout::expose *****************************/
 
 }

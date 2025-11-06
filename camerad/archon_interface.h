@@ -72,9 +72,7 @@ namespace Camera {
       // and have their own controller-specific implementations which are
       // implemented in archon_interface.cpp.
       //
-      std::vector<std::string> get_exposure_modes() override;
       void configure_interface() override;
-      long set_exposure_mode(const std::string &modestr) override;
       long abort( const std::string args, std::string &retstring ) override;
       long autodir( const std::string args, std::string &retstring ) override;
       long basename( const std::string args, std::string &retstring ) override;
@@ -86,6 +84,8 @@ namespace Camera {
       void set_exptime(double exptime) override;
       long expose( const std::string args, std::string &retstring ) override;
       long exposure_mode( const std::string args, std::string &retstring ) override;
+      std::vector<std::string> get_exposure_modes() override;
+      long set_exposure_mode(const std::string &modein) override;
       long load_firmware( const std::string &args, std::string &retstring ) override;
       long native( const std::string args, std::string &retstring ) override;
       long power( const std::string args, std::string &retstring ) override;
