@@ -82,6 +82,25 @@ namespace Camera {
   /***** Camera::ArchonInterface::configure_interface *************************/
 
 
+  std::vector<std::string> ArchonInterface::get_exposure_modes() {
+    std::vector<std::string> vec;
+    for (const auto &v : Camera::ArchonExposureMode::ALLMODES) { vec.push_back(v); }
+    return vec;
+  }
+
+  long ArchonInterface::set_exposure_mode(const std::string &modestr) {
+    const std::string function("Camera::ArchonInterface::set_exposure_mode");
+
+    const std::map<std::string, std::function<std::unique_ptr<ExposureMode>(ArchonInterface*)>> factories = {
+      {"raw",  [](ArchonInterface* iface) { return std::make_unique<ExposureModeRaw>(iface); }},
+      {"ccd",  [](ArchonInterface* iface) { return std::make_unique<ExposureModeCCD>(iface); }},
+      {"rxrv", [](ArchonInterface* iface) { return std::make_unique<ExposureModeRXRV>(iface); }}
+    };
+    this->exposuremode = std::make_unique<ExposureModeCCD>(this);  // THIS IS OK
+    return NO_ERROR;
+  }
+
+
   /***** Camera::ArchonInterface::abort ***************************************/
   /**
    * @brief
@@ -374,9 +393,10 @@ namespace Camera {
 
   /***** Camera::ArchonInterface::expose **************************************/
   /**
-   * @brief      
-   * @param      
-   * @param      
+   * @brief      initiates an exposure sequence
+   * @details    
+   * @param[in]  args       optionally contains number of repeats
+   * @param[out] retstring  optional return string
    * @return     ERROR | NO_ERROR | HELP
    *
    */
@@ -413,6 +433,74 @@ namespace Camera {
     return NO_ERROR;
   }
   /***** Camera::ArchonInterface::expose **************************************/
+
+
+  /***** Camera::ArchonInterface::exposure_mode *******************************/
+  /**
+   * @brief      
+   * @details    
+   * @param[in]  args       
+   * @param[out] retstring  
+   * @return     ERROR | NO_ERROR | HELP
+   *
+   */
+  long ArchonInterface::exposure_mode( const std::string args, std::string &retstring ) {
+    const std::string function("Camera::ArchonInterface::exposure_mode");
+
+    // Help
+    if (args=="?" || args=="help") {
+      retstring = CAMERAD_EXPOSUREMODE;
+      retstring.append( " <tbd>\n" );
+      retstring.append( "  TBD\n" );
+      return HELP;
+    }
+
+    // not specified is request to return current exposure mode
+    if (args.empty()) {
+      if (!this->exposuremode || this->exposuremode->get_type().empty()) {
+        logwrite(function, "ERROR exposure mode not set!");
+        retstring="undefined";
+        return ERROR;
+      }
+      retstring=this->exposuremode->get_type();
+      return NO_ERROR;
+    }
+
+    // otherwise something was specified so try to set exposure mode
+
+    long error=NO_ERROR;
+
+    if (args==ArchonExposureMode::RAW) this->exposuremode = std::make_unique<ExposureModeRaw>(this);
+    else
+    if (args==ArchonExposureMode::CCD) this->exposuremode = std::make_unique<ExposureModeCCD>(this);
+    else
+    if (args==ArchonExposureMode::RXRV) this->exposuremode = std::make_unique<ExposureModeRXRV>(this);
+    else {
+      logwrite(function, "ERROR unrecognized exposure mode \""+args+"\"");
+      auto modes=this->get_exposure_modes();
+      retstring="{";
+      for (const auto &m : modes) {
+        retstring.append(" ");
+        retstring.append(m);
+      }
+      retstring.append(" }");
+      return ERROR;
+      error=ERROR;
+    }
+
+    // always return current mode
+    if (!this->exposuremode || this->exposuremode->get_type().empty()) {
+      logwrite(function, "ERROR exposure mode not set!");
+      retstring="undefined";
+      return ERROR;
+    }
+    retstring=this->exposuremode->get_type();
+
+    logwrite(function, retstring);
+
+    return error;
+  }
+  /***** Camera::ArchonInterface::exposure_mode *******************************/
 
 
   /***** Camera::ArchonInterface::get_parameter *******************************/
@@ -758,17 +846,18 @@ namespace Camera {
 
     // initialize the exposure mode to ExposureModeCCD and call that expose
     //
-    logwrite(function, "----- calling exposure_mode->expose() for exposure mode CCD -----");
-    exposure_mode = std::make_unique<ExposureModeCCD>(this);
-    if (exposure_mode) exposure_mode->expose();
+    logwrite(function, "----- calling exposuremode->expose() for exposure mode CCD -----");
+    this->exposuremode = std::make_unique<ExposureModeCCD>(this);
+    if (this->exposuremode) this->exposuremode->test();
+    if (this->exposuremode) this->exposuremode->expose();
 
     // initialize the exposure mode to ExposureModeRXRV and call that expose
     //
-    logwrite(function, "----- calling exposure_mode->expose() for exposure mode RXRV -----");
-    exposure_mode = std::make_unique<ExposureModeRXRV>(this);
-    if (exposure_mode) exposure_mode->expose();
+    logwrite(function, "----- calling exposuremode->expose() for exposure mode RXRV -----");
+    this->exposuremode = std::make_unique<ExposureModeRXRV>(this);
+    if (this->exposuremode) this->exposuremode->expose();
 
-    if (!exposure_mode) {
+    if (!this->exposuremode) {
       logwrite(function, "ERROR exposure mode undefined!");
       return ERROR;
     }

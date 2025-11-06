@@ -340,11 +340,11 @@ namespace Camera {
 
     // initialize the exposure mode to Expose_CCD and call that expose
     //
-    logwrite(function, "calling exposure_mode->expose() for Expose_CCD");
-    this->exposure_mode = std::make_unique<Expose_CCD>(this);
-    if (this->exposure_mode) this->exposure_mode->expose();
+    logwrite(function, "calling exposuremode->expose() for Expose_CCD");
+    this->exposuremode = std::make_unique<Expose_CCD>(this);
+    if (this->exposuremode) this->exposuremode->expose();
 
-    if (!this->exposure_mode) {
+    if (!this->exposuremode) {
       logwrite(function, "ERROR exposure mode undefined!");
       return ERROR;
     }

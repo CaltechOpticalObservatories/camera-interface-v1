@@ -21,6 +21,15 @@ namespace Camera {
   }
   /***** Camera::ExposureModeCCD *********************************************/
 
+  void ExposureModeCCD::image_acquisition_thread(int nexp) {
+  }
+
+  void ExposureModeCCD::image_processing_thread() {
+  }
+
+  long ExposureModeRaw::expose() {
+    return 0;
+  }
 
   /***** Camera::ExposureModeRXRV ********************************************/
   /**

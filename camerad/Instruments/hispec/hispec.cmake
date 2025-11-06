@@ -7,4 +7,5 @@
 set (INSTRUMENT_SOURCES
     ${CAMERAD_DIR}/Instruments/hispec/hispec_instrument.cpp
     ${CAMERAD_DIR}/Instruments/hispec/hispec_interface_factory.cpp
+    ${CAMERAD_DIR}/Instruments/hispec/hispec_exposure_modes.cpp
     )

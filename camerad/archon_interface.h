@@ -72,7 +72,9 @@ namespace Camera {
       // and have their own controller-specific implementations which are
       // implemented in archon_interface.cpp.
       //
+      std::vector<std::string> get_exposure_modes() override;
       void configure_interface() override;
+      long set_exposure_mode(const std::string &modestr) override;
       long abort( const std::string args, std::string &retstring ) override;
       long autodir( const std::string args, std::string &retstring ) override;
       long basename( const std::string args, std::string &retstring ) override;
@@ -83,6 +85,7 @@ namespace Camera {
       long exptime( const std::string args, std::string &retstring ) override;
       void set_exptime(double exptime) override;
       long expose( const std::string args, std::string &retstring ) override;
+      long exposure_mode( const std::string args, std::string &retstring ) override;
       long load_firmware( const std::string &args, std::string &retstring ) override;
       long native( const std::string args, std::string &retstring ) override;
       long power( const std::string args, std::string &retstring ) override;
@@ -122,7 +125,6 @@ namespace Camera {
       ArchonController* controller;
 
       std::string_view QUIET = "quiet";  // allows sending commands without logging
-      const int NMODS = 12;              //!< number of modules per controller
 
       /** @brief FIFO queue to contain images from Archon */
       std::queue<std::shared_ptr<ImageBuffer>> imagebuf_queue;  ///< the queue itself

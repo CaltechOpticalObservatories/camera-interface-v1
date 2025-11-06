@@ -244,6 +244,10 @@ namespace Camera {
         ret = interface->expose(args, retstring);
       }
       else
+      if ( cmd == CAMERAD_EXPOSUREMODE ) {
+        ret = interface->exposure_mode(args, retstring);
+      }
+      else
       if ( cmd == CAMERAD_LOAD ) {
         ret = interface->load_firmware(args, retstring);
       }
@@ -268,6 +272,10 @@ namespace Camera {
        */
       else
       if ( cmd == "hispec_expose" ) {
+        ret = interface->instrument_cmd(cmd, args, retstring);
+      }
+      else
+      if ( cmd == "hispec_mode_fast" ) {
         ret = interface->instrument_cmd(cmd, args, retstring);
       }
       /**

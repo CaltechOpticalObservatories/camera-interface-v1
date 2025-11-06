@@ -29,7 +29,7 @@ namespace Camera {
       Camera::Information camera_info;
       Common::FitsKeys systemkeys;
 
-      std::unique_ptr<ExposureModeBase> exposure_mode;
+      std::unique_ptr<ExposureMode> exposuremode;
       std::unique_ptr<Controller> controller;
 
       std::atomic<bool> is_producer_finished;
@@ -56,8 +56,10 @@ namespace Camera {
       // These virtual functions have interface-specific implementations
       // and must be implemented by derived classes, implemented in xxxx_interface.cpp
       //
+      virtual std::vector<std::string> get_exposure_modes() = 0;
       virtual void configure_interface() = 0;
       virtual void configure_instrument() { }
+      virtual long set_exposure_mode(const std::string &modestr) = 0;
       virtual long abort( std::string args, std::string &retstring ) = 0;
       virtual long autodir( std::string args, std::string &retstring ) = 0;
       virtual long basename( std::string args, std::string &retstring ) = 0;
@@ -69,6 +71,7 @@ namespace Camera {
       virtual long exptime( std::string args, std::string &retstring ) = 0;
       virtual void set_exptime(double exptime) = 0;
       virtual long expose( std::string args, std::string &retstring ) = 0;
+      virtual long exposure_mode( std::string args, std::string &retstring ) = 0;
       virtual long load_firmware( const std::string &args, std::string &retstring ) = 0;
       virtual long native( std::string args, std::string &retstring ) = 0;
       virtual long power( std::string args, std::string &retstring ) = 0;

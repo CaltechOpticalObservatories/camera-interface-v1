@@ -24,8 +24,25 @@ namespace Camera {
     is_firmwareloaded(false)
   {
     // pre-size the modtype and modversion vectors to hold the max number of modules
-    modtype.resize(MAXNMODS);
-    modversion.resize(MAXNMODS);
+    this->modtype.resize(MAXNMODS);
+    this->modversion.resize(MAXNMODS);
+
+    // pre-size frameinfo_t vectors to hold max number of buffers
+    this->frameinfo.bufsample.resize(MAXNBUFS);
+    this->frameinfo.bufcomplete.resize(MAXNBUFS);
+    this->frameinfo.bufmode.resize(MAXNBUFS);
+    this->frameinfo.bufbase.resize(MAXNBUFS);
+    this->frameinfo.bufframen.resize(MAXNBUFS);
+    this->frameinfo.bufwidth.resize(MAXNBUFS);
+    this->frameinfo.bufheight.resize(MAXNBUFS);
+    this->frameinfo.bufpixels.resize(MAXNBUFS);
+    this->frameinfo.buflines.resize(MAXNBUFS);
+    this->frameinfo.bufrawblocks.resize(MAXNBUFS);
+    this->frameinfo.bufrawlines.resize(MAXNBUFS);
+    this->frameinfo.bufrawoffset.resize(MAXNBUFS);
+    this->frameinfo.buftimestamp.resize(MAXNBUFS);
+    this->frameinfo.bufretimestamp.resize(MAXNBUFS);
+    this->frameinfo.buffetimestamp.resize(MAXNBUFS);
 
     {
     auto ptr=std::make_unique<ArchonExposureTime>();  // create pointer to ArchonExposureTime object

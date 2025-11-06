@@ -6,6 +6,7 @@
  */
 
 #include "hispec_instrument.h"
+#include "hispec_exposure_modes.h"
 
 namespace Camera {
 
@@ -26,6 +27,12 @@ namespace Camera {
 			      std::string &retstring) {
     if ( cmd == "hispec_expose" ) {
       return this->hispec_expose(args, retstring);
+    }
+    else
+    if ( cmd == "hispec_mode_fast" ) {
+      this->exposuremode = std::make_unique<ExposureModeFastReadout>(this);
+      retstring=this->exposuremode->get_type();
+      return NO_ERROR;
     }
     else {
       retstring = "unrecognized command";
