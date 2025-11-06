@@ -378,22 +378,18 @@ namespace Camera {
   /***** Camera::ArchonController::bias ***************************************/
 
 
-  /***** Camera::ArchonController::expose *************************************/
+  /***** Camera::ArchonController::initiate_exposure **************************/
   /**
-   * @brief      trigger an exposure by setting the expose_param = nexp
+   * @brief      initiate an exposure by setting the parameter given by expose_param = nexp
    * @param[in]  nexp
    * @return     ERROR|NO_ERROR
    *
    */
-  long ArchonController::expose(const int &nexp) {
-    const std::string function("Camera::ArchonController::expose");
-    logwrite(function, "");
-    std::ostringstream oss;
-    oss << nexp;
-    logwrite(function,oss.str());
+  long ArchonController::initiate_exposure(const int &nexp) {
+    logwrite("Camera::ArchonController::initiate_exposure", std::to_string(nexp));
     return( this->set_parameter(this->expose_param, nexp) );
   }
-  /***** Camera::ArchonController::expose *************************************/
+  /***** Camera::ArchonController::initiate_exposure **************************/
 
 
   /***** Camera::ArchonController::get_frame_status ***************************/

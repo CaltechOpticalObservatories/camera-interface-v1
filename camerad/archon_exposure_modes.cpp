@@ -63,7 +63,7 @@ namespace Camera {
     // *** initiate the exposure here ***
     //
 
-    long error = this->interface->controller->expose(nexp);
+    long error = this->interface->controller->initiate_exposure(nexp);
 
     if (error != NO_ERROR) {
       logwrite(function, "could not initiate exposure");
