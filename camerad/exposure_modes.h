@@ -31,6 +31,9 @@ namespace Camera {
       std::string get_type() { return this->type; }
       virtual ~ExposureMode() = default;
       virtual long expose() = 0;
+      virtual void image_acquisition_thread() { };
+      virtual void image_processing_thread() { };
+
       virtual void test() { logwrite("Camera::ExposureMode","not implemented"); }
   };
   /***** Camera::ExposureMode *************************************************/
@@ -72,12 +75,6 @@ namespace Camera {
       ExposureModeTemplate(InterfaceType* _interface) : interface(_interface) { }
 
       virtual ~ExposureModeTemplate() = default;
-
-      virtual long expose() = 0;
-
-      virtual void image_acquisition_thread(int nexp) { };
-
-      virtual void image_processing_thread() { };
   };
   /***** Camera::ExposureModeTemplate *****************************************/
 

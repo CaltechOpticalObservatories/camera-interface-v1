@@ -91,8 +91,8 @@ namespace Camera {
       long power( const std::string args, std::string &retstring ) override;
       long test( const std::string args, std::string &retstring ) override;
 
-      long do_expose(int nexp) override;
-      void image_acquisition_thread(int nexp) override;
+      long do_expose() override;
+      void image_acquisition_thread() override;
       void image_processing_thread() override;
 
       // Archon controller command dispatcher
@@ -117,7 +117,7 @@ namespace Camera {
 
       char* get_framebuf() { return controller->framebuf; }
 
-    private:
+//  protected:
       /** @var     controller
        *  @brief   for hardware operations with the Archon controller
        *  @details typed pointer to Archon-specific controller

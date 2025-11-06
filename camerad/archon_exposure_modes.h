@@ -42,7 +42,7 @@ namespace Camera {
           type=ArchonExposureMode::CCD;
         }
 
-    void image_acquisition_thread(int nexp) override;
+    void image_acquisition_thread() override;
 
     void image_processing_thread() override;
 

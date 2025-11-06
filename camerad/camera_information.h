@@ -31,7 +31,9 @@ namespace Camera {
   class Information {
     friend class CameraInterface;
     public:
-      Information() {
+      Information()
+        : nexp(1)
+      {
         this->exposure_time = std::make_unique<ExposureTime>();
       }
       Information(const Information&) = delete;

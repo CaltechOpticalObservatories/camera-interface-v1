@@ -386,6 +386,11 @@ namespace Camera {
    *
    */
   long ArchonController::expose(const int &nexp) {
+    const std::string function("Camera::ArchonController::expose");
+    logwrite(function, "");
+    std::ostringstream oss;
+    oss << nexp;
+    logwrite(function,oss.str());
     return( this->set_parameter(this->expose_param, nexp) );
   }
   /***** Camera::ArchonController::expose *************************************/
@@ -699,6 +704,7 @@ namespace Camera {
    */
   long ArchonController::set_parameter(const std::string &parameter, const int &value) {
     const std::string function("Camera::ArchonController::set_parameter");
+    logwrite(function, "");
     try {
       this->prep_parameter(parameter, value);
       this->load_parameter(parameter, value);

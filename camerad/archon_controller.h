@@ -107,7 +107,7 @@ namespace Camera {
         "RAW"
       };
 
-    private:
+//  protected:
       ArchonInterface* interface;      //!< pointer back to the parent interface
       Camera::Information info;        //!< information for this controller
       Network::TcpSocket archon;       //!< this is how we talk to the Archon

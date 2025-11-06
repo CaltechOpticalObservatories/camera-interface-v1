@@ -21,15 +21,82 @@ namespace Camera {
   }
   /***** Camera::ExposureModeCCD *********************************************/
 
-  void ExposureModeCCD::image_acquisition_thread(int nexp) {
-  }
 
+  /***** Camera::ExposureModeCCD::image_acquisition_thread *******************/
+  /**
+   * @brief  implementation of Archon-specific image_acquisition_thread for CCD
+   *
+   */
+  void ExposureModeCCD::image_acquisition_thread() {
+    const std::string function("Camera::ExposureModeCCD::image_acquisition_thread");
+    char message[256];
+
+    logwrite(function, "");
+
+    // record system time when exposure starts (YYYY-MM-DDTHH:MM:SS.sss)
+    this->interface->camera_info.start_time = get_timestamp();
+
+/*****
+ *  // sets camera.fitstime (YYYYMMDDHHMMSS) used for filename
+ *  this->interface->set_fitstime(this->camera_info.start_time);
+ *
+ *  // assemble the FITS filename
+ *  get_fitsname(this->camera_info.fits_name);
+ *
+ *  // add filename to system keys database
+ *  this->add_filename_key();
+*****/
+
+    // copy systemkeys databases into camera_info
+    this->interface->camera_info.systemkeys.keydb = this->interface->systemkeys.keydb;
+
+    auto nexp = this->interface->camera_info.nexp;
+
+    if (nexp > 1) {
+      SNPRINTF(message, "starting sequence of %d frames. lastframe=%d", nexp, this->interface->controller->lastframe);
+      logwrite(function, std::string(message));
+    }
+
+    this->interface->controller->get_frame_status();
+
+    //
+    // *** initiate the exposure here ***
+    //
+
+    long error = this->interface->controller->expose(nexp);
+
+    if (error != NO_ERROR) {
+      logwrite(function, "could not initiate exposure");
+      return;
+    }
+    logwrite(function, "exposure started");
+
+  }
+  /***** Camera::ExposureModeCCD::image_acquisition_thread *******************/
+
+
+  /***** Camera::ExposureModeCCD::expose *************************************/
+  /**
+   * @brief  implementation of Archon-specific expose for CCD
+   *
+   */
   void ExposureModeCCD::image_processing_thread() {
+    logwrite("Camera::ExposureModeCCD::image_processing_thread","");
   }
+  /***** Camera::ExposureModeCCD::expose *************************************/
 
+
+  /***** Camera::ExposureModeRaw::expose *************************************/
+  /**
+   * @brief  implementation of Archon-specific expose for Raw
+   *
+   */
   long ExposureModeRaw::expose() {
+    logwrite("Camera::ExposureModeRaw::expose","");
     return 0;
   }
+  /***** Camera::ExposureModeRaw::expose *************************************/
+
 
   /***** Camera::ExposureModeRXRV ********************************************/
   /**

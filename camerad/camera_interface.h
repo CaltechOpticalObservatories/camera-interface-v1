@@ -26,10 +26,8 @@ namespace Camera {
   class Interface {
     protected:
       Camera::Server* server=nullptr;
-      Camera::Information camera_info;
-      Common::FitsKeys systemkeys;
 
-      std::unique_ptr<ExposureMode> exposuremode;
+      std::shared_ptr<ExposureMode> exposuremode;
       std::unique_ptr<Controller> controller;
 
       std::atomic<bool> is_producer_finished;
@@ -45,6 +43,8 @@ namespace Camera {
       static std::unique_ptr<Interface> create();
 
       Config configfile;
+      Camera::Information camera_info;
+      Common::FitsKeys systemkeys;
 
       // These functions are shared by all interfaces with common implementations,
       // and are implemented in camera_interface.cpp
@@ -52,6 +52,7 @@ namespace Camera {
       void set_server(Camera::Server* s);
       void func_shared();
       void disconnect_controller();
+      bool is_exposuremode_set() { return ( this->exposuremode && !this->exposuremode->get_type().empty() ); }
 
       // These virtual functions have interface-specific implementations
       // and must be implemented by derived classes, implemented in xxxx_interface.cpp
@@ -77,8 +78,8 @@ namespace Camera {
       virtual long power( std::string args, std::string &retstring ) = 0;
       virtual long test( std::string args, std::string &retstring ) = 0;
 
-      virtual long do_expose(int nexp) = 0;
-      virtual void image_acquisition_thread(int nexp) = 0;
+      virtual long do_expose() = 0;
+      virtual void image_acquisition_thread() = 0;
       virtual void image_processing_thread() = 0;
 
       virtual long instrument_cmd(const std::string &cmd,

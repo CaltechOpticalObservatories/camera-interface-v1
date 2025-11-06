@@ -408,7 +408,7 @@ namespace Camera {
     int nseq_remaining = nseq;
 
     while (nseq_remaining-- > 0) {
-      do_expose(this->camera_info.nexp);
+      do_expose();
     }
 
     return NO_ERROR;
@@ -443,7 +443,7 @@ namespace Camera {
 
     // not specified is request to return current exposure mode
     if (args.empty()) {
-      if (!this->exposuremode || this->exposuremode->get_type().empty()) {
+      if ( !this->is_exposuremode_set() ) {
         logwrite(function, "ERROR exposure mode not set!");
         retstring="undefined";
         return ERROR;
@@ -456,7 +456,7 @@ namespace Camera {
     long error=set_exposure_mode(args);
 
     // always return current mode
-    if (!this->exposuremode || this->exposuremode->get_type().empty()) {
+    if ( !this->is_exposuremode_set() ) {
       logwrite(function, "ERROR exposure mode not set!");
       retstring="undefined";
       return ERROR;
@@ -496,15 +496,15 @@ namespace Camera {
   long ArchonInterface::set_exposure_mode(const std::string &modein) {
 
     if (modein==ArchonExposureMode::RAW) {
-      this->exposuremode = std::make_unique<ExposureModeRaw>(this);
+      this->exposuremode = std::make_shared<ExposureModeRaw>(this);
     }
     else
     if (modein==ArchonExposureMode::CCD) {
-      this->exposuremode = std::make_unique<ExposureModeCCD>(this);
+      this->exposuremode = std::make_shared<ExposureModeCCD>(this);
     }
     else
     if (modein==ArchonExposureMode::RXRV) {
-      this->exposuremode = std::make_unique<ExposureModeRXRV>(this);
+      this->exposuremode = std::make_shared<ExposureModeRXRV>(this);
     }
     else {
       logwrite("Camera::ArchonInterface::set_exposure_mode",
@@ -901,19 +901,24 @@ namespace Camera {
   /**
    *
    */
-  long ArchonInterface::do_expose(int nexp) {
+  long ArchonInterface::do_expose() {
     const std::string function("Camera::ArchonInterface::do_expose");
     long error=NO_ERROR;
 
-    logwrite(function, "here");
+    logwrite(function, "");
+
+    if (!this->is_exposuremode_set()) {
+      logwrite(function, "ERROR exposure mode not set!");
+      return ERROR;
+    }
 
     // spawn two threads, a producer and a consumer
     //
     // The producer triggers the exposure and collect images into a FIFO queue.
     // The consumer pops images out of the queue for processing.
     //
-    std::thread producer(&ArchonInterface::image_acquisition_thread, this, nexp);
-    std::thread consumer(&ArchonInterface::image_processing_thread, this);
+    std::thread producer(&ExposureMode::image_acquisition_thread, this->exposuremode.get());
+    std::thread consumer(&ExposureMode::image_processing_thread, this->exposuremode.get());
 
     producer.join();
     {
@@ -936,46 +941,10 @@ namespace Camera {
    * @param[in]  nexp
    *
    */
-  void ArchonInterface::image_acquisition_thread(int nexp) {
-    const std::string function("Camera::ArchonInterface::image_acquisition_thread");
-    char message[256];
-    logwrite(function, "");
-
-    this->camera_info.start_time = get_timestamp();               // system time when exposure starts (YYYY-MM-DDTHH:MM:SS.sss)
-
-//  this->set_fitstime(this->camera_info.start_time);             // sets camera.fitstime (YYYYMMDDHHMMSS) used for filename
-//  get_fitsname(this->camera_info.fits_name);                    // assemble the FITS filename
-//  this->add_filename_key();                                     // add filename to system keys database
-
-    this->camera_info.systemkeys.keydb = this->systemkeys.keydb;  // copy systemkeys databases into camera_info
-
-    if (nexp > 1) {
-      SNPRINTF(message, "starting sequence of %d frames. lastframe=%d", nexp, this->controller->lastframe);
-      logwrite(function, std::string(message));
-    }
-
-    this->controller->get_frame_status();
-
-    //
-    // *** initiate the exposure here ***
-    //
-
-    long error = this->controller->expose(nexp);
-
-    if (error != NO_ERROR) {
-      logwrite(function, "could not initiate exposure");
-      return;
-    }
-    logwrite(function, "exposure started");
-
-/***
-    while (error==NO_ERROR && !is_aborted && nexp > 0) {
-      // read frames and put them into queue
-      nexp--;
-    }
- ***/
-
-    logwrite(function, "complete");
+  void ArchonInterface::image_acquisition_thread() {
+    /***
+     * MOVE THIS TO EXPOSURE MODE
+     */
   }
   /***** Camera::ArchonInterface::image_acquisition_thread ********************/
 
@@ -985,8 +954,9 @@ namespace Camera {
    *
    */
   void ArchonInterface::image_processing_thread() {
-    const std::string function("Camera::ArchonInterface::image_processing_thread");
-    logwrite(function, "here");
+    /***
+     * MOVE THIS TO EXPOSURE MODE
+     */
   }
   /***** Camera::ArchonInterface::image_processing_thread *********************/
 
