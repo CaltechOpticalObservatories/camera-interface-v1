@@ -8,8 +8,8 @@
 
 namespace Camera {
 
-  long Expose_CCD::expose() {
-    const std::string function("Camera::Expose_CCD::expose");
+  long Expose_Single::expose() {
+    const std::string function("Camera::Expose_Single::expose");
     logwrite(function, "hi");
     return NO_ERROR;
   }

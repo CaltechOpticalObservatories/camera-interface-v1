@@ -15,7 +15,7 @@ namespace Camera {
 
   class AstroCamInterface;   // forward declaration
 
-  class Expose_CCD : public ExposureMode<Camera::AstroCamInterface> {
+  class Expose_Single : public ExposureMode<Camera::AstroCamInterface> {
     using ExposureMode<Camera::AstroCamInterface>::ExposureMode;
 
     long expose() override;

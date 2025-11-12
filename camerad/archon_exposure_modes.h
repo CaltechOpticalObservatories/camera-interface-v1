@@ -18,9 +18,9 @@ namespace Camera {
    */
   namespace ArchonExposureMode {
     constexpr const char* RAW = "RAW";
-    constexpr const char* CCD = "CCD";
+    constexpr const char* SINGLE = "SINGLE";
     constexpr const char* RXRV = "RXRV";
-    constexpr const char* ALLMODES[] = {RAW, CCD, RXRV};
+    constexpr const char* ALLMODES[] = {RAW, SINGLE, RXRV};
   };
 
   class ArchonInterface;     // forward declaration
@@ -35,11 +35,11 @@ namespace Camera {
     long expose() override;
   };
 
-  class ExposureModeCCD : public ExposureModeTemplate<Camera::ArchonInterface> {
+  class ExposureModeSingle : public ExposureModeTemplate<Camera::ArchonInterface> {
     public:
-      ExposureModeCCD(Camera::ArchonInterface* iface)
+      ExposureModeSingle(Camera::ArchonInterface* iface)
         : ExposureModeTemplate<Camera::ArchonInterface>(iface) {
-          type=ArchonExposureMode::CCD;
+          type=ArchonExposureMode::Single;
         }
 
     void image_acquisition_thread() override;

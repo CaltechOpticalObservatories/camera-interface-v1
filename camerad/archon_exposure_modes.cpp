@@ -9,26 +9,26 @@
 
 namespace Camera {
 
-  /***** Camera::ExposureModeCCD *********************************************/
+  /***** Camera::ExposureModeSingle *******************************************/
   /**
-   * @brief  implementation of Archon-specific expose for CCD
+   * @brief  implementation of Archon-specific expose for Single
    *
    */
-  long ExposureModeCCD::expose() {
-    const std::string function("Camera::ExposureModeCCD::expose");
+  long ExposureModeSingle::expose() {
+    const std::string function("Camera::ExposureModeSingle::expose");
     logwrite(function, "hi");
     return NO_ERROR;
   }
-  /***** Camera::ExposureModeCCD *********************************************/
+  /***** Camera::ExposureModeSingle ******************************************/
 
 
-  /***** Camera::ExposureModeCCD::image_acquisition_thread *******************/
+  /***** Camera::ExposureModeSingle::image_acquisition_thread *****************/
   /**
-   * @brief  implementation of Archon-specific image_acquisition_thread for CCD
+   * @brief  implementation of Archon-specific image_acquisition_thread for Single
    *
    */
-  void ExposureModeCCD::image_acquisition_thread() {
-    const std::string function("Camera::ExposureModeCCD::image_acquisition_thread");
+  void ExposureModeSingle::image_acquisition_thread() {
+    const std::string function("Camera::ExposureModeSingle::image_acquisition_thread");
     char message[256];
 
     logwrite(function, "");
@@ -72,18 +72,18 @@ namespace Camera {
     logwrite(function, "exposure started");
 
   }
-  /***** Camera::ExposureModeCCD::image_acquisition_thread *******************/
+  /***** Camera::ExposureModeSingle::image_acquisition_thread *****************/
 
 
-  /***** Camera::ExposureModeCCD::expose *************************************/
+  /***** Camera::ExposureModeSingle::expose ***********************************/
   /**
-   * @brief  implementation of Archon-specific expose for CCD
+   * @brief  implementation of Archon-specific expose for Single
    *
    */
-  void ExposureModeCCD::image_processing_thread() {
-    logwrite("Camera::ExposureModeCCD::image_processing_thread","");
+  void ExposureModeSingle::image_processing_thread() {
+    logwrite("Camera::ExposureModeSingle::image_processing_thread","");
   }
-  /***** Camera::ExposureModeCCD::expose *************************************/
+  /***** Camera::ExposureModeSingle::expose ***********************************/
 
 
   /***** Camera::ExposureModeRaw::expose *************************************/
