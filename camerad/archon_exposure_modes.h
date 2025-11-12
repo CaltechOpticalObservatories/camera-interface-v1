@@ -39,7 +39,7 @@ namespace Camera {
     public:
       ExposureModeSingle(Camera::ArchonInterface* iface)
         : ExposureModeTemplate<Camera::ArchonInterface>(iface) {
-          type=ArchonExposureMode::Single;
+          type=ArchonExposureMode::SINGLE;
         }
 
     void image_acquisition_thread() override;

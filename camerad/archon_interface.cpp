@@ -499,7 +499,7 @@ namespace Camera {
       this->exposuremode = std::make_shared<ExposureModeRaw>(this);
     }
     else
-    if (modein==ArchonExposureMode::Single) {
+    if (modein==ArchonExposureMode::SINGLE) {
       this->exposuremode = std::make_shared<ExposureModeSingle>(this);
     }
     else

@@ -21,7 +21,8 @@ namespace Camera {
     framebuf(nullptr),
     framebuf_bytes(0),
     is_connected(false),
-    is_firmwareloaded(false)
+    is_firmwareloaded(false),
+    readout_time_msec(0)
   {
     // pre-size the modtype and modversion vectors to hold the max number of modules
     this->modtype.resize(MAXNMODS);
@@ -118,6 +119,29 @@ namespace Camera {
     }
   }
   /***** Camera::ArchonController::configure_controller ***********************/
+
+
+  /***** Camera::ArchonController::abort_archon *******************************/
+  /**
+   * @brief      set the abort parameter = 1
+   * @details    This accomodates an ACF file which needs an abort parameter to
+   *             be set in order to abort an operation and return to a previous
+   *             state. This feature is optional. If no abort parameter is defined
+   *             in the config file then no action takes place here, otherwise
+   *             set that parameter to 1.
+   * @return     ERROR | NO_ERROR
+   *
+   */
+  long ArchonController::abort() {
+    this->interface->set_abortstate();
+
+    // if an abort parameter was not configured then nothing to do
+    if (this->abort_param.empty()) return NO_ERROR;
+
+    // otherwise set that parameter=1
+    return this->set_parameter(this->abort_param, 1);
+  }
+  /***** Camera::ArchonController::abort_archon *******************************/
 
 
   /***** Camera::ArchonController::connect ************************************/
@@ -704,6 +728,9 @@ namespace Camera {
     try {
       this->prep_parameter(parameter, value);
       this->load_parameter(parameter, value);
+      std::ostringstream oss;
+      oss << "set " << parameter << "=" << value;
+      logwrite(function, oss.str());
       return NO_ERROR;
     }
     catch (const std::exception &e) {
@@ -1595,6 +1622,130 @@ namespace Camera {
   }
 
 
+  /***** Camera::ArchonController::wait_for_readout ***************************/
+  long ArchonController::wait_for_readout() {
+    const std::string function("Camera::ArchonController::wait_for_readout");
+    char message[256];
+    long error = NO_ERROR;
+    bool done = false;
+
+    // local copies
+    int index                  = this->frameinfo.index.load();
+    int latest_completed_frame = this->lastframe;
+    int newframe               = this->frameinfo.currentframe.load();
+
+    SNPRINTF(message, "waiting for new frame: lastframe=%d frameinfo.index=%d", this->lastframe, index);
+    logwrite(function, std::string(message));
+
+    // waittime is 10% over the specified readout time
+    // and will be used to keep track of timeout errors
+    //
+    double waittime_ms = this->readout_time_msec * 1.1;      // this is in msec
+    if (waittime_ms==0) {
+      logwrite(function, "readout time for Archon not found from config file");
+      return ERROR;
+    }
+
+    uint64_t start_ns   = get_clock_time_nsec();             // returns nanoseconds
+    uint64_t timeout_ns = (uint64_t)(waittime_ms * 1e6);     // convert waittime msec to nsec
+    uint32_t pollcount  = 0;
+    uint32_t busycount  = 0;
+    int previous_frame  = this->lastframe;                   // initial frame number set once
+
+    // Poll frame status until current frame is not the last frame and the buffer is ready to read.
+    // The last frame was recorded before the readout was triggered in get_frame().
+    //
+    while ( !done && !this->interface->is_aborted() ) {
+
+      error = this->get_frame_status();
+
+      latest_completed_frame = this->lastframe;
+      newframe               = this->frameinfo.currentframe.load();
+
+      if (error == ERROR) {
+        done = true;
+        logwrite(function, "ERROR unable to get frame status");
+        break;
+      }
+      else
+      // If Archon is busy then ignore it, keep trying for up to ~ 3 second
+      // (300000 attempts, ~10us between attempts)
+      //
+      if (error == BUSY) {
+        if ( ++busycount > 30000 ) {
+          done = true;
+          logwrite(function, "ERROR received BUSY from Archon too many times trying to get frame status");
+          break;
+        }
+        else {
+          usleep(10); // reduces polling frequency
+          continue;
+        }
+      }
+      else busycount=0;
+
+      SNPRINTF(message, "previous_frame=%d latest_completed_frame=%d newframe=%d bufcomplete[%d]=%s",
+               previous_frame, latest_completed_frame, newframe, index, frameinfo.bufcomplete[index]?"T":"F");
+      logwrite(function, std::string(message));
+
+      // latest completed frame number +1 above frame number coming in here,
+      // then a new frame has arrived.
+      //
+      int frame_arrived = latest_completed_frame - (previous_frame+1);
+      if (frame_arrived==0) {
+        done  = true;
+        error = NO_ERROR;
+        break;
+      }
+      else
+      // latest completed frame number more than +1 above frame number coming in here,
+      // then at least one frame has been skipped.
+      //
+      if ( frame_arrived > 0 ) {
+        SNPRINTF(message, "ERROR missed %d frame%s", frame_arrived, (frame_arrived>1?"s":""));
+        logwrite(function, std::string(message));
+        this->abort();
+        done = true;
+        error = ERROR;
+        break;
+      }
+
+      // If the frame isn't done by the predicted time then
+      // enough time has passed to trigger a timeout error.
+      //
+      if (++pollcount >= 1000 && (get_clock_time_nsec()-start_ns) > timeout_ns) {
+        pollcount=0;
+        done = true;
+        error = ERROR;
+        SNPRINTF(message, "timeout waiting for new frame exceeded %lf msec. lastframe=%d", waittime_ms, this->lastframe);
+        logwrite(function, std::string(message));
+        break;
+      }
+
+      usleep(10);  // reduces polling frequency
+    } // end while (done == false && not this->camera.is_aborted)
+
+    if ( error != NO_ERROR ) {
+      logwrite(function, "ERROR waiting for readout");
+      return error;
+    }
+
+    if ( this->interface->is_aborted() ) {
+      logwrite(function, "wait for readout stopped by external signal");
+      this->abort();
+    }
+#ifdef LOGLEVEL_DEBUG
+    else {
+      logwrite(function, "received currentframe: "+std::to_string(latest_completed_frame)+
+                         " at TS "+std::to_string(this->lasttimestamp));
+    }
+#endif
+
+    return NO_ERROR;
+  }
+  /***** Camera::ArchonController::wait_for_readout ***************************/
+
+
   /***** Camera::ArchonController::write_config_key ***************************/
   /**
    * @brief      write a configuration KEY=VALUE pair to the Archon controller
@@ -1809,6 +1960,7 @@ namespace Camera {
   }
   /***** Camera::ArchonExposureTime::split ************************************/
 
+
   /***** Camera::ArchonExposureTime::set **************************************/
   /**
    * @brief      set the exposure time
@@ -1826,6 +1978,7 @@ namespace Camera {
     catch (const std::exception &e) { throw; }
   }
   /***** Camera::ArchonExposureTime::set **************************************/
+
 
   /***** Camera::ArchonExposureTime::get_pair *********************************/
   /**

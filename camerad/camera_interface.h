@@ -21,6 +21,7 @@ namespace Camera {
     public:
       virtual ~Controller() = default;
       virtual void configure_controller() = 0;
+      virtual long abort() = 0;
   };
 
   class Interface {
@@ -33,6 +34,7 @@ namespace Camera {
       std::atomic<bool> is_producer_finished;
       std::atomic<bool> is_producer_error;
       std::atomic<bool> is_consumer_error;
+      std::atomic<bool> abortstate;
 
     public:
       virtual ~Interface() = default;
@@ -53,6 +55,10 @@ namespace Camera {
       void func_shared();
       void disconnect_controller();
       bool is_exposuremode_set() { return ( this->exposuremode && !this->exposuremode->get_type().empty() ); }
+
+      void set_abortstate()   { this->abortstate.store(true, std::memory_order_seq_cst); }
+      void clear_abortstate() { this->abortstate.store(false, std::memory_order_seq_cst); }
+      bool is_aborted()       { return this->abortstate.load(std::memory_order_seq_cst); }
 
       // These virtual functions have interface-specific implementations
       // and must be implemented by derived classes, implemented in xxxx_interface.cpp

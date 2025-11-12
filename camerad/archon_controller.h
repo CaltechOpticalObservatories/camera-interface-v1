@@ -95,6 +95,7 @@ namespace Camera {
       ~ArchonController();
 
       void configure_controller() override;
+      long abort() override;
 
       typedef enum {
         FRAME_IMAGE,
@@ -131,6 +132,7 @@ namespace Camera {
       std::vector<std::string> modversion;  //!< version of each module from SYSTEM command
       std::string offset;
       std::string gain;
+      int readout_time_msec;                //!< readout time in msec from config file
       int configlines;                      //!< number of configuration lines in ACF
       int n_hdrshift;
       uint64_t last_frame_timer;            //!< Archon timer of last frame
@@ -141,6 +143,7 @@ namespace Camera {
       std::string sec_param;                //!< parameter name for exposure time seconds
       std::string msec_param;               //!< parameter name for exposure time milliseconds
       std::string expose_param;             //!< parameter name to trigger exposure when set =1
+      std::string abort_param;              //!< parameter name to abort when set =1 (optional)
 
       void connect();
       void bias(const int &mod, const int &chan, float &volts, const bool &should_write);
@@ -155,6 +158,7 @@ namespace Camera {
       double get_exptime() const { return( this->exposure_time->get() ); }
       long send_cmd(const std::string &cmd, std::string &reply);
       long send_cmd(const std::string &cmd);
+      long wait_for_readout();
       long fetchlog();
       long load_acf(const std::string &filename, bool write_to_archon=true);
       template <class T> void get_configmap_value(const std::string &key_in, T &value_out);
