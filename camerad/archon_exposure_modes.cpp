@@ -59,18 +59,22 @@ namespace Camera {
 
     this->interface->controller->get_frame_status();
 
+    // initiate the exposure here
     //
-    // *** initiate the exposure here ***
-    //
-
-    long error = this->interface->controller->initiate_exposure(nexp);
-
-    if (error != NO_ERROR) {
+    if ( this->interface->controller->initiate_exposure(nexp) != NO_ERROR ) {
       logwrite(function, "could not initiate exposure");
       return;
     }
     logwrite(function, "exposure started");
 
+    long error=NO_ERROR;
+
+    while (error==NO_ERROR && !this->interface->is_aborted() && nexp > 0) {
+      if ( (error=this->interface->controller->wait_for_readout()) == ERROR ) break;
+//    read_frame();
+//    push frame into queue
+      nexp--;
+    }  // end loop over number of frames
   }
   /***** Camera::ExposureModeSingle::image_acquisition_thread *****************/
 

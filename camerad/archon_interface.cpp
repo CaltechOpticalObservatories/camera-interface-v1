@@ -888,12 +888,12 @@ namespace Camera {
 
   /***** Camera::ArchonInterface::read_frame **********************************/
   /**
-   *
+   * what was this for?
    */
-  long ArchonInterface::read_frame() {
-    controller->read_frame(Camera::ArchonController::FRAME_IMAGE);
-    return NO_ERROR;
-  }
+//long ArchonInterface::read_frame() {
+//  controller->read_frame(Camera::ArchonController::FRAME_IMAGE);
+//  return NO_ERROR;
+//}
   /***** Camera::ArchonInterface::read_frame **********************************/
 
 

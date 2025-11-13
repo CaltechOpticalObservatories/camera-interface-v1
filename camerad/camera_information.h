@@ -50,6 +50,7 @@ namespace Camera {
       std::string fitstime;                 //!< "YYYYMMDDHHMMSS" uesd for filename, set by get_fitsname()
       int nexp;                             //!< number passed to do_expose
       std::string start_time;               //!< system time when the exposure started (YYYY-MM-DDTHH:MM:SS.sss)
+      std::string modeselection;
 
 //    long get_fitsname(std::string &name_out);
 //    long get_fitsname(std::string controllerid, std::string &name_out);

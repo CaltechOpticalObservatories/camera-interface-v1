@@ -7,6 +7,7 @@
 
 #pragma once
 
+#include <cinttypes>
 #include <vector>
 #include <mutex>
 #include <map>
@@ -150,17 +151,21 @@ namespace Camera {
       long initiate_exposure(const int &nexp);
       long get_frame_status();
       template<typename T> T get_parameter(const std::string &parameter);
+      long fetch(uint64_t bufferaddress, uint32_t bufferblocks);
       long get_timer(uint64_t &timer);
       void set_exptime(double exptime);
       long set_parameter(const std::string &parameter, const int &value);
       long prep_parameter(const std::string &parameter, const int &value);
       long load_parameter(const std::string &parameter, const int &value);
       double get_exptime() const { return( this->exposure_time->get() ); }
+      void print_frame_status();
       long send_cmd(const std::string &cmd, std::string &reply);
       long send_cmd(const std::string &cmd);
       long wait_for_readout();
       long fetchlog();
       long load_acf(const std::string &filename, bool write_to_archon=true);
+      long lock_buffer(int buffernumber);
+      long unlock_buffer();
       template <class T> void get_configmap_value(const std::string &key_in, T &value_out);
       long get_status_key(const std::string &key, std::string &value);
       long set_power(int state);
@@ -168,7 +173,7 @@ namespace Camera {
       long get_power(std::string &power);
 
       long allocate_framebuf(uint32_t reqsz);
-      long read_frame(frametype_t type);
+      long read_frame(frametype_t type, char* &imagebufferptr);
       long write_config_key(const char* key, const char* newvalue, bool &changed);
       long write_config_key(const char* key, int newvalue, bool &changed);
 
@@ -278,6 +283,8 @@ namespace Camera {
       } modeinfo_t;
 
       std::map<std::string, modeinfo_t> modemap;
+
+      std::string selectedmode;    //!< currently selected mode
 
       /** @var      int lastframe
        *  @details  the last (I.E. previous) frame number acquired
