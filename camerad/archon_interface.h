@@ -110,10 +110,10 @@ namespace Camera {
       long get_parameter(const std::string &args, std::string &retstring);
       long load_timing(std::string cmd, std::string &reply);
       long read_acf(const std::string &filename);
-      long read_frame();
+//    long read_frame();
       long set_parameter(const std::string &args, std::string &retstring);
       long set_camera_mode(std::string args, std::string &retstring);
-      long set_camera_mode(const std::string &mode);
+      long set_camera_mode(std::string modeselect);
 
       char* get_framebuf() { return controller->framebuf; }
 

@@ -711,13 +711,37 @@ namespace Camera {
   /**
    * @brief      set a camera "mode"
    * @details    This version is for internal use.
-   * @param[in]  mode       requested mode name (must be capitalized)
+   * @param[in]  modeselect  requested mode name
    * @return     ERROR|NO_ERROR
    *
    */
-  long ArchonInterface::set_camera_mode(const std::string &mode) {
+  long ArchonInterface::set_camera_mode(std::string modeselect) {
     const std::string function("Camera::ArchonInterface::set_camera_mode");
-    logwrite(function, "not yet implemented");
+
+    // cannot changes while exposure in progress
+
+    // firmware must be loaded first
+    if (!this->controller->is_firmwareloaded) {
+      logwrite(function, "ERROR no firmware loaded");
+      return ERROR;
+    }
+
+    to_uppercase(modeselect);
+
+    // requested mode must have been read from the current ACF
+    // and put into modemap
+    if (this->controller->modemap.find(modeselect) == this->controller->modemap.end()) {
+      logwrite(function, "ERROR undefined mode "+modeselect+" in ACF "+this->controller->firmware);
+      return ERROR;
+    }
+
+    // load mode settings from .acf and apply to Archon
+    if (this->controller->load_mode_settings(modeselect) != NO_ERROR) {
+      return ERROR;
+    }
+
+    this->controller->set_image_geometry(modeselect);
+
     return ERROR;
   }
   /***** Camera::ArchonInterface::set_camera_mode *****************************/

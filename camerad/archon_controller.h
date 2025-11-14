@@ -98,6 +98,8 @@ namespace Camera {
       void configure_controller() override;
       long abort() override;
 
+      /** @brief Archon frame type
+       */
       typedef enum {
         FRAME_IMAGE,
         FRAME_RAW,
@@ -120,7 +122,7 @@ namespace Camera {
       int activebufs;                  //!< number of active frame buffers
       char* framebuf;                  //!< local frame buffer read from Archon
       uint32_t framebuf_bytes;         //!< size of framebuf in bytes
-      frametype_t frametype;
+      frametype_t frametype;           //!< Archon frame type (IMAGE|RAW)
 
       bool is_connected;               //!< true if controller connected
       std::atomic_flag archon_busy = ATOMIC_FLAG_INIT;  //!< indicates a thread is accessing Archon
@@ -164,6 +166,8 @@ namespace Camera {
       long wait_for_readout();
       long fetchlog();
       long load_acf(const std::string &filename, bool write_to_archon=true);
+      long load_mode_settings(const std::string &modeselect);
+      long set_image_geometry(const std::string &modeselect);
       long lock_buffer(int buffernumber);
       long unlock_buffer();
       template <class T> void get_configmap_value(const std::string &key_in, T &value_out);
@@ -267,6 +271,12 @@ namespace Camera {
 
       cfg_map_t configmap;
       param_map_t parammap;
+
+      struct rawinfo_t {
+        int adchan;
+        uint16_t rawsamples;
+        uint16_t rawlines;
+      } rawinfo;
 
       /**
        * \var     modeinfo_t modeinfo

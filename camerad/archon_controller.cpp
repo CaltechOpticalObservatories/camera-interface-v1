@@ -46,11 +46,12 @@ namespace Camera {
     this->frameinfo.buffetimestamp.resize(MAXNBUFS);
 
     {
-    auto ptr=std::make_unique<ArchonExposureTime>();  // create pointer to ArchonExposureTime object
-    this->exposure_time=ptr.get();
-    this->info.exposure_time=std::move(ptr);          // transfer ownership to info
+/** maybe not needed. why can't it just stay here?
+ *  auto ptr=std::make_unique<ArchonExposureTime>();  // create pointer to ArchonExposureTime object
+ *  this->exposure_time=ptr.get();
+ *  this->info.exposure_time=std::move(ptr);          // transfer ownership to info
+ **/
     }
-
   }
   /***** Camera::ArchonController::ArchonController ***************************/
 
@@ -1367,7 +1368,7 @@ namespace Camera {
 
           // Save all the user keyword information in a map for later
           this->modemap[mode].acfkeys.keydb[keyword].keyword    = keyword;
-          this->modemap[mode].acfkeys.keydb[keyword].keytype    = this->info.userkeys.get_keytype(keyvalue);
+          this->modemap[mode].acfkeys.keydb[keyword].keytype    = this->interface->camera_info.userkeys.get_keytype(keyvalue);
           this->modemap[mode].acfkeys.keydb[keyword].keyvalue   = keyvalue;
           this->modemap[mode].acfkeys.keydb[keyword].keycomment = keycomment;
           // end if (line.compare(0,5,"FITS:")==0)
@@ -1479,7 +1480,7 @@ namespace Camera {
       //
       std::stringstream keystr;
       keystr << "FIRMWARE=" << filename << "// controller firmware";
-      this->info.systemkeys.addkey( keystr.str() );
+      this->interface->camera_info.systemkeys.addkey( keystr.str() );
     }
 
     // on success, the class variable is what was just loaded
@@ -1494,6 +1495,97 @@ namespace Camera {
     return error;
   }
   /***** Camera::ArchonController::load_acf ***********************************/
+
+
+  /***** Camera::ArchonController::load_mode_settings *************************/
+  /**
+   * @brief      loads parameters and keywords for a given mode
+   * @details    The ACF may contain optional sections tagged as [MODE_xxxx]
+   *             which may contain parameters, keywords, etc. This function
+   *             applies those configuration parameters to the Archon.
+   * @param[in]  modeselect  string mode name
+   * @return     ERROR|NO_ERROR
+   *
+   */
+  long ArchonController::load_mode_settings(const std::string &modeselect) {
+    const std::string function("Camera::ArchonController::load_mode_settings");
+    logwrite(function, modeselect+": not yet implemented");
+
+    modeinfo_t* mode = &this->modemap[modeselect];
+
+    try {
+      this->get_configmap_value("FRAMEMODE", mode->geometry.framemode);
+      this->get_configmap_value("LINECOUNT", mode->geometry.linecount);
+      this->get_configmap_value("PIXELCOUNT", mode->geometry.pixelcount);
+      this->get_configmap_value("RAWENABLE", mode->rawenable);
+      this->get_configmap_value("RAWSEL", this->rawinfo.adchan);
+      this->get_configmap_value("RAWSAMPLES", this->rawinfo.rawsamples);
+      this->get_configmap_value("RAWENDLINE", this->rawinfo.rawlines);
+    }
+    catch (const std::exception &e) {
+      logwrite(function, "ERROR: "+std::string(e.what()));
+      return ERROR;
+    }
+
+    return NO_ERROR;
+  }
+  /***** Camera::ArchonController::load_mode_settings *************************/
+
+
+  /***** Camera::ArchonController::set_image_geometry *************************/
+  /**
+   * @brief      
+   * @param[in]  modeselect  string mode name
+   * @return     ERROR|NO_ERROR
+   *
+   */
+  long ArchonController::set_image_geometry(const std::string &modeselect) {
+    const std::string function("Camera::ArchonController::set_image_geometry");
+
+    modeinfo_t* mode = &this->modemap[modeselect];
+
+    long bigbuf, pixelcount, linecount, samplemode;
+    try {
+      this->get_configmap_value("BIGBUF", bigbuf);
+      this->get_configmap_value("PIXELCOUNT", pixelcount);
+      this->get_configmap_value("LINECOUNT", linecount);
+      this->get_configmap_value("SAMPLEMODE", samplemode);
+    }
+    catch (const std::exception &e) {
+      logwrite(function, "ERROR: "+std::string(e.what()));
+      return ERROR;
+    }
+
+    if (modeselect=="RAW") {
+      logwrite(function, "ERROR raw mode not implemented");
+      return ERROR;
+    }
+    else {
+      this->interface->camera_info.detector_pixels[0] = pixelcount * mode->geometry.amps[0];
+      this->interface->camera_info.detector_pixels[1] = linecount * mode->geometry.amps[1];
+    }
+
+    this->interface->camera_info.region_of_interest[0] = 1;
+    this->interface->camera_info.region_of_interest[1] = this->interface->camera_info.detector_pixels[0];
+    this->interface->camera_info.region_of_interest[2] = 1;
+    this->interface->camera_info.region_of_interest[3] = this->interface->camera_info.detector_pixels[1];
+
+    this->interface->camera_info.binning[0] = 1;
+    this->interface->camera_info.binning[1] = 1;
+
+    uint8_t bits_per_pixel = (samplemode==1) ? 32 : 16;
+
+    this->interface->camera_info.set_axes(bits_per_pixel);
+
+    long error=NO_ERROR;
+
+    error |= this->send_cmd(LOADPARAMS);
+    error |= this->send_cmd(APPLYCDS);
+    error |= this->get_frame_status();
+
+    return error;
+  }
+  /***** Camera::ArchonController::set_image_geometry *************************/
 
 
   /***** Camera::ArchonController::lock_buffer ********************************/
@@ -1777,7 +1869,7 @@ namespace Camera {
         bufaddr   = this->frameinfo.bufbase[index] + this->frameinfo.bufrawoffset[index];
 
         // Calculate the number of blocks expected. image_memory is bytes per detector
-        bufblocks = (unsigned int) floor( (this->camera_info.image_memory + BLOCK_LEN - 1 ) / BLOCK_LEN );
+        bufblocks = (unsigned int) floor( (this->interface->camera_info.image_memory + BLOCK_LEN - 1 ) / BLOCK_LEN );
         break;
 
       case Camera::ArchonController::FRAME_IMAGE:
@@ -1786,7 +1878,7 @@ namespace Camera {
 
         // Calculate the number of blocks expected. image_memory is bytes per detector
         bufblocks =
-        (unsigned int) floor( ((this->camera_info.image_memory * num_detect) + BLOCK_LEN - 1 ) / BLOCK_LEN );
+        (unsigned int) floor( ((this->interface->camera_info.image_memory * num_detect) + BLOCK_LEN - 1 ) / BLOCK_LEN );
         break;
 
       default:  // should be impossible

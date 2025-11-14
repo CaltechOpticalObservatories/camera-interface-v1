@@ -46,7 +46,7 @@ namespace Camera {
 
       Config configfile;
       Camera::Information camera_info;
-      Common::FitsKeys systemkeys;
+//    Common::FitsKeys systemkeys;  move to Camera::Information?
 
       // These functions are shared by all interfaces with common implementations,
       // and are implemented in camera_interface.cpp

@@ -47,8 +47,10 @@ namespace Camera {
  *  this->add_filename_key();
 *****/
 
-    // copy systemkeys databases into camera_info
-    this->interface->camera_info.systemkeys.keydb = this->interface->systemkeys.keydb;
+/** why are there two of these? Can I get by with only this->interface->camera_info?
+ *  // copy systemkeys databases into camera_info
+ *  this->interface->camera_info.systemkeys.keydb = this->interface->systemkeys.keydb;
+ **/
 
     auto nexp = this->interface->camera_info.nexp;
 
@@ -131,7 +133,8 @@ namespace Camera {
     }
 
     // read first frame pair into my frame buffer
-    interface->read_frame();
+    char* buffer=new char[1024]{};  // TODO temporary, for compilation only
+    this->interface->controller->read_frame(ArchonController::FRAME_IMAGE, buffer);
 
     // process (deinterlace) first frame pair
     processor->deinterlacer()->deinterlace(interface->get_framebuf(), sigbuf[0].data(), resbuf[0].data());
@@ -153,6 +156,8 @@ namespace Camera {
 
     // loop:
     // subsequent frame pairs, read, deinterlace, write
+
+    delete [] buffer;
 
     return NO_ERROR;
   }

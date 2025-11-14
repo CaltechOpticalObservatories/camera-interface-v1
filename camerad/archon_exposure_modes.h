@@ -10,6 +10,7 @@
 #pragma once
 
 #include "exposure_modes.h"  // ExposureMode base class
+#include "archon_interface.h"
 
 namespace Camera {
 
