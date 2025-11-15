@@ -38,13 +38,10 @@ namespace Camera {
     friend class CameraInterface;
     public:
       Information()
-        : nexp(1)
+        : nexp(1),
+          exposure_time(std::make_unique<ExposureTime>())
       {
-/** why does Information need exposure_time? why can't it stay in Controller?
- *      this->exposure_time = std::make_unique<ExposureTime>();
- **/
       }
-//    std::unique_ptr<ExposureTime> exposure_time;
       Information(const Information&) = delete;
       Information& operator=(const Information&) = delete;
 
@@ -52,9 +49,9 @@ namespace Camera {
       Common::FitsKeys systemkeys;          //!< FITS keys for system use
 
       std::vector<uint32_t> naxes;          //!< axis lengths element 0=cols, 1=rows, 2=cubedepth
-      std::vector<uint32_t> binning;
-      std::vector<uint32_t> region_of_interest;
-      std::vector<uint32_t> detector_pixels;
+      std::array<uint32_t,2> binning;
+      std::array<uint32_t,4> region_of_interest;
+      std::array<uint32_t,2> detector_pixels;
 
       uint64_t section_size;                //!< pixels to write this section (accounts for depth)
       uint64_t image_memory;                //!< bytes per image sensor
@@ -87,6 +84,11 @@ namespace Camera {
 //    long get_fitsname(std::string &name_out);
 //    long get_fitsname(std::string controllerid, std::string &name_out);
 
+      /** @var      exposure_time
+       *  @details  The Information class owns the default implementation but
+       *            the Controller class can optionally replace it.
+       */
+      std::unique_ptr<ExposureTime> exposure_time;
 
       /***** Camera::Information::set_axes ************************************/
       /**
@@ -101,23 +103,27 @@ namespace Camera {
 
         uint8_t bytes_per_pixel = bits_per_pixel / 2;
 
-        // array of axis lengths
-        int number_of_axes = this->cubedepth > 1 ? 3 : 2;
-        this->naxes.resize(number_of_axes);
+        uint32_t cols = this->region_of_interest[1]
+                      - this->region_of_interest[0]
+                      + 1;
+        uint32_t rows = this->region_of_interest[3]
+                      - this->region_of_interest[2]
+                      + 1;
 
-        long cols = this->region_of_interest[1]
-                  - this->region_of_interest[0]
-                  + 1;
-        long rows = this->region_of_interest[3]
-                  - this->region_of_interest[2]
-                  + 1;
-
-        if (number_of_axes >= 2) {
-          this->naxes[0] = cols / this->binning[0];
-          this->naxes[1] = rows / this->binning[1];
+        if (this->binning[0]==0 || this->binning[1]==0) {
+          throw std::runtime_error("binning=0");
         }
-        if (number_of_axes == 3) {
-          this->naxes[2] = this->cubedepth;
+
+        if (this->cubedepth > 1) {
+          this->naxes = { cols/this->binning[0],
+                          rows/this->binning[1],
+                          this->cubedepth
+                        };
+        }
+        else {
+          this->naxes = { cols/this->binning[0],
+                          rows/this->binning[1],
+                        };
         }
 
         // section_size is pixels to write for this section.

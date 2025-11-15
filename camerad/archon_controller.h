@@ -115,6 +115,11 @@ namespace Camera {
       ArchonInterface* interface;      //!< pointer back to the parent interface
       Camera::Information info;        //!< information for this controller
       Network::TcpSocket archon;       //!< this is how we talk to the Archon
+
+      /** @var      exposure_time
+       *  @details  non-owning pointer to ExposureTime object owned by Information.
+       *            Valid as long as Information exists.
+       */
       ArchonExposureTime* exposure_time;
 
       void set_interface(ArchonInterface* _interface);

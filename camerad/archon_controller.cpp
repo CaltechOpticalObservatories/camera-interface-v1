@@ -46,11 +46,9 @@ namespace Camera {
     this->frameinfo.buffetimestamp.resize(MAXNBUFS);
 
     {
-/** maybe not needed. why can't it just stay here?
- *  auto ptr=std::make_unique<ArchonExposureTime>();  // create pointer to ArchonExposureTime object
- *  this->exposure_time=ptr.get();
- *  this->info.exposure_time=std::move(ptr);          // transfer ownership to info
- **/
+    auto ptr=std::make_unique<ArchonExposureTime>();  // create ArchonExposureTime object
+    this->exposure_time=ptr.get();                    // store non-owning pointer to derived type
+    this->info.exposure_time=std::move(ptr);          // transfer ownership to info
     }
   }
   /***** Camera::ArchonController::ArchonController ***************************/
@@ -1509,7 +1507,6 @@ namespace Camera {
    */
   long ArchonController::load_mode_settings(const std::string &modeselect) {
     const std::string function("Camera::ArchonController::load_mode_settings");
-    logwrite(function, modeselect+": not yet implemented");
 
     modeinfo_t* mode = &this->modemap[modeselect];
 

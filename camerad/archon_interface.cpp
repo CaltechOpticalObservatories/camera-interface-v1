@@ -601,6 +601,9 @@ namespace Camera {
    *
    */
   long ArchonInterface::load_firmware(const std::string &acffile) {
+    const std::string function("Camera::ArchonInterface::load_firmware");
+    logwrite(function, acffile);
+
     // load the ACF file and write to Archon configuration memory
     //
     long error = this->controller->load_acf(acffile);
@@ -717,6 +720,7 @@ namespace Camera {
    */
   long ArchonInterface::set_camera_mode(std::string modeselect) {
     const std::string function("Camera::ArchonInterface::set_camera_mode");
+    logwrite(function, modeselect);
 
     // cannot changes while exposure in progress
 
@@ -742,7 +746,7 @@ namespace Camera {
 
     this->controller->set_image_geometry(modeselect);
 
-    return ERROR;
+    return NO_ERROR;
   }
   /***** Camera::ArchonInterface::set_camera_mode *****************************/
 
