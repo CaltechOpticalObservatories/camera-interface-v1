@@ -782,7 +782,7 @@ namespace Camera {
 
     // set the parameter value on the controller
     try {
-      long value = std::stol(tokens[1]);
+      int value = std::stoi(tokens[1]);
       return( this->controller->set_parameter(tokens[0], value) );
     }
     catch (const std::exception &e) {
@@ -884,6 +884,30 @@ namespace Camera {
    */
   long ArchonInterface::test( const std::string args, std::string &retstring ) {
     const std::string function("Camera::ArchonInterface::test");
+
+    std::vector<std::string> tokens;
+
+    Tokenize(args, tokens, " ");
+
+    if (tokens.size() < 1) {
+      logwrite(function, "ERROR no test name provided");
+      return ERROR;
+    }
+
+    std::string testname(tokens[0]);
+
+    if (testname=="?" || testname=="help") {
+      retstring = "test";
+      retstring.append( " <testname> [ <args> ]\n" );
+      retstring.append( "  framestatus   prints Archon frame status to log\n" );
+      return HELP;
+    }
+    else
+    if (testname=="framestatus") {
+      this->controller->print_frame_status();
+    }
+
+    return NO_ERROR;
 
     if (!this->exposuremode) {
       logwrite(function, "ERROR exposure mode undefined!");

@@ -87,21 +87,26 @@ namespace Camera {
   void ArchonController::configure_controller() {
     const std::string function("Camera::ArchonController::configure_controller");
     logwrite(function, "");
+    int numapplied=0, lastapplied=0;
 
     if (this->interface->configfile.n_rows < 1) throw std::runtime_error("empty configuration");
 
     // iterate through each row in config file
     for (int row=0; row < this->interface->configfile.n_rows; row++) {
 
+      lastapplied=numapplied;
+
       // ARCHON_IP
       if (this->interface->configfile.param[row]=="ARCHON_IP") {
         this->archon.sethost( this->interface->configfile.arg[row] );
+        numapplied++;
       }
       else
       // ARCHON_PORT
       if (this->interface->configfile.param[row]=="ARCHON_PORT") {
         try {
           this->archon.setport( std::stoi(this->interface->configfile.arg[row]) );
+          numapplied++;
         }
         catch (const std::exception &e) {
           std::ostringstream oss;
@@ -114,6 +119,39 @@ namespace Camera {
       // DEFAULT_FIRMWARE
       if (this->interface->configfile.param[row]=="DEFAULT_FIRMWARE") {
         this->firmware = this->interface->configfile.arg[row];
+        numapplied++;
+      }
+      else
+      // EXPTIME_SEC_PARAM
+      if (this->interface->configfile.param[row]=="EXPTIME_SEC_PARAM") {
+        this->sec_param = this->interface->configfile.arg[row];
+        numapplied++;
+      }
+      else
+      // EXPTIME_MSEC_PARAM
+      if (this->interface->configfile.param[row]=="EXPTIME_MSEC_PARAM") {
+        this->msec_param = this->interface->configfile.arg[row];
+        numapplied++;
+      }
+      else
+      // ABORT_PARAM
+      if (this->interface->configfile.param[row]=="ABORT_PARAM") {
+        this->abort_param = this->interface->configfile.arg[row];
+        numapplied++;
+      }
+      else
+      // EXPOSE_PARAM
+      if (this->interface->configfile.param[row]=="EXPOSE_PARAM") {
+        this->expose_param = this->interface->configfile.arg[row];
+        numapplied++;
+      }
+
+      // publish and/or log applied configuration
+      if (numapplied > lastapplied) {
+        std::ostringstream oss;
+        oss << "config:" << this->interface->configfile.param[row]
+            << "=" << this->interface->configfile.arg[row];
+        logwrite(function, oss.str());  // TODO publish?
       }
     }
   }
@@ -701,10 +739,10 @@ namespace Camera {
 
       // Set the sec and msec parameters on the controller,
       // store the exptime in the class on success.
-//    if ( (set_parameter(sec_param, sec)   == NO_ERROR) &&     //TODO haven't created these functions yet!
-//         (set_parameter(msec_param, msec) == NO_ERROR) ) {
-//      this->exposure_time->set(exptime);
-//    }
+      if ( (set_parameter(sec_param, sec)   == NO_ERROR) &&
+           (set_parameter(msec_param, msec) == NO_ERROR) ) {
+        this->exposure_time->set(exptime);
+      }
     }
     catch (const std::exception &e) {
       throw;
@@ -723,7 +761,6 @@ namespace Camera {
    */
   long ArchonController::set_parameter(const std::string &parameter, const int &value) {
     const std::string function("Camera::ArchonController::set_parameter");
-    logwrite(function, "");
     try {
       this->prep_parameter(parameter, value);
       this->load_parameter(parameter, value);
@@ -780,8 +817,17 @@ namespace Camera {
   /***** Camera::ArchonController::load_parameter *****************************/
 
 
+  /***** Camera::ArchonController::print_frame_status *************************/
+  /**
+   * @brief      prints Archon frame buffer status to the log
+   * @details    Call get_frame_status() first, then formats and prints.
+   *
+   */
   void ArchonController::print_frame_status() {
     const std::string function("Camera::ArchonController::print_frame_status");
+
+    this->get_frame_status();
+
     std::ostringstream message;
     int bufn;
     char statestr[ArchonController::MAXNBUFS][4];
@@ -819,6 +865,7 @@ namespace Camera {
       message.str("");
     }
   }
+  /***** Camera::ArchonController::print_frame_status *************************/
 
 
   /***** Camera::ArchonController::send_cmd ***********************************/
