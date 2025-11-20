@@ -17,6 +17,17 @@ namespace Camera {
 
   class Server;  // forward declaration for Interface class
 
+  /** @struct   ImageBuffer
+   *  @brief    holds one or more frames of type T from the controller
+   *  @details  A single ImageBuffer object can contain multiple frames,
+   *            or slices, as would be the case for a datacube.
+   */
+  template <typename T>
+  struct ImageBuffer {
+    int n_slices;                    ///< number of slices in this image
+    std::shared_ptr<T[]> rawpixels;  ///< frame buffer(s)
+  };
+
   class Controller {
     public:
       virtual ~Controller() = default;
@@ -31,10 +42,7 @@ namespace Camera {
       std::shared_ptr<ExposureMode> exposuremode;
       std::unique_ptr<Controller> controller;
 
-      std::atomic<bool> is_producer_finished;
-      std::atomic<bool> is_producer_error;
-      std::atomic<bool> is_consumer_error;
-      std::atomic<bool> abortstate;
+      std::atomic<bool> abortstate{false};
 
     public:
       virtual ~Interface() = default;
@@ -85,9 +93,9 @@ namespace Camera {
       virtual long test( std::string args, std::string &retstring ) = 0;
 
       virtual long do_expose() = 0;
-      virtual void image_acquisition_thread() = 0;
-      virtual void image_processing_thread() = 0;
 
+      /** @brief  returns error if not overridden
+       */
       virtual long instrument_cmd(const std::string &cmd,
                                   const std::string &args,
                                   std::string &retstring) {
@@ -95,6 +103,8 @@ namespace Camera {
 	return ERROR;
       }
 
+      /** @brief  returns error if not overridden
+       */
       virtual long controller_cmd(const std::string &cmd,
                                   const std::string &args,
                                   std::string &retstring) {

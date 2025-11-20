@@ -99,6 +99,25 @@ namespace Camera {
     // wait until producer stops producing data, or aborted
     //
     while (!this->interface->is_aborted()) {
+      {
+      std::unique_lock<std::mutex> lock(this->queue_mutex);
+      // keep trying to get the queue lock until success or aborted
+      this->queue_cv.wait(lock, [this] {
+          return !this->imagebuf_queue.empty() || this->is_producer_finished || this->interface->is_aborted();
+          });
+      if (this->interface->is_aborted()) break;
+      if (this->imagebuf_queue.empty()) {
+        if (this->is_producer_finished) {
+          logwrite(function, "queue empty and producer finished");
+          break;
+        }
+        else {
+          logwrite(function, "queue empty, producer not finished");
+          continue;
+        }
+      }
+      this->imagebuf_queue.pop();
+      }
 //    process_image
       std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }

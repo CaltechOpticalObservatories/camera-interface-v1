@@ -478,6 +478,8 @@ namespace Camera {
       retstring="undefined";
       return ERROR;
     }
+
+    // ExposureMode objects know their own type, you just have to ask politely.
     retstring=this->exposuremode->get_type();
 
     logwrite(function, retstring);
@@ -503,9 +505,11 @@ namespace Camera {
 
   /***** Camera::ArchonInterface::set_exposure_mode ***************************/
   /**
-   * @brief      actually sets the exposure mode
+   * @brief      sets the exposure mode by creating an ExposureMode object
    * @details    This creates the appropriate exposure mode object for the
    *             requested exposure mode, providing access to that mode's functions.
+   *             Once an ExposureMode object is created, it can be queried for
+   *             its type.
    * @param[in]  modein  string representing the exposure mode
    * @return     ERROR|NO_ERROR
    *
@@ -982,7 +986,6 @@ namespace Camera {
    */
   long ArchonInterface::do_expose() {
     const std::string function("Camera::ArchonInterface::do_expose");
-    long error=NO_ERROR;
 
     logwrite(function, "");
 
@@ -990,48 +993,30 @@ namespace Camera {
     //
     // The producer triggers the exposure and collect images into a FIFO queue.
     // The consumer pops images out of the queue for processing.
+    // This spawns the threads identified by the current exposure mode.
     //
     std::thread producer(&ExposureMode::image_acquisition_thread, this->exposuremode.get());
     std::thread consumer(&ExposureMode::image_processing_thread, this->exposuremode.get());
 
-    producer.join();
+    long error=NO_ERROR;
+
+    producer.join();  // block here waiting for producer to finish
     {
-      std::lock_guard<std::mutex> lock(queue_mutex);
-      is_producer_finished=true;
-      error |= (is_producer_error ? ERROR : NO_ERROR);
+    std::lock_guard<std::mutex> lock(this->exposuremode->queue_mutex);
+    this->exposuremode->is_producer_finished=true;
+    error |= (this->exposuremode->is_producer_error ? ERROR : NO_ERROR);  // propagates producer error
     }
 
-    consumer.join();
+    this->exposuremode->queue_cv.notify_all();
 
-    return NO_ERROR;
+    consumer.join();  // block here waiting for consumer to finish
+
+    error |= (this->exposuremode->is_consumer_error ? ERROR : NO_ERROR);  // propagates consumer error
+
+    logwrite(function, "complete");
+
+    return error;
   }
   /***** Camera::ArchonInterface::do_expose ***********************************/
-
-
-  /***** Camera::ArchonInterface::image_acquisition_thread ********************/
-  /**
-   * @brief      triggers exposure, collects and pushes frames into a queue
-   * @details    This is run in the producer thread.
-   * @param[in]  nexp
-   *
-   */
-  void ArchonInterface::image_acquisition_thread() {
-    /***
-     * MOVE THIS TO EXPOSURE MODE
-     */
-  }
-  /***** Camera::ArchonInterface::image_acquisition_thread ********************/
-
-
-  /***** Camera::ArchonInterface::image_processing_thread *********************/
-  /**
-   *
-   */
-  void ArchonInterface::image_processing_thread() {
-    /***
-     * MOVE THIS TO EXPOSURE MODE
-     */
-  }
-  /***** Camera::ArchonInterface::image_processing_thread *********************/
 
 }

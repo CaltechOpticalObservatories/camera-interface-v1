@@ -27,7 +27,15 @@ namespace Camera {
   class ExposureMode {
     protected:
       std::string type;  // what type of exposure mode is this?
+
     public:
+      std::mutex queue_mutex;            ///< mutex protects access to the queue
+      std::condition_variable queue_cv;  ///< notify when the queue has new data
+
+      std::atomic<bool> is_producer_finished;
+      std::atomic<bool> is_producer_error;
+      std::atomic<bool> is_consumer_error;
+
       std::string get_type() { return this->type; }
       virtual ~ExposureMode() = default;
       virtual long expose() = 0;
