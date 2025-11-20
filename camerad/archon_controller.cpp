@@ -21,8 +21,13 @@ namespace Camera {
     framebuf(nullptr),
     framebuf_bytes(0),
     is_connected(false),
+    is_powered(false),
     is_firmwareloaded(false),
-    readout_time_msec(0)
+    readout_time_msec(0),
+    frameinfo{
+      .index{0},
+      .currentframe{0}
+    }
   {
     // pre-size the modtype and modversion vectors to hold the max number of modules
     this->modtype.resize(MAXNMODS);
@@ -158,7 +163,7 @@ namespace Camera {
   /***** Camera::ArchonController::configure_controller ***********************/
 
 
-  /***** Camera::ArchonController::abort_archon *******************************/
+  /***** Camera::ArchonController::abort **************************************/
   /**
    * @brief      set the abort parameter = 1
    * @details    This accomodates an ACF file which needs an abort parameter to
@@ -170,7 +175,6 @@ namespace Camera {
    *
    */
   long ArchonController::abort() {
-    this->interface->set_abortstate();
 
     // if an abort parameter was not configured then nothing to do
     if (this->abort_param.empty()) return NO_ERROR;
@@ -178,7 +182,7 @@ namespace Camera {
     // otherwise set that parameter=1
     return this->set_parameter(this->abort_param, 1);
   }
-  /***** Camera::ArchonController::abort_archon *******************************/
+  /***** Camera::ArchonController::abort **************************************/
 
 
   /***** Camera::ArchonController::connect ************************************/
@@ -200,6 +204,7 @@ namespace Camera {
     // initialize camera connection
     try {
       this->archon.Connect();
+      this->is_connected = this->archon.isconnected();
     }
     catch (const std::exception &e) {
       throw;
@@ -294,6 +299,32 @@ namespace Camera {
     // empty the Archon log
     //
     this->fetchlog();
+
+    // Make sure the following systemkeys are added.
+    // They can be changed at any time by a command but since they have defaults
+    // they don't require a command so this ensures they get into the systemkeys db.
+    //
+    std::stringstream keystr;
+    keystr << "HDRSHIFT=" << this->n_hdrshift << "// number of HDR right-shift bits";
+    this->interface->camera_info.systemkeys.addkey( keystr.str() );
+
+    // Ensures these values are set on startup
+    //
+    this->get_frame_status();
+
+    if (this->lastframe==0) {
+      for (int i=0; i<MAXNBUFS; ++i) {
+        if (this->frameinfo.bufframen[i] > this->lastframe) {
+          this->lastframe = this->frameinfo.bufframen[i];
+          this->lasttimestamp = this->frameinfo.buftimestamp[i];
+          this->frameinfo.index.store(i);
+        }
+      }
+      if (this->lastframe==0) {
+        this->frameinfo.index.store(0);
+        this->lasttimestamp=0;
+      }
+    }
   }
   /***** Camera::ArchonController::connect ************************************/
 
@@ -1736,33 +1767,29 @@ namespace Camera {
   /**
    * @brief      turn on|off controller bias power supplies
    * @param[in]  state  0=off, 1=on
-   * @return     ERROR|NO_ERROR
+   * @return     string power state
+   * @throws     std::runtime_error
    *
    */
-  long ArchonController::set_power(int state) {
-    const std::string function("Camera::ArchonController::power");
-    long error=NO_ERROR;
-
+  std::string ArchonController::set_power(int state) {
     // must be connected
     if (!this->archon.isconnected()) {
-      logwrite(function, "ERROR connection not open to controller");
-      return ERROR;
+      throw std::runtime_error("connection not open to controller");
     }
 
     // set power according to state
     switch( state ) {
       case 0:   // send POWEROFF command to Archon and wait 200ms to ensure off
-                if ( (error=this->send_cmd(POWEROFF)) == NO_ERROR ) {
+                if ( this->send_cmd(POWEROFF) == NO_ERROR ) {
                   std::this_thread::sleep_for(std::chrono::milliseconds(200));
                 }
                 break;
       case 1:   // send POWERON command to Archon and wait 2s to ensure stable
-                if ( (error=this->send_cmd(POWERON)) == NO_ERROR ) {
+                if ( this->send_cmd(POWERON) == NO_ERROR ) {
                   std::this_thread::sleep_for(std::chrono::seconds(2));
                 }
                 break;
-      default:  logwrite(function, "ERROR expected 0|1");
-                return ERROR;
+      default:  throw std::runtime_error("invalid state: expected 0|1");
     }
 
     // get_power on return sets the class power_status variable
@@ -1774,76 +1801,62 @@ namespace Camera {
   /***** Camera::ArchonController::get_power **********************************/
   /**
    * @brief      get Archon power status
-   * @details    This version only sets the class variable power_status.
-   * @return     ERROR|NO_ERROR
-   *
-   */
-  long ArchonController::get_power() {
-    std::string dontcare;
-    return( this->get_power(dontcare) );
-  }
-  /***** Camera::ArchonController::get_power **********************************/
-  /**
-   * @brief      get Archon power status
-   * @details    This version returns the power_status.
    * @param[in]  power  reference to string to return the power_status
-   * @return     ERROR|NO_ERROR
+   * @return     string  Archon power status
+   * @throws     std::runtime_error
    *
    */
-  long ArchonController::get_power(std::string &power) {
-    const std::string function("Camera::ArchonController::get_power");
+  std::string ArchonController::get_power() {
 
     // Read the Archon power state directly from Archon,
     // which will be a string representation of an integer.
     std::string power_status_key;
     if (this->get_status_key("POWER", power_status_key) != NO_ERROR) {
-      logwrite(function, "ERROR getting status key: POWER");
-      return ERROR;
+      throw std::runtime_error("reading status key: POWER");
     }
 
     // convert that string into a real integer
     int status=-1;
     try { status = std::stoi( power_status_key ); }
     catch (const std::exception &e) {
-      logwrite(function, "ERROR parsing status key \""+power_status_key+"\": "+std::string(e.what()));
-      return ERROR;
+      throw std::runtime_error("parsing status key \""+power_status_key+"\": "+std::string(e.what()));
     }
+
+    // power_status has 5 different states. this is only true if state is POWER_ON
+    this->is_powered=false;
 
     // convert that integer into a human readable string
     // set the power status (or not) depending on the value extracted from the STATUS message
     switch( status ) {
       case -1:                                  // no POWER token found in status message
-        logwrite(function, "ERROR finding power in Archon status message" );
-        return ERROR;
+        throw std::runtime_error("no POWER token found in status message");
       case  0:                                  // usually an internal error
-        this->power_status = "UNKNOWN";
+        this->power_status = POWER_UNKNOWN;
         break;
       case  1:                                  // no configuration applied
-        this->power_status = "NOT_CONFIGURED";
+        this->power_status = POWER_NOT_CONFIGURED;
         break;
       case  2:                                  // power is off
-        this->power_status = "OFF";
+        this->power_status = POWER_OFF;
         break;
       case  3:                                  // some modules powered, some not
-        this->power_status = "INTERMEDIATE";
+        this->power_status = POWER_INTERMEDIATE;
         break;
       case  4:                                  // power is on
-        this->power_status = "ON";
+        this->power_status = POWER_ON;
+        this->is_powered=true;
         break;
       case  5:                                  // system is in standby
-        this->power_status = "STANDBY";
+        this->power_status = POWER_STANDBY;
         break;
       default:                                  // should be impossible
-        logwrite(function, "ERROR unknown power status: "+power_status_key);
-        return ERROR;
+        throw std::runtime_error("unknown power status: "+power_status_key);
     }
 
     // return variable is the class power status
-    power = this->power_status;
-
-    return NO_ERROR;
+    return this->power_status;
   }
-  /***** Camera::ArchonController::power **************************************/
+  /***** Camera::ArchonController::get_power **********************************/
 
 
   /***** Camera::ArchonController::allocate_framebuf **************************/
@@ -2044,6 +2057,9 @@ namespace Camera {
     long error = NO_ERROR;
     bool done = false;
 
+    // fills frameinfo structure
+    get_frame_status();
+
     // local copies
     int index                  = this->frameinfo.index.load();
     int latest_completed_frame = this->lastframe;
@@ -2056,10 +2072,11 @@ namespace Camera {
     // and will be used to keep track of timeout errors
     //
     double waittime_ms = this->readout_time_msec * 1.1;      // this is in msec
-    if (waittime_ms==0) {
-      logwrite(function, "readout time for Archon not found from config file");
-      return ERROR;
-    }
+
+    // if readout_time_msec was not defined or defined=0
+    // then do not use a timeout timer
+    //
+    bool timeout_timer_enabled = (waittime_ms <= 0) ? false : true;
 
     uint64_t start_ns   = get_clock_time_nsec();             // returns nanoseconds
     uint64_t timeout_ns = (uint64_t)(waittime_ms * 1e6);     // convert waittime msec to nsec
@@ -2099,9 +2116,9 @@ namespace Camera {
       }
       else busycount=0;
 
-      SNPRINTF(message, "previous_frame=%d latest_completed_frame=%d newframe=%d bufcomplete[%d]=%s",
-               previous_frame, latest_completed_frame, newframe, index, frameinfo.bufcomplete[index]?"T":"F");
-      logwrite(function, std::string(message));
+//    SNPRINTF(message, "previous_frame=%d latest_completed_frame=%d newframe=%d bufcomplete[%d]=%s",
+//             previous_frame, latest_completed_frame, newframe, index, frameinfo.bufcomplete[index]?"T":"F");
+//    logwrite(function, std::string(message));
 
       // latest completed frame number +1 above frame number coming in here,
       // then a new frame has arrived.
@@ -2128,7 +2145,9 @@ namespace Camera {
       // If the frame isn't done by the predicted time then
       // enough time has passed to trigger a timeout error.
       //
-      if (++pollcount >= 1000 && (get_clock_time_nsec()-start_ns) > timeout_ns) {
+      if (timeout_timer_enabled &&
+          ++pollcount >= 1000   &&
+          (get_clock_time_nsec()-start_ns) > timeout_ns) {
         pollcount=0;
         done = true;
         error = ERROR;
@@ -2244,7 +2263,7 @@ namespace Camera {
    */
   long ArchonController::parse_system_configuration(const std::string &message) {
     const std::string function("Camera::ArchonController::get_system_configuration");
-    if ( !is_connected ) {
+    if ( this->archon.isconnected() ) {
       logwrite(function, "ERROR Archon connection not open");
       return ERROR;
     }

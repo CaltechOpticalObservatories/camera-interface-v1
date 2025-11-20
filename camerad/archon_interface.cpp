@@ -84,7 +84,7 @@ namespace Camera {
 
   /***** Camera::ArchonInterface::abort ***************************************/
   /**
-   * @brief
+   * @brief      abort an exposure
    * @param[in]  args
    * @param[out] retstring
    * @return     ERROR | NO_ERROR
@@ -92,8 +92,12 @@ namespace Camera {
    */
   long ArchonInterface::abort( const std::string args, std::string &retstring ) {
     const std::string function("Camera::ArchonInterface::abort");
-    logwrite(function, "not yet implemented");
-    return ERROR;
+
+    // set the class abort state
+    this->set_abortstate();
+
+    // set Archon abort parameter where applicable
+    return this->controller->abort();
   }
   /***** Camera::ArchonInterface::abort ***************************************/
 
@@ -393,6 +397,19 @@ namespace Camera {
       return HELP;
     }
 
+    if (!this->controller->is_connected) {
+      logwrite(function, "ERROR not connected to controller");
+      return ERROR;
+    }
+    if (!this->controller->is_powered) {
+      logwrite(function, "ERROR power is not on");
+      return ERROR;
+    }
+    if (!this->is_exposuremode_set()) {
+      logwrite(function, "ERROR exposure mode not set!");
+      return ERROR;
+    }
+
     int nseq=1;
 
     if (!args.empty()) {
@@ -495,15 +512,15 @@ namespace Camera {
    */
   long ArchonInterface::set_exposure_mode(const std::string &modein) {
 
-    if (modein==ArchonExposureMode::RAW) {
+    if (caseCompareString(modein, ArchonExposureMode::RAW)) {
       this->exposuremode = std::make_shared<ExposureModeRaw>(this);
     }
     else
-    if (modein==ArchonExposureMode::SINGLE) {
+    if (caseCompareString(modein, ArchonExposureMode::SINGLE)) {
       this->exposuremode = std::make_shared<ExposureModeSingle>(this);
     }
     else
-    if (modein==ArchonExposureMode::RXRV) {
+    if (caseCompareString(modein, ArchonExposureMode::RXRV)) {
       this->exposuremode = std::make_shared<ExposureModeRXRV>(this);
     }
     else {
@@ -847,29 +864,39 @@ namespace Camera {
       return HELP;
     }
 
-    // parse the requested state
-    if ( !args.empty() ) {
-      int state=0;
-      if ( caseCompareString(args, "on") )  state=1;
-      else
-      if ( caseCompareString(args, "off") ) state=0;
-      else {
-        logwrite(function, "ERROR expected {ON|OFF}");
-        return ERROR;
+    // no arg returns state
+    if (args.empty()) {
+      try {
+        retstring = this->controller->get_power();
+        return NO_ERROR;
       }
-      // set the requested Archon power state
-      if (this->controller->set_power(state) != NO_ERROR) {
-        logwrite( function, "ERROR setting Archon power "+args);
+      catch (const std::exception &e) {
+        logwrite(function, "ERROR: "+std::string(e.what()));
         return ERROR;
       }
     }
 
-    // read the power status from the controller
-    long error = this->controller->get_power(retstring);
+    // parse the requested state
+    int state=0;
+    if ( caseCompareString(args, "on") )  { state=1; }
+    else
+    if ( caseCompareString(args, "off") ) { state=0; }
+    else {
+      logwrite(function, "ERROR expected {ON|OFF}");
+      return ERROR;
+    }
+    // set the requested Archon power state returns the current state
+    try {
+      retstring = this->controller->set_power(state);
+    }
+    catch (const std::exception &e) {
+      logwrite(function, "ERROR: "+std::string(e.what()));
+      return ERROR;
+    }
 
     logwrite(function, retstring);
 
-    return error;
+    return NO_ERROR;
   }
   /***** Camera::ArchonInterface::power ***************************************/
 
@@ -958,11 +985,6 @@ namespace Camera {
     long error=NO_ERROR;
 
     logwrite(function, "");
-
-    if (!this->is_exposuremode_set()) {
-      logwrite(function, "ERROR exposure mode not set!");
-      return ERROR;
-    }
 
     // spawn two threads, a producer and a consumer
     //

@@ -41,6 +41,13 @@ constexpr int MODTYPE_ADLN    = 15;
 constexpr int MODTYPE_UNKNOWN = 16;
 constexpr int MODTYPE_ADM     = 17;
 
+const std::string POWER_UNKNOWN        = "UNKNOWN";
+const std::string POWER_NOT_CONFIGURED = "NOT_CONFIGURED";
+const std::string POWER_OFF            = "OFF";
+const std::string POWER_INTERMEDIATE   = "INTERMEDIATE";
+const std::string POWER_ON             = "ON";
+const std::string POWER_STANDBY        = "STANDBY";
+
 struct network_details {
     std::string hostname;
     int port;
@@ -130,6 +137,7 @@ namespace Camera {
       frametype_t frametype;           //!< Archon frame type (IMAGE|RAW)
 
       bool is_connected;               //!< true if controller connected
+      bool is_powered;                 //!< power_status has 5 states. This is only true is power_status==ON
       std::atomic_flag archon_busy = ATOMIC_FLAG_INIT;  //!< indicates a thread is accessing Archon
       bool is_firmwareloaded;
       std::string firmware;
@@ -177,9 +185,8 @@ namespace Camera {
       long unlock_buffer();
       template <class T> void get_configmap_value(const std::string &key_in, T &value_out);
       long get_status_key(const std::string &key, std::string &value);
-      long set_power(int state);
-      long get_power();
-      long get_power(std::string &power);
+      std::string set_power(int state);
+      std::string get_power();
 
       long allocate_framebuf(uint32_t reqsz);
       long read_frame(frametype_t type, char* &imagebufferptr);

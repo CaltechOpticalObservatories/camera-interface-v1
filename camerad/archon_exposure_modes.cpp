@@ -77,6 +77,8 @@ namespace Camera {
 //    push frame into queue
       nexp--;
     }  // end loop over number of frames
+
+    logwrite(function, "complete");
   }
   /***** Camera::ExposureModeSingle::image_acquisition_thread *****************/
 
@@ -87,7 +89,22 @@ namespace Camera {
    *
    */
   void ExposureModeSingle::image_processing_thread() {
-    logwrite("Camera::ExposureModeSingle::image_processing_thread","");
+    const std::string function("Camera::ExposureModeSingle::image_processing_thread");
+    logwrite(function, "enter");
+
+//  open FITS file
+//  allocate memory
+
+    // pop an image out of the queue,
+    // wait until producer stops producing data, or aborted
+    //
+    while (!this->interface->is_aborted()) {
+//    process_image
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+
+//  close FITS file
+    logwrite(function, "exit");
   }
   /***** Camera::ExposureModeSingle::expose ***********************************/
 

@@ -8,6 +8,7 @@
 # valid types are: "AstroCam" | "Archon"
 # ----------------------------------------------------------------------------
 
+add_compile_options( -O0 -g -march=native -DNDEBUG)
 
 # Interface type can be set via command line ( Archon | AstroCam )
 IF (NOT DEFINED INTERFACE_TYPE)
@@ -62,5 +63,5 @@ find_package(Threads)
 add_subdirectory(${PROJECT_BASE_DIR}/utils)
 add_subdirectory(${PROJECT_BASE_DIR}/common)
 add_subdirectory(${PROJECT_BASE_DIR}/camerad)
-add_subdirectory(${PROJECT_BASE_DIR}/emulator)
+#add_subdirectory(${PROJECT_BASE_DIR}/emulator)
 add_subdirectory(${PROJECT_BASE_DIR}/tests EXCLUDE_FROM_ALL)

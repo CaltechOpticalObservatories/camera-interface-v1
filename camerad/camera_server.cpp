@@ -320,7 +320,7 @@ namespace Camera {
       // Don't append anything nor log the reply if the command was just requesting help.
       //
       if (ret != NOTHING) {
-        if ( ! retstring.empty() ) retstring.append( " " );
+        if ( ret != HELP && !retstring.empty() ) retstring.append( " " );
         if ( ret != HELP && ret != JSON ) retstring.append( ret == NO_ERROR ? "DONE" : "ERROR" );
 
         if ( ret == JSON ) {
