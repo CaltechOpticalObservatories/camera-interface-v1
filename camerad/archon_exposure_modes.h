@@ -47,7 +47,7 @@ namespace Camera {
     public:
       ExposureModeRaw(Camera::ArchonInterface* iface)
         : ExposureModeTemplate<Camera::ArchonInterface>(iface) {
-          type=ArchonExposureMode::RAW;
+          this->type=ArchonExposureMode::RAW;
         }
 
     long expose() override;
@@ -74,6 +74,7 @@ namespace Camera {
       void image_acquisition_thread() override;
       void image_processing_thread() override;
       long expose() override;
+      void process_image(std::shared_ptr<ArchonImageBuffer> &imagebuffer);
   };
   /***** Camera::ExposureModeSingle *******************************************/
 

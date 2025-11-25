@@ -762,38 +762,28 @@ namespace Camera {
     // cannot changes while exposure in progress
 
     // firmware must be loaded first
-    if (!this->controller->is_firmwareloaded) {
+    if ( !this->controller->is_firmwareloaded ) {
       logwrite(function, "ERROR no firmware loaded");
       return ERROR;
     }
 
-    to_uppercase(modeselect);
-
-    // requested mode must have been read from the current ACF
-    // and put into modemap
-    if (this->controller->modemap.find(modeselect) == this->controller->modemap.end()) {
+    // requested mode must have been defined in the ACF
+    if ( !is_mode_defined(to_uppercase(modeselect)) ) {
       logwrite(function, "ERROR undefined mode "+modeselect+" in ACF "+this->controller->firmware);
       return ERROR;
     }
 
+    auto mode = &this->controller->modemap[modeselect];
+
+    // clear selected mode, set only on success
+    this->controller->selectedmode.clear();
+
     // load mode settings from .acf and apply to Archon
-    if (this->controller->load_mode_settings(modeselect) != NO_ERROR) {
+    if ( this->controller->load_mode_settings(mode) != NO_ERROR ) {
       return ERROR;
     }
 
-    this->controller->set_image_geometry(modeselect);
-
-    auto mode = &this->controller->modemap[modeselect];
-
-    uint8_t bits_per_pixel = (mode->samplemode==1) ? 32 : 16;
-
-    this->camera_info.set_axes(bits_per_pixel);
-
-    this->camera_info.image_data_bytes =
-      (uint32_t)floor( ((this->camera_info.image_memory * mode->geometry.num_detect) + BLOCK_LEN - 1)/BLOCK_LEN ) * BLOCK_LEN;
-
-    if (this->camera_info.image_data_bytes==0) {
-      logwrite(function, "ERROR image data size is zero! check NUM_DETECT, HORI_AMPS, VERT_AMPS");
+    if ( this->set_image_geometry(mode) != NO_ERROR ) {
       return ERROR;
     }
 
@@ -803,6 +793,46 @@ namespace Camera {
     return NO_ERROR;
   }
   /***** Camera::ArchonInterface::set_camera_mode *****************************/
+
+
+  /***** Camera::ArchonInterface::set_image_geometry **************************/
+  /**
+   * @brief      sets image geometry parameters after selecting a mode
+   * @details    This is for internal use.
+   * @param[in]  mode  pointer to modeinfo_t struct from modemap
+   * @return     ERROR|NO_ERROR
+   *
+   */
+  long ArchonInterface::set_image_geometry(ArchonController::modeinfo_t* mode) {
+    const std::string function("Camera::ArchonInterface::set_image_geometry");
+    auto info = &this->camera_info;
+
+    info->detector_pixels[0] = mode->geometry.pixelcount * mode->geometry.amps[0];
+    info->detector_pixels[1] = mode->geometry.linecount * mode->geometry.amps[1];
+
+    info->region_of_interest[0] = 1;
+    info->region_of_interest[1] = info->detector_pixels[0];
+    info->region_of_interest[2] = 1;
+    info->region_of_interest[3] = info->detector_pixels[1];
+
+    info->binning[0] = 1;
+    info->binning[1] = 1;
+
+    uint8_t bits_per_pixel = (mode->samplemode==1) ? 32 : 16;
+
+    info->set_axes(bits_per_pixel);
+
+    info->image_data_bytes =
+      (uint32_t)floor( ((this->camera_info.image_memory * mode->geometry.num_detect) + BLOCK_LEN - 1)/BLOCK_LEN ) * BLOCK_LEN;
+
+    if (info->image_data_bytes==0) {
+      logwrite(function, "ERROR image data size is zero! check NUM_DETECT, HORI_AMPS, VERT_AMPS");
+      return ERROR;
+    }
+
+    return NO_ERROR;
+  }
+  /***** Camera::ArchonInterface::set_image_geometry **************************/
 
 
   /***** Camera::ArchonInterface::set_parameter *******************************/

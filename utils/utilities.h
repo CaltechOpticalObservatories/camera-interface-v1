@@ -152,8 +152,9 @@ inline bool caseCompareString(const std::string &s1, const std::string &s2) {
   return ((s1.size() == s2.size()) && std::equal(s1.begin(), s1.end(), s2.begin(), caseCompareChar));
 }
 
-inline void to_uppercase(std::string &str) {
+inline std::string to_uppercase(std::string &str) {
   std::transform(str.begin(), str.end(), str.begin(), ::toupper);
+  return str;
 }
 
 

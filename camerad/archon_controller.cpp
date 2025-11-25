@@ -1579,14 +1579,12 @@ namespace Camera {
    * @details    The ACF may contain optional sections tagged as [MODE_xxxx]
    *             which may contain parameters, keywords, etc. This function
    *             applies those configuration parameters to the Archon.
-   * @param[in]  modeselect  string mode name
+   * @param[in]  mode  pointer to modeinfo_t struct from modemap
    * @return     ERROR|NO_ERROR
    *
    */
-  long ArchonController::load_mode_settings(const std::string &modeselect) {
+  long ArchonController::load_mode_settings(modeinfo_t* mode) {
     const std::string function("Camera::ArchonController::load_mode_settings");
-
-    modeinfo_t* mode = &this->modemap[modeselect];
 
     try {
       this->get_configmap_value("SAMPLEMODE", mode->samplemode);
@@ -1607,62 +1605,6 @@ namespace Camera {
     return NO_ERROR;
   }
   /***** Camera::ArchonController::load_mode_settings *************************/
-
-
-  /***** Camera::ArchonController::set_image_geometry *************************/
-  /**
-   * @brief      
-   * @param[in]  modeselect  string mode name
-   * @return     ERROR|NO_ERROR
-   *
-   */
-  long ArchonController::set_image_geometry(const std::string &modeselect) {
-    const std::string function("Camera::ArchonController::set_image_geometry");
-
-    modeinfo_t* mode = &this->modemap[modeselect];
-
-    auto info = &this->interface->camera_info;
-
-    long bigbuf, pixelcount, linecount, samplemode;
-    try {
-      this->get_configmap_value("BIGBUF", bigbuf);
-      this->get_configmap_value("PIXELCOUNT", pixelcount);
-      this->get_configmap_value("LINECOUNT", linecount);
-      this->get_configmap_value("SAMPLEMODE", samplemode);
-    }
-    catch (const std::exception &e) {
-      logwrite(function, "ERROR: "+std::string(e.what()));
-      return ERROR;
-    }
-
-    if (modeselect=="RAW") {
-      logwrite(function, "ERROR raw mode not implemented");
-      return ERROR;
-    }
-    else {
-      info->detector_pixels[0] = pixelcount * mode->geometry.amps[0];
-      info->detector_pixels[1] = linecount * mode->geometry.amps[1];
-    }
-
-    info->region_of_interest[0] = 1;
-    info->region_of_interest[1] = info->detector_pixels[0];
-    info->region_of_interest[2] = 1;
-    info->region_of_interest[3] = info->detector_pixels[1];
-
-    info->binning[0] = 1;
-    info->binning[1] = 1;
-
-    uint8_t bits_per_pixel = (samplemode==1) ? 32 : 16;
-
-    long error=NO_ERROR;
-
-    error |= this->send_cmd(LOADPARAMS);
-    error |= this->send_cmd(APPLYCDS);
-    error |= this->get_frame_status();
-
-    return error;
-  }
-  /***** Camera::ArchonController::set_image_geometry *************************/
 
 
   /***** Camera::ArchonController::lock_buffer ********************************/

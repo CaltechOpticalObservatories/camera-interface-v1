@@ -158,81 +158,6 @@ namespace Camera {
           int port;
       };
 
-//  protected:
-      ArchonInterface* interface;      //!< pointer back to the parent interface
-      Camera::Information info;        //!< information for this controller
-      Network::TcpSocket archon;       //!< this is how we talk to the Archon
-
-      /** @var      exposure_time
-       *  @details  non-owning pointer to ExposureTime object owned by Information.
-       *            Valid as long as Information exists.
-       */
-      ArchonExposureTime* exposure_time;
-
-      void set_interface(ArchonInterface* _interface);
-
-      int activebufs;                  //!< number of active frame buffers
-      char* framebuf;                  //!< local frame buffer read from Archon
-      uint32_t framebuf_bytes;         //!< size of framebuf in bytes
-      frametype_t frametype;           //!< Archon frame type (IMAGE|RAW)
-
-      bool is_connected;               //!< true if controller connected
-      bool is_powered;                 //!< power_status has 5 states. This is only true is power_status==ON
-      std::atomic_flag archon_busy = ATOMIC_FLAG_INIT;  //!< indicates a thread is accessing Archon
-      bool is_firmwareloaded;
-      std::string firmware;
-      bool is_camera_mode;             //!< has a camera mode been selected
-      int msgref;
-      std::string backplaneversion;
-      std::vector<int> modtype;             //!< type of each module from SYSTEM command
-      std::vector<std::string> modversion;  //!< version of each module from SYSTEM command
-      std::string offset;
-      std::string gain;
-      int readout_time_msec;                //!< readout time in msec from config file
-      int configlines;                      //!< number of configuration lines in ACF
-      int n_hdrshift;
-      uint64_t last_frame_timer;            //!< Archon timer of last frame
-      std::string power_status;             //!< Archon power status
-      std::mutex archon_mutex;
-      network_details archon_network_details;
-
-      std::string sec_param;                //!< parameter name for exposure time seconds
-      std::string msec_param;               //!< parameter name for exposure time milliseconds
-      std::string expose_param;             //!< parameter name to trigger exposure when set =1
-      std::string abort_param;              //!< parameter name to abort when set =1 (optional)
-
-      void connect();
-      void bias(const int &mod, const int &chan, float &volts, const bool &should_write);
-      long initiate_exposure(const int &nexp);
-      long get_frame_status();
-      template<typename T> T get_parameter(const std::string &parameter);
-      long fetch(uint64_t bufferaddress, uint32_t bufferblocks);
-      long get_timer(uint64_t &timer);
-      void set_exptime(double exptime);
-      long set_parameter(const std::string &parameter, const int &value);
-      long prep_parameter(const std::string &parameter, const int &value);
-      long load_parameter(const std::string &parameter, const int &value);
-      double get_exptime() const { return( this->exposure_time->get() ); }
-      void print_frame_status();
-      long send_cmd(const std::string &cmd, std::string &reply);
-      long send_cmd(const std::string &cmd);
-      long wait_for_readout();
-      long fetchlog();
-      long load_acf(const std::string &filename, bool write_to_archon=true);
-      long load_mode_settings(const std::string &modeselect);
-      long set_image_geometry(const std::string &modeselect);
-      long lock_buffer(int buffernumber);
-      long unlock_buffer();
-      template <class T> void get_configmap_value(const std::string &key_in, T &value_out);
-      long get_status_key(const std::string &key, std::string &value);
-      std::string set_power(int state);
-      std::string get_power();
-
-      long allocate_framebuf(uint32_t reqsz);
-      long read_frame(frametype_t type, char* &imagebufferptr);
-      long write_config_key(const char* key, const char* newvalue, bool &changed);
-      long write_config_key(const char* key, int newvalue, bool &changed);
-
       /**
        * @var     struct bias_config_t
        * @details structure of bias configuration info
@@ -345,6 +270,81 @@ namespace Camera {
         long bigbuf=-1;
         long samplemode=-1;
       } modeinfo_t;
+
+//  protected:
+      ArchonInterface* interface;      //!< pointer back to the parent interface
+      Camera::Information info;        //!< information for this controller
+      Network::TcpSocket archon;       //!< this is how we talk to the Archon
+
+      /** @var      exposure_time
+       *  @details  non-owning pointer to ExposureTime object owned by Information.
+       *            Valid as long as Information exists.
+       */
+      ArchonExposureTime* exposure_time;
+
+      void set_interface(ArchonInterface* _interface);
+
+      int activebufs;                  //!< number of active frame buffers
+      char* framebuf;                  //!< local frame buffer read from Archon
+      uint32_t framebuf_bytes;         //!< size of framebuf in bytes
+      frametype_t frametype;           //!< Archon frame type (IMAGE|RAW)
+
+      bool is_connected;               //!< true if controller connected
+      bool is_powered;                 //!< power_status has 5 states. This is only true is power_status==ON
+      std::atomic_flag archon_busy = ATOMIC_FLAG_INIT;  //!< indicates a thread is accessing Archon
+      bool is_firmwareloaded;
+      std::string firmware;
+      bool is_camera_mode;             //!< has a camera mode been selected
+      int msgref;
+      std::string backplaneversion;
+      std::vector<int> modtype;             //!< type of each module from SYSTEM command
+      std::vector<std::string> modversion;  //!< version of each module from SYSTEM command
+      std::string offset;
+      std::string gain;
+      int readout_time_msec;                //!< readout time in msec from config file
+      int configlines;                      //!< number of configuration lines in ACF
+      int n_hdrshift;
+      uint64_t last_frame_timer;            //!< Archon timer of last frame
+      std::string power_status;             //!< Archon power status
+      std::mutex archon_mutex;
+      network_details archon_network_details;
+
+      std::string sec_param;                //!< parameter name for exposure time seconds
+      std::string msec_param;               //!< parameter name for exposure time milliseconds
+      std::string expose_param;             //!< parameter name to trigger exposure when set =1
+      std::string abort_param;              //!< parameter name to abort when set =1 (optional)
+
+      void connect();
+      void bias(const int &mod, const int &chan, float &volts, const bool &should_write);
+      long initiate_exposure(const int &nexp);
+      long get_frame_status();
+      template<typename T> T get_parameter(const std::string &parameter);
+      long fetch(uint64_t bufferaddress, uint32_t bufferblocks);
+      long get_timer(uint64_t &timer);
+      void set_exptime(double exptime);
+      long set_parameter(const std::string &parameter, const int &value);
+      long prep_parameter(const std::string &parameter, const int &value);
+      long load_parameter(const std::string &parameter, const int &value);
+      double get_exptime() const { return( this->exposure_time->get() ); }
+      void print_frame_status();
+      long send_cmd(const std::string &cmd, std::string &reply);
+      long send_cmd(const std::string &cmd);
+      long wait_for_readout();
+      long fetchlog();
+      long load_acf(const std::string &filename, bool write_to_archon=true);
+      long load_mode_settings(modeinfo_t* mode);
+      long lock_buffer(int buffernumber);
+      long unlock_buffer();
+      template <class T> void get_configmap_value(const std::string &key_in, T &value_out);
+      long get_status_key(const std::string &key, std::string &value);
+      std::string set_power(int state);
+      std::string get_power();
+
+      long allocate_framebuf(uint32_t reqsz);
+      long read_frame(frametype_t type, char* &imagebufferptr);
+      long write_config_key(const char* key, const char* newvalue, bool &changed);
+      long write_config_key(const char* key, int newvalue, bool &changed);
+
 
       std::map<std::string, modeinfo_t> modemap;
 

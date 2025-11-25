@@ -34,15 +34,17 @@ namespace Camera {
 
     logwrite(function, "");
 
+    auto camera_info = &this->interface->camera_info;
+
     // record system time when exposure starts (YYYY-MM-DDTHH:MM:SS.sss)
-    this->interface->camera_info.start_time = get_timestamp();
+    camera_info->start_time = get_timestamp();
 
 /*****
  *  // sets camera.fitstime (YYYYMMDDHHMMSS) used for filename
- *  this->interface->set_fitstime(this->camera_info.start_time);
+ *  this->interface->set_fitstime(camera_info->start_time);
  *
  *  // assemble the FITS filename
- *  get_fitsname(this->camera_info.fits_name);
+ *  get_fitsname(camera_info->fits_name);
  *
  *  // add filename to system keys database
  *  this->add_filename_key();
@@ -66,10 +68,13 @@ namespace Camera {
 
     long error=NO_ERROR;
 
+    uint64_t bufferbytes = (uint64_t)camera_info->image_data_bytes * camera_info->cubedepth;
+
     while (error==NO_ERROR && !this->interface->is_aborted() && nexp > 0) {
-      // prepare an ImageBuffer object for each
-      std::shared_ptr<ArchonImageBuffer> imagebuffer = std::make_shared<ArchonImageBuffer>();
-      try { imagebuffer->rawpixels = std::shared_ptr<char[]>(new char[100]);
+      // prepare an ImageBuffer object for the exposure
+      auto imagebuffer = std::make_shared<ArchonImageBuffer>();
+
+      try { imagebuffer->rawpixels = std::shared_ptr<char[]>(new char[bufferbytes]);
       }
       catch (const std::exception &e) {
         SNPRINTF(message, "memory allocation failed: %s", e.what());
@@ -77,12 +82,12 @@ namespace Camera {
         error=ERROR;
         break;
       }
-      char* p_imagebuffer = imagebuffer->rawpixels.get();
 
       // wait for frame readout into Archon buffer
       if ( (error=this->interface->controller->wait_for_readout()) == ERROR ) break;
 
       // read frame from Archon into memory pointed to by p_imagebuffer
+      char* p_imagebuffer = imagebuffer->rawpixels.get();
       this->interface->controller->read_frame(ArchonController::FRAME_IMAGE, p_imagebuffer);
 
       // frame metadata
@@ -104,7 +109,7 @@ namespace Camera {
   /***** Camera::ExposureModeSingle::image_acquisition_thread *****************/
 
 
-  /***** Camera::ExposureModeSingle::expose ***********************************/
+  /***** Camera::ExposureModeSingle::image_processing_thread ******************/
   /**
    * @brief  implementation of Archon-specific expose for Single
    *
@@ -113,8 +118,7 @@ namespace Camera {
     const std::string function("Camera::ExposureModeSingle::image_processing_thread");
     logwrite(function, "enter");
 
-//  open FITS file
-//  allocate memory
+//  open FITS file ?
 
     // pop an image out of the queue,
     // wait until producer stops producing data, or aborted
@@ -143,10 +147,21 @@ namespace Camera {
       std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 
-//  close FITS file
+//  close FITS file ?
     logwrite(function, "exit");
   }
-  /***** Camera::ExposureModeSingle::expose ***********************************/
+  /***** Camera::ExposureModeSingle::image_processing_thread ******************/
+
+
+  /***** Camera::ExposureModeSingle::process *********************************/
+  /**
+   * @brief      image process a Single image
+   * @param[in]  imagebuffer  reference to Archon Image Buffer object
+   *
+   */
+  void ExposureModeSingle::process_image(std::shared_ptr<ArchonImageBuffer> &imagebuffer) {
+  }
+  /***** Camera::ExposureModeSingle::process *********************************/
 
 
   /***** Camera::ExposureModeRaw::expose *************************************/

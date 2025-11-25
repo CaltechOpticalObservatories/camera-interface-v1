@@ -79,8 +79,15 @@ namespace Camera {
       // These functions are specific to the Archon Interface and are not
       // found in the base class.
       //
+    private:
+      bool is_mode_defined(const std::string &modename) {
+        return (this->controller &&
+               (this->controller->modemap.find(modename) != this->controller->modemap.end())
+            );
+      }
       long connect_controller(const std::string& devices_in);
       long load_timing(const std::string &filename);
+      long set_image_geometry(ArchonController::modeinfo_t* mode);
 
   };
 
