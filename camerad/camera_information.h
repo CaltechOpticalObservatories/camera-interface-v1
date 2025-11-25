@@ -38,7 +38,12 @@ namespace Camera {
     friend class CameraInterface;
     public:
       Information()
-        : nexp(1),
+        : section_size(0),
+          image_memory(0),
+          image_data_bytes(0),
+          bitpix(0),
+          cubedepth(1),
+          nexp(1),
           exposure_time(std::make_unique<ExposureTime>())
       {
       }
@@ -55,6 +60,7 @@ namespace Camera {
 
       uint64_t section_size;                //!< pixels to write this section (accounts for depth)
       uint64_t image_memory;                //!< bytes per image sensor
+      uint64_t image_data_bytes;
 
       /** @var     bitpix
        *  @brief   FITS datatype (not literally bits per pixel)
@@ -131,6 +137,7 @@ namespace Camera {
         this->section_size = 1;
         for (const auto &axis : this->naxes) this->section_size *= axis;
 
+        // bytes per detector
         this->image_memory = this->detector_pixels[0]
                            * this->detector_pixels[1] * bytes_per_pixel;
       }

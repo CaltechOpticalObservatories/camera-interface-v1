@@ -39,6 +39,10 @@ namespace Camera {
 
   class ArchonInterface;     // forward declaration
 
+  /**
+   * @brief      class constructor
+   * @param[in]  _interface  Pointer to Camera InterfaceType
+   */
   class ExposureModeRaw : public ArchonImageBuffer, public ExposureModeTemplate<Camera::ArchonInterface> {
     public:
       ExposureModeRaw(Camera::ArchonInterface* iface)
@@ -49,6 +53,12 @@ namespace Camera {
     long expose() override;
   };
 
+  /***** Camera::ExposureModeSingle *******************************************/
+  /**
+   * @class      Camera::ExposureModeSingle
+   * @brief      derived class for Exposure Mode Single
+   *
+   */
   class ExposureModeSingle : public ArchonImageBuffer, public ExposureModeTemplate<Camera::ArchonInterface> {
     public:
       ExposureModeSingle(Camera::ArchonInterface* iface)
@@ -65,6 +75,8 @@ namespace Camera {
       void image_processing_thread() override;
       long expose() override;
   };
+  /***** Camera::ExposureModeSingle *******************************************/
+
 
   class ExposureModeRXRV : public ArchonImageBuffer, public ExposureModeTemplate<Camera::ArchonInterface> {
     public:

@@ -26,7 +26,8 @@ namespace Camera {
    */
   class ExposureMode {
     protected:
-      std::string type;  // what type of exposure mode is this?
+      std::string type;               ///< what type of exposure mode is this?
+      std::vector<std::string> args;  ///< optional mode-specific args
 
     public:
       std::mutex queue_mutex;            ///< mutex protects access to the queue
@@ -37,6 +38,15 @@ namespace Camera {
       std::atomic<bool> is_consumer_error;
 
       std::string get_type() { return this->type; }
+      std::vector<std::string> get_args() { return this->args; }
+
+      /** brief  return the args as a space-delimited string */
+      std::string get_args_string() {
+        std::ostringstream oss;
+        for (const auto &arg : this->args) { if (!arg.empty()) { oss << " " << arg; } }
+        return oss.str();
+      }
+
       virtual ~ExposureMode() = default;
       virtual long expose() = 0;
       virtual void image_acquisition_thread() { };

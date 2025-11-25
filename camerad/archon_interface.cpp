@@ -392,8 +392,9 @@ namespace Camera {
     //
     if (args=="?" || args=="help") {
       retstring = CAMERAD_EXPOSE;
-      retstring.append( " <tbd>\n" );
-      retstring.append( "  TBD\n" );
+      retstring.append( " [ <nseq> ]\n" );
+      retstring.append( "  where <nseq> is an optional number of sequences (default=1).\n" );
+      retstring.append( "  Setting <nseq> is equivalent to sending \"expose\" <nseq> times.\n" );
       return HELP;
     }
 
@@ -447,7 +448,7 @@ namespace Camera {
     // Help
     if (args=="?" || args=="help") {
       retstring = CAMERAD_EXPOSUREMODE;
-      retstring.append( " [ <mode> ]\n" );
+      retstring.append( " [ <mode> [ <args> ... ]\n" );
       retstring.append( "  Set or get current exposure mode.\n" );
       retstring.append( "  Valid modes are: {" );
 
@@ -455,6 +456,8 @@ namespace Camera {
       for (const auto &mode : modes) { retstring.append(" "); retstring.append(mode); }
 
       retstring.append( " }\n" );
+      retstring.append( "  and are not case-sensitive.\n" );
+      retstring.append( "  Additional optional arguments are specific to the mode.\n" );
       return HELP;
     }
 
@@ -466,11 +469,21 @@ namespace Camera {
         return ERROR;
       }
       retstring=this->exposuremode->get_type();
+      retstring.append(this->exposuremode->get_args_string());
       return NO_ERROR;
     }
 
-    // otherwise something was specified so try to set exposure mode
-    long error=set_exposure_mode(args);
+    // otherwise something was specified so try to set exposure mode.
+    // The first arg is the mode.
+    // If additional (optional) args present then they are mode-specified
+    // and will be passed to the constructor of the ExposureMode object.
+    //
+    std::vector<std::string> tokens;
+    Tokenize(args, tokens, " ");
+    auto mode = tokens[0];
+    tokens.erase(tokens.begin());
+
+    long error=set_exposure_mode(mode, tokens);
 
     // always return current mode
     if ( !this->is_exposuremode_set() ) {
@@ -481,6 +494,9 @@ namespace Camera {
 
     // ExposureMode objects know their own type, you just have to ask politely.
     retstring=this->exposuremode->get_type();
+
+    // append any optional mode-specific arguments, which you can get as a string
+    retstring.append(this->exposuremode->get_args_string());
 
     logwrite(function, retstring);
 
@@ -514,7 +530,7 @@ namespace Camera {
    * @return     ERROR|NO_ERROR
    *
    */
-  long ArchonInterface::set_exposure_mode(const std::string &modein) {
+  long ArchonInterface::set_exposure_mode(const std::string &modein, const std::vector<std::string> &modeargs) {
 
     if (caseCompareString(modein, ArchonExposureMode::RAW)) {
       this->exposuremode = std::make_shared<ExposureModeRaw>(this);
@@ -767,6 +783,23 @@ namespace Camera {
 
     this->controller->set_image_geometry(modeselect);
 
+    auto mode = &this->controller->modemap[modeselect];
+
+    uint8_t bits_per_pixel = (mode->samplemode==1) ? 32 : 16;
+
+    this->camera_info.set_axes(bits_per_pixel);
+
+    this->camera_info.image_data_bytes =
+      (uint32_t)floor( ((this->camera_info.image_memory * mode->geometry.num_detect) + BLOCK_LEN - 1)/BLOCK_LEN ) * BLOCK_LEN;
+
+    if (this->camera_info.image_data_bytes==0) {
+      logwrite(function, "ERROR image data size is zero! check NUM_DETECT, HORI_AMPS, VERT_AMPS");
+      return ERROR;
+    }
+
+    // if we made it all the way to the end then this is the selected mode
+    this->controller->selectedmode = modeselect;
+
     return NO_ERROR;
   }
   /***** Camera::ArchonInterface::set_camera_mode *****************************/
@@ -931,11 +964,70 @@ namespace Camera {
       retstring = "test";
       retstring.append( " <testname> [ <args> ]\n" );
       retstring.append( "  framestatus   prints Archon frame status to log\n" );
+      retstring.append( "  showinfo      prints camera info and friends\n" );
       return HELP;
     }
     else
     if (testname=="framestatus") {
       this->controller->print_frame_status();
+    }
+    else
+    if (testname=="showinfo") {
+      if (!this->controller->is_connected) {
+        logwrite(function, "ERROR not connected to controller");
+        return ERROR;
+      }
+      if (!this->controller->is_firmwareloaded) {
+        logwrite(function, "ERROR no firmware loaded");
+        return ERROR;
+      }
+      retstring = "\n";
+      std::ostringstream oss;
+      oss << "is_powered = " << (this->controller->is_powered ? "true" : "false") << "\n";
+      retstring.append(oss.str()); oss.str("");
+      oss << "detector_pixels = " << this->camera_info.detector_pixels[0] << " " << this->camera_info.detector_pixels[1] << "\n";
+      retstring.append(oss.str()); oss.str("");
+      oss << "region_of_interest =";
+      for (int i=0; i<4; i++) oss << " " << this->camera_info.region_of_interest[i];
+      oss << "\n"; retstring.append(oss.str()); oss.str("");
+      oss << "binning = " << this->camera_info.binning[0] << " " << this->camera_info.binning[1] << "\n";
+      retstring.append(oss.str()); oss.str("");
+      oss << "naxes = " << this->camera_info.naxes[0] << " " << this->camera_info.naxes[1] << "\n";
+      retstring.append(oss.str()); oss.str("");
+      oss << "cubedepth = " << this->camera_info.cubedepth << "\n";
+      retstring.append(oss.str()); oss.str("");
+      oss << "image_memory = " << this->camera_info.image_memory << " bytes\n";
+      retstring.append(oss.str()); oss.str("");
+      oss << "image_data_bytes = " << this->camera_info.image_data_bytes << " bytes\n";
+      retstring.append(oss.str()); oss.str("");
+      oss << "section_size = " << this->camera_info.section_size << " pix\n";
+      retstring.append(oss.str()); oss.str("");
+      auto modename = this->controller->selectedmode;
+      auto mode = &this->controller->modemap[modename];
+      oss << "selected camera mode = " << modename << "\n";
+      retstring.append(oss.str()); oss.str("");
+      if (!modename.empty()) {
+        oss << "num_detect = " << mode->geometry.num_detect << "\n";
+        retstring.append(oss.str()); oss.str("");
+        oss << "hori_amps = " << mode->geometry.amps[0] << "\n";
+        retstring.append(oss.str()); oss.str("");
+        oss << "vert_amps = " << mode->geometry.amps[1] << "\n";
+        retstring.append(oss.str()); oss.str("");
+      }
+      oss << "exposure mode = " << (this->exposuremode ? this->exposuremode->get_type() : "not set") << "\n";
+      retstring.append(oss.str()); oss.str("");
+      oss << "PIXELCOUNT = " << mode->geometry.pixelcount << "\n";
+      retstring.append(oss.str()); oss.str("");
+      oss << "LINECOUNT = " << mode->geometry.linecount << "\n";
+      retstring.append(oss.str()); oss.str("");
+      oss << "SAMPLEMODE = " << mode->samplemode << " (" << (mode->samplemode==0 ? 16 : 32) << " bpp)\n";
+      retstring.append(oss.str()); oss.str("");
+      oss << "BIGBUF = " << mode->bigbuf << "\n";
+      retstring.append(oss.str()); oss.str("");
+    }
+    else {
+      logwrite(function, "ERROR unknown test name \""+testname+"\"");
+      return ERROR;
     }
 
     return NO_ERROR;
@@ -969,17 +1061,6 @@ namespace Camera {
   /***** Camera::ArchonInterface::allocate_framebuf ***************************/
 
 
-  /***** Camera::ArchonInterface::read_frame **********************************/
-  /**
-   * what was this for?
-   */
-//long ArchonInterface::read_frame() {
-//  controller->read_frame(Camera::ArchonController::FRAME_IMAGE);
-//  return NO_ERROR;
-//}
-  /***** Camera::ArchonInterface::read_frame **********************************/
-
-
   /***** Camera::ArchonInterface::do_expose ***********************************/
   /**
    *
@@ -988,6 +1069,10 @@ namespace Camera {
     const std::string function("Camera::ArchonInterface::do_expose");
 
     logwrite(function, "");
+
+    this->exposuremode->is_producer_finished=false;  // tells consumer no more images coming
+    this->exposuremode->is_producer_error=false;     // tells this thread is producer had an error
+    this->exposuremode->is_consumer_error=false;     // tells this thread is consumer had an error
 
     // spawn two threads, a producer and a consumer
     //

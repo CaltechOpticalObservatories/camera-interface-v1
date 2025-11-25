@@ -17,8 +17,13 @@
 #include "camera_interface.h"
 #include "camera_information.h"
 
+/**
+ * Archon constants
+ */
 constexpr int MAXADCCHANS =   16;              //!< max number of ADC channels per controller (4 mod * 4 ch/mod)
 constexpr int MAXADMCHANS =   72;              //!< max number of ADM channels per controller (4 mod * 18 ch/mod)
+constexpr int BLOCK_LEN   = 1024;              //!< Archon block size
+constexpr int REPLY_LEN   =  100 * BLOCK_LEN;  //!< Reply buffer size (over-estimate)
 
 /**
  * Archon Module Types
@@ -41,17 +46,47 @@ constexpr int MODTYPE_ADLN    = 15;
 constexpr int MODTYPE_UNKNOWN = 16;
 constexpr int MODTYPE_ADM     = 17;
 
+/**
+ * Archon commands
+ */
+const std::string  SYSTEM        = "SYSTEM";
+const std::string  STATUS        = "STATUS";
+const std::string  FRAME         = "FRAME";
+const std::string  CLEARCONFIG   = "CLEARCONFIG";
+const std::string  POLLOFF       = "POLLOFF";
+const std::string  POLLON        = "POLLON";
+const std::string  APPLYALL      = "APPLYALL";
+const std::string  POWERON       = "POWERON";
+const std::string  POWEROFF      = "POWEROFF";
+const std::string  APPLYCDS      = "APPLYCDS";
+const std::string  APPLYSYSTEM   = "APPLYSYSTEM";
+const std::string  RESETTIMING   = "RESETTIMING";
+const std::string  LOADTIMING    = "LOADTIMING";
+const std::string  HOLDTIMING    = "HOLDTIMING";
+const std::string  RELEASETIMING = "RELEASETIMING";
+const std::string  LOADPARAMS    = "LOADPARAMS";
+const std::string  TIMER         = "TIMER";
+const std::string  FETCHLOG      = "FETCHLOG";
+const std::string  UNLOCK        = "LOCK0";
+
+/**
+ * Minimum required backplane revisions for certain features
+ */
+const std::string REV_RAMP           = "1.0.548";
+const std::string REV_SENSORCURRENT  = "1.0.758";
+const std::string REV_HEATERTARGET   = "1.0.1087";
+const std::string REV_FRACTIONALPID  = "1.0.1054";
+const std::string REV_VCPU           = "1.0.784";
+
+/**
+ * Archon Power states
+ */
 const std::string POWER_UNKNOWN        = "UNKNOWN";
 const std::string POWER_NOT_CONFIGURED = "NOT_CONFIGURED";
 const std::string POWER_OFF            = "OFF";
 const std::string POWER_INTERMEDIATE   = "INTERMEDIATE";
 const std::string POWER_ON             = "ON";
 const std::string POWER_STANDBY        = "STANDBY";
-
-struct network_details {
-    std::string hostname;
-    int port;
-};
 
 namespace Camera {
 
@@ -116,6 +151,11 @@ namespace Camera {
       const char *const frametype_str[NUM_FRAME_TYPES] = {
         "IMAGE",
         "RAW"
+      };
+
+      struct network_details {
+          std::string hostname;
+          int port;
       };
 
 //  protected:
@@ -296,12 +336,14 @@ namespace Camera {
        *          specified in the [MODE_*] sections at the end of the .acf file.
        */
       typedef struct {
-        int rawenable;             //!< initialized to -1, then set according to RAWENABLE in .acf file
+        int rawenable=-1;          //!< initialized to -1, then set according to RAWENABLE in .acf file
         cfg_map_t configmap;       //!< key=value map for configuration lines set in mode sections
         param_map_t parammap;      //!< PARAMETERn=parametername=value map for mode sections
         Common::FitsKeys acfkeys;  //!< create a FitsKeys object to hold user keys read from ACF file for each mode
         geometry_t geometry;
         tapinfo_t tapinfo;
+        long bigbuf=-1;
+        long samplemode=-1;
       } modeinfo_t;
 
       std::map<std::string, modeinfo_t> modemap;

@@ -12,39 +12,6 @@
 #include "archon_exposure_modes.h"
 #include "camera_information.h"
 
-constexpr int BLOCK_LEN   = 1024;              //!< Archon block size
-constexpr int REPLY_LEN   =  100 * BLOCK_LEN;  //!< Reply buffer size (over-estimate)
-
-// Archon commands
-//
-const std::string  SYSTEM        = "SYSTEM";
-const std::string  STATUS        = "STATUS";
-const std::string  FRAME         = "FRAME";
-const std::string  CLEARCONFIG   = "CLEARCONFIG";
-const std::string  POLLOFF       = "POLLOFF";
-const std::string  POLLON        = "POLLON";
-const std::string  APPLYALL      = "APPLYALL";
-const std::string  POWERON       = "POWERON";
-const std::string  POWEROFF      = "POWEROFF";
-const std::string  APPLYCDS      = "APPLYCDS";
-const std::string  APPLYSYSTEM   = "APPLYSYSTEM";
-const std::string  RESETTIMING   = "RESETTIMING";
-const std::string  LOADTIMING    = "LOADTIMING";
-const std::string  HOLDTIMING    = "HOLDTIMING";
-const std::string  RELEASETIMING = "RELEASETIMING";
-const std::string  LOADPARAMS    = "LOADPARAMS";
-const std::string  TIMER         = "TIMER";
-const std::string  FETCHLOG      = "FETCHLOG";
-const std::string  UNLOCK        = "LOCK0";
-
-// Minimum required backplane revisions for certain features
-//
-const std::string REV_RAMP           = "1.0.548";
-const std::string REV_SENSORCURRENT  = "1.0.758";
-const std::string REV_HEATERTARGET   = "1.0.1087";
-const std::string REV_FRACTIONALPID  = "1.0.1054";
-const std::string REV_VCPU           = "1.0.784";
-
 namespace Camera {
 
   class Controller;
@@ -72,7 +39,7 @@ namespace Camera {
       long expose( const std::string args, std::string &retstring ) override;
       long exposure_mode( const std::string args, std::string &retstring ) override;
       std::vector<std::string> get_exposure_modes() override;
-      long set_exposure_mode(const std::string &modein) override;
+      long set_exposure_mode(const std::string &modein, const std::vector<std::string> &modeargs) override;
       long load_firmware( const std::string &args, std::string &retstring ) override;
       long native( const std::string args, std::string &retstring ) override;
       long power( const std::string args, std::string &retstring ) override;
@@ -95,14 +62,12 @@ namespace Camera {
       long get_parameter(const std::string &args, std::string &retstring);
       long load_timing(std::string cmd, std::string &reply);
       long read_acf(const std::string &filename);
-//    long read_frame();
       long set_parameter(const std::string &args, std::string &retstring);
       long set_camera_mode(std::string args, std::string &retstring);
       long set_camera_mode(std::string modeselect);
 
       char* get_framebuf() { return controller->framebuf; }
 
-//  protected:
       /** @var     controller
        *  @brief   for hardware operations with the Archon controller
        *  @details typed pointer to Archon-specific controller

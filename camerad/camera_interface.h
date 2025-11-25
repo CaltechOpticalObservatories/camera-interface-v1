@@ -86,7 +86,7 @@ namespace Camera {
       virtual long expose( std::string args, std::string &retstring ) = 0;
       virtual long exposure_mode( std::string args, std::string &retstring ) = 0;
       virtual std::vector<std::string> get_exposure_modes() = 0;
-      virtual long set_exposure_mode(const std::string &modein) = 0;
+      virtual long set_exposure_mode(const std::string &modein, const std::vector<std::string> &modeargs) = 0;
       virtual long load_firmware( const std::string &args, std::string &retstring ) = 0;
       virtual long native( std::string args, std::string &retstring ) = 0;
       virtual long power( std::string args, std::string &retstring ) = 0;

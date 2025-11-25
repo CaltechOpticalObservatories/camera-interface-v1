@@ -1589,6 +1589,8 @@ namespace Camera {
     modeinfo_t* mode = &this->modemap[modeselect];
 
     try {
+      this->get_configmap_value("SAMPLEMODE", mode->samplemode);
+      this->get_configmap_value("BIGBUF", mode->bigbuf);
       this->get_configmap_value("FRAMEMODE", mode->geometry.framemode);
       this->get_configmap_value("LINECOUNT", mode->geometry.linecount);
       this->get_configmap_value("PIXELCOUNT", mode->geometry.pixelcount);
@@ -1619,6 +1621,8 @@ namespace Camera {
 
     modeinfo_t* mode = &this->modemap[modeselect];
 
+    auto info = &this->interface->camera_info;
+
     long bigbuf, pixelcount, linecount, samplemode;
     try {
       this->get_configmap_value("BIGBUF", bigbuf);
@@ -1636,21 +1640,19 @@ namespace Camera {
       return ERROR;
     }
     else {
-      this->interface->camera_info.detector_pixels[0] = pixelcount * mode->geometry.amps[0];
-      this->interface->camera_info.detector_pixels[1] = linecount * mode->geometry.amps[1];
+      info->detector_pixels[0] = pixelcount * mode->geometry.amps[0];
+      info->detector_pixels[1] = linecount * mode->geometry.amps[1];
     }
 
-    this->interface->camera_info.region_of_interest[0] = 1;
-    this->interface->camera_info.region_of_interest[1] = this->interface->camera_info.detector_pixels[0];
-    this->interface->camera_info.region_of_interest[2] = 1;
-    this->interface->camera_info.region_of_interest[3] = this->interface->camera_info.detector_pixels[1];
+    info->region_of_interest[0] = 1;
+    info->region_of_interest[1] = info->detector_pixels[0];
+    info->region_of_interest[2] = 1;
+    info->region_of_interest[3] = info->detector_pixels[1];
 
-    this->interface->camera_info.binning[0] = 1;
-    this->interface->camera_info.binning[1] = 1;
+    info->binning[0] = 1;
+    info->binning[1] = 1;
 
     uint8_t bits_per_pixel = (samplemode==1) ? 32 : 16;
-
-    this->interface->camera_info.set_axes(bits_per_pixel);
 
     long error=NO_ERROR;
 

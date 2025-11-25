@@ -24,7 +24,8 @@ namespace Camera {
 
   /***** Camera::ExposureModeSingle::image_acquisition_thread *****************/
   /**
-   * @brief  implementation of Archon-specific image_acquisition_thread for Single
+   * @brief      producer thread for ExposureMode Single
+   * @details    Spawned by Camera::ArchonInterface::do_expose()
    *
    */
   void ExposureModeSingle::image_acquisition_thread() {
@@ -52,17 +53,11 @@ namespace Camera {
  *  this->interface->camera_info.systemkeys.keydb = this->interface->systemkeys.keydb;
  **/
 
-    auto nexp = this->interface->camera_info.nexp;
-
-    if (nexp > 1) {
-      SNPRINTF(message, "starting sequence of %d frames. lastframe=%d", nexp, this->interface->controller->lastframe);
-      logwrite(function, std::string(message));
-    }
-
     this->interface->controller->get_frame_status();
 
     // initiate the exposure here
     //
+    int nexp=1;
     if ( this->interface->controller->initiate_exposure(nexp) != NO_ERROR ) {
       logwrite(function, "could not initiate exposure");
       return;
@@ -72,9 +67,35 @@ namespace Camera {
     long error=NO_ERROR;
 
     while (error==NO_ERROR && !this->interface->is_aborted() && nexp > 0) {
+      // prepare an ImageBuffer object for each
+      std::shared_ptr<ArchonImageBuffer> imagebuffer = std::make_shared<ArchonImageBuffer>();
+      try { imagebuffer->rawpixels = std::shared_ptr<char[]>(new char[100]);
+      }
+      catch (const std::exception &e) {
+        SNPRINTF(message, "memory allocation failed: %s", e.what());
+        logwrite(function, "ERROR "+std::string(message));
+        error=ERROR;
+        break;
+      }
+      char* p_imagebuffer = imagebuffer->rawpixels.get();
+
+      // wait for frame readout into Archon buffer
       if ( (error=this->interface->controller->wait_for_readout()) == ERROR ) break;
-//    read_frame();
-//    push frame into queue
+
+      // read frame from Archon into memory pointed to by p_imagebuffer
+      this->interface->controller->read_frame(ArchonController::FRAME_IMAGE, p_imagebuffer);
+
+      // frame metadata
+      auto index = this->interface->controller->frameinfo.index.load();
+      imagebuffer->bufframen_slice.push_back( this->interface->controller->frameinfo.bufframen[index] );
+      imagebuffer->buftimestamp_slice.push_back( this->interface->controller->frameinfo.buftimestamp[index] );
+
+      // push frame into queue
+      {
+      std::lock_guard<std::mutex> lock(this->queue_mutex);
+      this->imagebuf_queue.push(imagebuffer);
+      this->queue_cv.notify_one();
+      }
       nexp--;
     }  // end loop over number of frames
 
