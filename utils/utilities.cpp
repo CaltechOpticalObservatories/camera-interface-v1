@@ -885,6 +885,18 @@ std::string strip_control_characters(const std::string &str) {
 /***** strip_control_characters *********************************************/
 
 
+/***** strip_spaces *********************************************************/
+/**
+ * @brief      strip leading and trailing spaces. modifies original string.
+ * @param[in]  str  reference to string to strip
+ */
+void strip_spaces(std::string &str) {
+  str.erase(0,str.find_first_not_of(' '));
+  str.erase(str.find_last_not_of(' ')+1);
+}
+/***** strip_spaces *********************************************************/
+
+
 /***** starts_with **********************************************************/
 /**
  * @brief      check if a string starts with a string literal

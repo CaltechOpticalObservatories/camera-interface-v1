@@ -1812,6 +1812,7 @@ namespace Archon {
           if (tokens.empty()) {
             continue;                                             // nothing to do here if no tokens (ie no "=")
           }
+          for (auto &tok : tokens) strip_spaces(tok);             // strip leading and trailing spaces from all tokens
 
           key = tokens[0];                                        // not empty so at least one token is the KEY
           value.clear();                                          // VALUE can be empty (e.g. labels not required)

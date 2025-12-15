@@ -114,6 +114,8 @@ const std::string strip_newline( const std::string &str_in );
 
 std::string strip_control_characters(const std::string &str);
 
+void strip_spaces(std::string &str);
+
 bool starts_with(const std::string &str, std::string_view prefix);
 
 bool ends_with(const std::string &str, std::string_view suffix);
