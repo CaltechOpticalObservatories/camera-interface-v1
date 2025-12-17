@@ -161,14 +161,6 @@ namespace Archon {
       }
     }
 
-    // start FCS exposure by setting FCS exposure parameter = 1
-    if ( (set_parameter(fcs_start_param, 1) != NO_ERROR) ) {
-      camera.log_error(function, "setting Archon parameter");
-      return ERROR;
-    }
-
-    logwrite(function, "exposure started");
-
     // get system time and Archon's timer after exposure starts,
     // and assemble FITS filename
     this->camera_info.start_time = get_timestamp();                 // current system time formatted as YYYY-MM-DDTHH:MM:SS.sss
@@ -183,27 +175,39 @@ namespace Archon {
     this->camera_info.systemkeys.keydb = this->systemkeys.keydb;    // copy the systemkeys database object into camera_info
     if (this->camera.writekeys_when=="before") this->copy_keydb();  // copy the ACF and userkeys database into camera_info
 
-    // open FITS file
-    if ( this->fits_file.open_file(true, this->camera_info) != NO_ERROR ) {
+    // open guarded FITS file (automatically closes on exit)
+    FitsFileGuard guarded_fits(this->fits_file, this->camera_info, true);
+
+    if (guarded_fits.open() != NO_ERROR) {
       camera.log_error(function, "opening FITS file");
       return ERROR;
     }
 
+    // start FCS exposure by setting FCS exposure parameter = 1
+    if ( (set_parameter(fcs_start_param, 1) != NO_ERROR) ) {
+      camera.log_error(function, "setting Archon parameter");
+      return ERROR;
+    }
+
+    logwrite(function, "exposure started");
+
     // wait for exposure delay
-    if ( (error=this->wait_for_exposure()) != NO_ERROR ) {
+    if ( error==NO_ERROR && (error=this->wait_for_exposure()) != NO_ERROR ) {
+      camera.log_error(function, "waiting for exposure");
+    }
+
+    // poll for an Archon frame buffer to be ready and record the time
+    if ( error==NO_ERROR && (error=this->wait_for_readout())==ERROR ) {
       camera.log_error(function, "waiting for exposure");
     }
 
     // read frame
-    if ( (error=this->read_frame()) != NO_ERROR ) {
+    if ( error==NO_ERROR && (error=this->read_frame()) != NO_ERROR ) {
       camera.log_error(function, "reading frame buffer");
     }
 
-    // close FITS file
-    this->fits_file.close_file(true, this->camera_info);
-
     // ASYNC status message on completion of each file
-    SNPRINTF(message, "FILE:%s COMPLETE", this->camera_info.fits_name.c_str());
+    SNPRINTF(message, "FILE:%s %s", this->camera_info.fits_name.c_str(), (error==NO_ERROR ? "COMPLETE" : "ERROR"));
     this->camera.async.enqueue( std::string(message) );
     logwrite( function, std::string(message) );
 
@@ -442,15 +446,29 @@ namespace Archon {
       }
     }
 
-    // open FITS file
     this->camera.set_fitstime(this->camera_info.start_time);        // sets camera.fitstime (YYYYMMDDHHMMSS) used for filename
     if ( this->camera.get_fitsname(this->camera_info.fits_name) != NO_ERROR ) {
       camera.log_error(function, "validating FITS filename");
       return ERROR;
     }
-    if ( this->fits_file.open_file(true, this->camera_info) != NO_ERROR ) {
+
+    // open guarded FITS file (closes automatically on exit)
+    FitsFileGuard guarded_fits(this->fits_file, this->camera_info, true);
+
+    if (guarded_fits.open() != NO_ERROR) {
       camera.log_error(function, "opening FITS file");
       return ERROR;
+    }
+
+    // stop science exposure by setting parameter = 1
+    if ( (set_parameter(sci_stop_param, 1) != NO_ERROR) ) {
+      camera.log_error(function, "setting science stop parameter");
+      return ERROR;
+    }
+
+    // poll for an Archon frame buffer to be ready and record the time
+    if ( error==NO_ERROR && (error=this->wait_for_readout())==ERROR ) {
+      camera.log_error(function, "waiting for exposure");
     }
 
     // read frame
@@ -458,11 +476,8 @@ namespace Archon {
       camera.log_error(function, "reading frame buffer");
     }
 
-    // close FITS file
-    this->fits_file.close_file(true, this->camera_info);
-
     // ASYNC status message on completion of each file
-    SNPRINTF(message, "FILE:%s COMPLETE", this->camera_info.fits_name.c_str());
+    SNPRINTF(message, "FILE:%s %s", this->camera_info.fits_name.c_str(), (error==NO_ERROR ? "COMPLETE" : "ERROR"));
     this->camera.async.enqueue( std::string(message) );
     logwrite( function, std::string(message) );
 
