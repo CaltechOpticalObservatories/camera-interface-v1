@@ -877,7 +877,7 @@ namespace Archon {
     //
     std::stringstream keystr;
     keystr << "HDRSHIFT=" << this->n_hdrshift << "// number of HDR right-shift bits";
-    this->systemkeys.addkey( keystr.str() );
+//  this->systemkeys.addkey( keystr.str() );
 
     return error;
   }
@@ -3176,13 +3176,12 @@ namespace Archon {
               #endif
 
               // copy this amplifier from the main cbuf32,
-              // at the same time right-shift the requested number of bits
               //
               long pix=0;
               long ncols=this->camera_info.detector_pixels[0];  // PIXELCOUNT
               for ( long row=y1-1; row<y2; row++ ) {
                 for ( long col=x1-1; col<x2; col++ ) {
-                  fext[pix++] = (float)( cbuf32[ row*ncols + col ] >> this->n_hdrshift );
+                  fext[pix++] = (float)( cbuf32[ row*ncols + col ] / 65536.0 );
                 }
               }
 
@@ -3213,7 +3212,7 @@ namespace Archon {
 
 //          for (long pix=0; pix < this->fits_info.section_size; pix++)   //TODO
             for (long pix=0; pix < this->camera_info.section_size; pix++) {
-              fbuf[pix] = (float) ( cbuf32[pix] >> this->n_hdrshift ); // right shift the requested number of bits
+              fbuf[pix] = (float) ( cbuf32[pix] / 65536.0 );
             }
 
 //          error = fits_file.write_image(fbuf, this->fits_info);   // write the image to disk //TODO
