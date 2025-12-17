@@ -711,12 +711,6 @@ void doit(Network::TcpSocket sock) {
                 sock.Write(retstring);
                 sock.Write(" ");
             }
-        } else if (cmd == "hdrshift") {
-            ret = server.hdrshift(args, retstring);
-            if (!retstring.empty()) {
-                sock.Write(retstring);
-                sock.Write(" ");
-            }
         } else if (cmd == "trigin") {
             ret = server.trigin(args);
         }
