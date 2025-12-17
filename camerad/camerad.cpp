@@ -658,13 +658,9 @@ void doit(Network::TcpSocket sock) {
         else if (cmd == "roi") {
             ret = server.region_of_interest(args, retstring);
             if (!retstring.empty()) {
-                sock.Write(retstring);
-                sock.Write(" ");
             }
         } else if (cmd == "isloaded") {
             retstring = server.firmwareloaded ? "true" : "false";
-            sock.Write(retstring);
-            sock.Write(" ");
             ret = NO_ERROR;
         } else if (cmd == "mode") {
             if (args.empty()) {
@@ -678,8 +674,6 @@ void doit(Network::TcpSocket sock) {
         } else if (cmd == "getp") {
             ret = server.get_parameter(args, retstring);
             if (!retstring.empty()) {
-                sock.Write(retstring);
-                sock.Write(" ");
             }
         } else if (cmd == "setp") {
             ret = server.set_parameter(args);

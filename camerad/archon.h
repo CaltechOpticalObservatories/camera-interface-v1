@@ -82,6 +82,30 @@ namespace Archon {
     const int DEF_SHUTENABLE_ENABLE = 1;
     const int DEF_SHUTENABLE_DISABLE = 0;
 
+    class FitsFileGuard {
+      private:
+        FITS_file &fits_file;
+        Camera::Information &camera_info;
+        bool isopen;
+        bool writekeys;
+      public:
+        FitsFileGuard(FITS_file &file, Camera::Information &info, bool iswrite)
+          : fits_file(file), camera_info(info), isopen(false), writekeys(iswrite) { }
+
+        ~FitsFileGuard() {
+          if (isopen) fits_file.close_file(writekeys, camera_info);
+        }
+        // open the file
+        long open() {
+          long error = fits_file.open_file(writekeys, camera_info);
+          if (error==NO_ERROR) isopen=true;
+          return error;
+        }
+        // prevent copying
+        FitsFileGuard(const FitsFileGuard&) = delete;
+        FitsFileGuard &operator=(const FitsFileGuard&) = delete;
+    };
+
     class Interface {
     private:
         uint64_t start_timer, finish_timer;  //!< Archon internal timer, start and end of exposure
@@ -167,6 +191,7 @@ namespace Archon {
         std::string sci_exptime_sec_param;   //!< param name for SCI exposure time seconds
         std::string sci_exptime_msec_param;  //!< param name for SCI exposure time milliseconds
         std::string sci_start_param;         //!< param name to start SCI exposure
+        std::string sci_stop_param;          //!< param name to stop SCI exposure
         std::string fcs_start_param;         //!< param name to start FCS exposure
 
         std::string shutenableparam; //!< param name to enable shutter open on expose
@@ -324,33 +349,33 @@ namespace Archon {
             std::string readoutdir[16];
         };
 
-        /**
-         * @var     struct frame_data_t frame
-         * @details structure to contain Archon results from "FRAME" command
-         */
-        struct frame_data_t {
-            int index; // index of newest buffer data
-            int frame; // frame of newest buffer data
-            int next_index; // index of next buffer
-            std::string timer; // current hex 64 bit internal timer
-            int rbuf; // current buffer locked for reading
-            int wbuf; // current buffer locked for writing
-            std::vector<int> bufsample; // sample mode 0=16 bit, 1=32 bit
-            std::vector<int> bufcomplete; // buffer complete, 1=ready to read
-            std::vector<int> bufmode; // buffer mode: 0=top 1=bottom 2=split
-            std::vector<uint64_t> bufbase; // buffer base address for fetching
-            std::vector<int> bufframen; // buffer frame number
-            std::vector<int> bufwidth; // buffer width
-            std::vector<int> bufheight; // buffer height
-            std::vector<int> bufpixels; // buffer pixel progress
-            std::vector<int> buflines; // buffer line progress
-            std::vector<int> bufrawblocks; // buffer raw blocks per line
-            std::vector<int> bufrawlines; // buffer raw lines
-            std::vector<int> bufrawoffset; // buffer raw offset
-            std::vector<uint64_t> buftimestamp; // buffer hex 64 bit timestamp
-            std::vector<uint64_t> bufretimestamp; // buf trigger rising edge time stamp
-            std::vector<uint64_t> buffetimestamp; // buf trigger falling edge time stamp
-        } frame;
+      /**
+       * @var     struct frame_data_t frame
+       * @details structure to contain Archon results from "FRAME" command
+       */
+      struct frame_data_t {
+        std::atomic<int>      index;          // index of newest buffer data
+        std::atomic<int>      currentframe;   // frame of newest buffer data
+        int      next_index;                  // index of next buffer
+        std::string timer;                    // current hex 64 bit internal timer
+        int      rbuf;                        // current buffer locked for reading
+        int      wbuf;                        // current buffer locked for writing
+        std::vector<int>      bufsample;      // sample mode 0=16 bit, 1=32 bit
+        std::vector<int>      bufcomplete;    // buffer complete, 1=ready to read
+        std::vector<int>      bufmode;        // buffer mode: 0=top 1=bottom 2=split
+        std::vector<uint64_t> bufbase;        // buffer base address for fetching
+        std::vector<int>      bufframen;      // buffer frame number
+        std::vector<int>      bufwidth;       // buffer width
+        std::vector<int>      bufheight;      // buffer height
+        std::vector<int>      bufpixels;      // buffer pixel progress
+        std::vector<int>      buflines;       // buffer line progress
+        std::vector<int>      bufrawblocks;   // buffer raw blocks per line
+        std::vector<int>      bufrawlines;    // buffer raw lines
+        std::vector<int>      bufrawoffset;   // buffer raw offset
+        std::vector<uint64_t> buftimestamp;   // buffer hex 64 bit timestamp
+        std::vector<uint64_t> bufretimestamp; // buf trigger rising edge time stamp
+        std::vector<uint64_t> buffetimestamp; // buf trigger falling edge time stamp
+      } frame;
 
         /** @var      vector modtype
          *  @details  stores the type of each module from the SYSTEM command
@@ -368,6 +393,7 @@ namespace Archon {
          *  @details  the last (I.E. previous) frame number acquired
          */
         int lastframe;
+        uint64_t lasttimestamp;
 
         /**
          * rawinfo_t is a struct which contains variables specific to raw data functions

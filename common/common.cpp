@@ -8,46 +8,78 @@
 #include "common.h"
 
 namespace Common {
-    /** Common::Queue::enqueue **************************************************/
-    /**
-     * @fn     enqueue
-     * @brief  puts a message into the queue
-     * @param  std::string message
-     * @return none
-     *
-     */
-    void Queue::enqueue(std::string message) {
-        std::lock_guard<std::mutex> lock(queue_mutex);
-        message_queue.push(message);
-        notifier.notify_one();
-        return;
+
+  /***** Common::Queue::enqueue ***********************************************/
+  /**
+   * @brief      puts a message into the queue
+   * @param[in]  message  string to write
+   *
+   */
+  void Queue::enqueue(std::string message) {
+    std::lock_guard<std::mutex> lock(queue_mutex);
+    message_queue.push(message);
+    notifier.notify_one();
+    return;
+  }
+  /***** Common::Queue::enqueue ***********************************************/
+
+
+  /***** Common::Queue::enqueue_and_log ***************************************/
+  /**
+   * @brief      puts a message into the queue and writes it to the log
+   * @param[in]  function  name of function for logging purposes
+   * @param[in]  message   string to write
+   *
+   */
+  void Queue::enqueue_and_log(std::string function, std::string message) {
+    std::lock_guard<std::mutex> lock(queue_mutex);
+    message_queue.push(message);
+    notifier.notify_one();
+    logwrite( function, message );
+    return;
+  }
+  /***** Common::Queue::enqueue_and_log ***************************************/
+
+
+  /***** Common::Queue::enqueue_and_log ***************************************/
+  /**
+   * @brief      puts a message into the queue and writes it to the log
+   * @param[in]  tag       tag for broadcast message
+   * @param[in]  function  name of function for logging purposes
+   * @param[in]  message   string to write
+   *
+   */
+  void Queue::enqueue_and_log( std::string tag, std::string function, std::string message ) {
+    std::lock_guard<std::mutex> lock(queue_mutex);
+    std::stringstream qmessage;
+    qmessage << tag << ":" << message;
+    message_queue.push(qmessage.str());
+    notifier.notify_one();
+    logwrite( function, message );
+    return;
+  }
+  /***** Common::Queue::enqueue_and_log ***************************************/
+
+
+  /***** Common::Queue::dequeue ***********************************************/
+  /**
+   * @brief      pops the first message off the queue
+   * @return     message  string read from the queue
+   *
+   * Get the "front"-element.
+   * If the queue is empty, wait untill an element is avaiable.
+   *
+   */
+  std::string Queue::dequeue(void) {
+    std::unique_lock<std::mutex> lock(queue_mutex);
+    while(message_queue.empty()) {
+      notifier.wait(lock);   // release lock as long as the wait and reaquire it afterwards.
     }
-
-    /** Common::Queue::enqueue **************************************************/
-
-
-    /** Common::Queue::dequeue **************************************************/
-    /**
-     * @fn     dequeue
-     * @brief  pops the first message off the queue
-     * @param  none
-     * @return std::string message
-     *
-     * Get the "front"-element.
-     * If the queue is empty, wait untill an element is avaiable.
-     *
-     */
-    std::string Queue::dequeue(void) {
-        std::unique_lock<std::mutex> lock(queue_mutex);
-        while (message_queue.empty()) {
-            notifier.wait(lock); // release lock as long as the wait and reaquire it afterwards.
-        }
-        std::string message = message_queue.front();
-        message_queue.pop();
-        return message;
-    }
-
-    /** Common::Queue::dequeue **************************************************/
+    std::string message = message_queue.front();
+    message_queue.pop();
+    return message;
+  }
+  /***** Common::Queue::dequeue ***********************************************/
 
 
     /** Common::FitsKeys::get_keytype *******************************************/

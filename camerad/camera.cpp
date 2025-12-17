@@ -469,126 +469,138 @@ namespace Camera {
     /** Camera::Camera:set_fitstime *********************************************/
 
 
-    /** Camera::Camera:get_fitsname *********************************************/
-    /**
-     * @fn     get_fitsname
-     * @brief  assemble the FITS filename
-     * @param  std::string controllerid (optional, due to overloading)
-     * @param  std::string &name_out reference for name
-     * @return ERROR or NO_ERROR
-     *
-     * This function assembles the fully qualified path to the output FITS filename
-     * using the parts (dir, basename, time or number) stored in the Camera::Camera class.
-     * If the filename already exists then a -number is inserted, incrementing that
-     * number until a unique name is achieved.
-     *
-     * This function is overloaded, to allow passing a controller id to include in the filename.
-     *
-     */
-    long Camera::get_fitsname(std::string &name_out) {
-        return (this->get_fitsname("", name_out));
+  /***** Camera::Camera:get_fitsname ******************************************/
+  /**
+   * @brief      assemble the FITS filename
+   * @param[out] name_out      reference to string containing the filename
+   * @return     ERROR or NO_ERROR
+   *
+   * This function assembles the fully qualified path to the output FITS filename
+   * using the parts (dir, basename, time or number) stored in the Camera::Camera class.
+   * If the filename already exists then a -number is inserted, incrementing that
+   * number until a unique name is achieved.
+   *
+   * This function is overloaded.
+   *
+   */
+  long Camera::get_fitsname(std::string &name_out) {
+    return ( this->get_fitsname("", name_out) );
+  }
+  /***** Camera::Camera:get_fitsname ******************************************/
+
+
+  /***** Camera::Camera:get_fitsname ******************************************/
+  /**
+   * @brief      assemble the FITS filename
+   * @param[in]  controllerid  string containing controller id to put into filename
+   * @param[out] name_out      reference to string containing the filename
+   * @return     ERROR or NO_ERROR
+   *
+   * This function assembles the fully qualified path to the output FITS filename
+   * using the parts (dir, basename, time or number) stored in the Camera::Camera class.
+   * If the filename already exists then a -number is inserted, incrementing that
+   * number until a unique name is achieved.
+   *
+   * This function is overloaded; this version accepts a controller ID to put in the filename.
+   *
+   */
+  long Camera::get_fitsname(std::string controllerid, std::string &name_out) {
+    const std::string function("Camera::Camera::get_fitsname");
+    std::stringstream message;
+    std::stringstream fitsname;
+
+    // image_dir is the requested base directory and now optionaly add on the date directory
+    //
+    std::stringstream basedir;
+    if ( this->autodir_state ) {
+      basedir << this->image_dir << "/" << get_system_date();
+    }
+    else {
+      basedir << this->image_dir;
     }
 
-    long Camera::get_fitsname(std::string controllerid, std::string &name_out) {
-        std::string function = "Camera::Camera::get_fitsname";
-        std::stringstream message;
-        std::stringstream fn, fitsname;
+    // basedir must exist
+    if (!std::filesystem::exists(basedir.str())) {
+      logwrite(function, "creating directory: "+basedir.str());
+      std::filesystem::create_directories(basedir.str());
+    }
+    if (!std::filesystem::is_directory(basedir.str())) {
+      logwrite(function, "ERROR no directory: "+basedir.str());
+      return ERROR;
+    }
 
-        // image_dir is the requested base directory and now optionaly add on the date directory
-        //
-        std::stringstream basedir;
-        if (this->autodir_state) basedir << this->image_dir << "/" << get_system_date();
-        else basedir << this->image_dir;
+    // start building the filename with directory/basename_
+    // where "basedir" was just assembled above
+    //
+    fitsname.str("");
+    fitsname << basedir.str() << "/" << this->base_name << "_";
 
-        // Make sure the directory exists
-        //
-        DIR *dirp; // pointer to the directory
-        if ((dirp = opendir(basedir.str().c_str())) == NULL) {
-            // If directory doesn't exist then try to create it.
-            // Note that this only creates the bottom-level directory, the added date part.
-            // The base directory has to exist.
-            //
-            if ((mkdir(basedir.str().c_str(), (S_IRWXU | this->dirmode))) == 0) {
-                message.str("");
-                message << "created directory " << basedir.str();
-                logwrite(function, message.str());
-            } else {
-                // error creating date subdirectory
-                message.str("");
-                message << "code " << errno << " creating directory " << basedir.str() << ": " << strerror(errno);
-                this->log_error(function, message.str());
-                // a common error might be that the base directory doesn't exist
-                //
-                if (errno == ENOENT) {
-                    message.str("");
-                    message << "requested base directory " << basedir.str() << " does not exist";
-                    this->log_error(function, message.str());
-                }
-                return ERROR;
-            }
-        } else {
-            closedir(dirp); // directory already existed so close it
+    // add the controllerid if one is given
+    //
+    if ( ! controllerid.empty() ) {
+      fitsname << controllerid << "_";
+    }
+
+    // add the time or number suffix
+    //
+    if (this->fits_naming.compare("time")==0) {
+      fitsname << this->fitstime << ".fits";
+    }
+    else
+    if (this->fits_naming.compare("number")==0) {
+      std::string expected_base = fitsname.str();
+
+      // find largest imnum in this directory for this imname
+      //
+      int maxnum=0;
+      for ( const auto &entry : std::filesystem::directory_iterator(basedir.str()) ) {
+        std::string fn = entry.path().filename().string();
+        if ( expected_base == fn.substr(0, expected_base.length()) && fn.find(".fits")!=std::string::npos ) {
+          std::string numstr = fn.substr(expected_base.length()+1, fn.find(".fits"));
+          try {
+            int num=std::stoi(numstr);
+            maxnum = std::max(maxnum,num);
+          }
+          catch( const std::exception &) {}
         }
+      }
 
-        // start building the filename with directory/basename_
-        // where "basedir" was just assembled above
-        //
+      this->image_num = maxnum+1;
+
+      message.str(""); message << "IMNUM:" << this->image_num;
+      this->async.enqueue_and_log( "CAMERAD", function, message.str() );
+
+      // width of image_num portion of the filename is at least 4 digits, and grows as needed
+      //
+      int width = ( this->image_num < 10000 ? 4 : 5 );
+      fitsname.str("");
+      fitsname << basedir.str() << "/" << this->base_name << "_"
+               << std::setfill('0') << std::setw(width) << this->image_num << ".fits";
+
+      // increment until a unique file is found so that it never overwrites
+      struct stat st;
+      while ( (stat(fitsname.str().c_str(), &st) == 0) && this->image_num < 100000 ) {
+        width = ( ++this->image_num < 10000 ? 4 : 5 );
         fitsname.str("");
-        fitsname << basedir.str() << "/" << this->base_name << "_";
-
-        // add the controllerid if one is given
-        //
-        if (!controllerid.empty()) {
-            fitsname << controllerid << "_";
-        }
-
-        // add the time or number suffix
-        //
-        if (this->fits_naming.compare("time") == 0) {
-            fitsname << this->fitstime;
-        } else if (this->fits_naming.compare("number") == 0) {
-            // width of image_num portion of the filename is at least 4 digits, and grows as needed
-            //
-            int width = (this->image_num < 10000
-                             ? 4
-                             : (this->image_num < 100000
-                                    ? 5
-                                    : (this->image_num < 1000000
-                                           ? 6
-                                           : (this->image_num < 10000000
-                                                  ? 7
-                                                  : (this->image_num < 100000000
-                                                         ? 8
-                                                         : (this->image_num < 1000000000 ? 9 : 10))))));
-            fitsname << std::setfill('0') << std::setw(width) << this->image_num;
-        }
-
-        // Check if file exists and include a -# to set apart duplicates.
-        //
-        struct stat st;
-        int dupnumber = 1;
-        fn.str("");
-        fn << fitsname.str();
-        fn << ".fits";
-        while (stat(fn.str().c_str(), &st) == 0) {
-            fn.str("");
-            fn << fitsname.str();
-            fn << "-" << dupnumber << ".fits";
-            dupnumber++; // keep incrementing until we have a unique filename
-        }
+        fitsname << basedir.str() << "/" << this->base_name << "_"
+                 << std::setfill('0') << std::setw(width) << this->image_num << ".fits";
+      }
+    }
 
 #ifdef LOGLEVEL_DEBUG
     message.str(""); message << "[DEBUG] fits_naming=" << this->fits_naming
                              << " controllerid=" << controllerid
-                             << " will write to file: " << fn.str();
+                             << " will write to file: " << fitsname.str();
     logwrite(function, message.str());
 #endif
 
-        name_out = fn.str();
-        return NO_ERROR;
-    }
+    message.str(""); message << "IMNAME:" << fitsname.str();
+    this->async.enqueue_and_log( "CAMERAD", function, message.str() );
 
-    /** Camera::Camera:get_fitsname *********************************************/
+    name_out = fitsname.str();
+    return NO_ERROR;
+  }
+  /***** Camera::Camera:get_fitsname ******************************************/
 
 
     /** Camera::Camera::datacube ************************************************/

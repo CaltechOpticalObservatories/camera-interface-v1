@@ -179,29 +179,30 @@ namespace Common {
     /**************** Common::FitsKeys ******************************************/
 
 
-    /**************** Common::Queue *********************************************/
-    /**
-     * @class  Queue
-     * @brief  provides a thread-safe messaging queue
-     *
-     */
-    class Queue {
+  /**************** Common::Queue *********************************************/
+  /**
+   * @class  Queue
+   * @brief  provides a thread-safe messaging queue
+   *
+   */
+  class Queue {
     private:
-        std::queue<std::string> message_queue;
-        mutable std::mutex queue_mutex;
-        std::condition_variable notifier;
-        bool is_running;
-
+      std::queue<std::string> message_queue;
+      mutable std::mutex queue_mutex;
+      std::condition_variable notifier;
+      bool is_running;
     public:
-        Queue(void) : is_running(false) {
-        }
+      Queue(void) : message_queue() , queue_mutex() , notifier() { this->is_running = false; };
+      ~Queue(void) {}
 
-        void service_running(bool state) { this->is_running = state; }; /// set service running
-        bool service_running() { return this->is_running; }; /// is the service running?
+      void service_running(bool state) { this->is_running = state; };  ///< set service running
+      bool service_running() { return this->is_running; };             ///< is the service running?
 
-        void enqueue(std::string message); /// push an element into the queue.
-        std::string dequeue(void); /// pop an element from the queue
-    };
+      void enqueue_and_log(std::string function, std::string message);
+      void enqueue_and_log(std::string tag, std::string function, std::string message);
+      void enqueue(std::string message);                               ///< push an element into the queue.
+      std::string dequeue(void);                                       ///< pop an element from the queue
+  };
+  /**************** Common::Queue *********************************************/
 
-    /**************** Common::Queue *********************************************/
 }
