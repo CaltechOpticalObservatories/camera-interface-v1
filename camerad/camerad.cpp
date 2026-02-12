@@ -628,8 +628,15 @@ void doit(Network::TcpSocket sock) {
         } else if (cmd == "abort") {
             server.camera.abort();
             ret = 0;
-        }
-#ifdef ASTROCAM
+        } //else if (cmd == "freerun") {
+          //  server.
+          // TODO:: Add manipulating start = 1, expose = 1 and possibly mode_VideoRX to autofetch and non stop running
+          //        Make start to 0 will stop the autofetch
+          //        GOAL: Be able to turn auto fetch on and off dynamically.
+          //              Must fetch very fast for tracking camera to grab  
+        //}
+
+        #ifdef ASTROCAM
     else
     if (cmd=="isopen") {
                     ret = server.is_connected( retstring );

@@ -39,6 +39,7 @@ namespace Archon {
     this->is_longexposure_set = false;
     this->is_window = false;
     this->is_autofetch = false;
+    this->is_freerun = false;
     this->is_zmq = false;
     this->win_hstart = 0;
     this->win_hstop = 2047;
@@ -4420,6 +4421,63 @@ long Interface::archon_cmd(std::string cmd, std::string &reply) {
         return (error);
     }
     /**************** Archon::Interface::autofetch *******************************/
+
+    /**************** Archon::Interface::set_freerun *******************************/
+    /**
+      * @fn     set_freerun
+      * @brief  turns freerun mode on and off
+      * @param  set_state, string "TRUE, FALSE, 0, or 1"
+      * @return ERROR or NO_ERROR
+      *
+      * NOTE: Manipulates EXPOSE and Start Params and reloads acf file
+      */
+     long Interface::set_freerun(std::string set_state){
+      //Iniciate variables and messages for logs
+      std::string function = "Archon::Interface::set_freerun";
+      std::stringstream message;
+      long error = NO_ERROR;
+      // If something is passed then try to use it to set the "freerun" state
+      //
+      if ( !set_state.empty() ) {
+          try {
+              std::transform( set_state.begin(), set_state.end(), set_state.begin(), ::toupper );  // make uppercase 
+              std::string expose_param = "Expose";
+              std::string start_param = "Start";
+              long new_state;
+              if (set_state == "TRUE" || set_state == "1") {
+                //set expose and start on the archon or acf to 1
+                new_state = 1;
+                error = this->set_parameter( expose_param, new_state);
+                if  ( error == NO_ERROR ) error = this->set_parameter( start_param, new_state);
+                //log
+                this->is_freerun = true;
+
+              }
+              else {
+                //set expose and start on acf or archon to 0
+                new_state = 0;
+                error = this->set_parameter( expose_param, new_state);
+                if  ( error == NO_ERROR ) error = this->set_parameter( start_param, new_state);
+
+                //log
+                this->is_freerun = false;
+              }
+          } 
+          catch (...) {
+                message.str(""); message << "unknown exception converting freerun state " << set_state << " to uppercase";
+                this->camera.log_error( function, message.str() );
+                return ERROR;
+          }
+      }
+      if (error != NO_ERROR) {
+            message.str(""); message << "setting freerun state to " << set_state;
+            this->camera.log_error( function, message.str() );
+            return ERROR;
+      }
+      
+      return (error);
+     }
+    /**************** Archon::Interface::set_freerun *******************************/
 
       /**************** Archon::Interface::zmq ******************************/
     /**

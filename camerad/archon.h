@@ -151,6 +151,7 @@ namespace Archon {
         bool is_longexposure_set; //!< true for long exposure mode (exptime in sec), false for exptime in msec
         bool is_window; //!< true if in window mode for h2rg, false if not
         bool is_autofetch;
+        bool is_freerun;
         bool is_zmq;
         int win_hstart;
         int win_hstop;
@@ -280,6 +281,8 @@ namespace Archon {
         long hwindow(std::string state_in, std::string &state_out);
 
         long autofetch(std::string state_in, std::string &state_out);
+
+        long set_freerun(std::string set_state);
 
         long zmq(std::string state_in, std::string &state_out);
 
