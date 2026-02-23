@@ -3047,13 +3047,18 @@ long Interface::archon_cmd(std::string cmd, std::string &reply) {
       bytesread = 0;
       do {
         toread = BLOCK_LEN - bytesread;
-        if ( (retval=this->archon.Read(ptr_image, (size_t)toread)) > 0 ) {
+        retval = this->archon.Read(ptr_image, (size_t)toread);
+        if ( retval > 0 ) {
           bytesread += retval;         // this will get zeroed after each block
           totalbytesread += retval;    // this won't (used only for info purposes)
           std::cerr << std::setw(10) << totalbytesread << "\b\b\b\b\b\b\b\b\b\b";
           ptr_image += retval;         // advance pointer
+        } else if ( retval < 0 ) {
+          this->camera.log_error( function, "socket read error during frame data" );
+          error = ERROR;
+          break;
         }
-      } while (bytesread < BLOCK_LEN);
+      } while (bytesread < BLOCK_LEN && error == NO_ERROR);
 
     } // end of loop: for (block=0; block<bufblocks; block++)
 
@@ -4256,22 +4261,21 @@ long Interface::archon_cmd(std::string cmd, std::string &reply) {
                     if (error == NO_ERROR) error = this->inreg("10 0 1"); // send to detector
                     if (error == NO_ERROR) error = this->inreg("10 0 0"); // reset to 0
 
-                    // Adjust taplines
+                    // Save current taplines
                     std::string taplines_str;
                     this->cds("TAPLINES", taplines_str);
                     this->taplines_store = std::stoi(taplines_str);
-                    this->cds("TAPLINES 1", dontcare);
-                    this->taplines = 1;
 
                     std::string tapline0;
                     this->cds("TAPLINE0", tapline0);
                     this->tapline0_store = tapline0;
-                    this->cds("TAPLINE0 AM33L,1,0", dontcare);
 
-                    // Set camera mode to win_mode
-                    this->set_camera_mode(win_mode);
+                    if (error == NO_ERROR) error = this->set_camera_mode(win_mode);
+                    if (error == NO_ERROR) error = this->cds("TAPLINES 1", dontcare);
+                    this->taplines = 1;
+                    if (error == NO_ERROR) error = this->cds("TAPLINE0 AM33L,1,0", dontcare);
 
-                    // Now set params
+                    // Set window dimensions
                     int rows = (this->win_vstop - this->win_vstart) + 1;
                     int cols = (this->win_hstop - this->win_hstart) + 1;
                     if (error == NO_ERROR) {
@@ -4284,18 +4288,17 @@ long Interface::archon_cmd(std::string cmd, std::string &reply) {
                         error = this->set_parameter( cmd.str() );
                     }
 
-                    // Now set CDS
+                    // Set CDS geometry for window size
                     cmd.str("");
                     cmd << "PIXELCOUNT " << cols;
-                    error = this->cds( cmd.str(), dontcare );
+                    if (error == NO_ERROR) error = this->cds( cmd.str(), dontcare );
                     cmd.str("");
                     cmd << "LINECOUNT " << rows;
-                    error = this->cds( cmd.str(), dontcare );
+                    if (error == NO_ERROR) error = this->cds( cmd.str(), dontcare );
 
-                    // update modemap, in case someone asks again
+                    // Update modemap and camera_info with window geometry
                     std::string mode = this->camera_info.current_observing_mode;
 
-                    // Adjust geometry parameters and camera_info
                     this->modemap[mode].geometry.linecount = rows;
                     this->modemap[mode].geometry.pixelcount = cols;
                     this->camera_info.region_of_interest[0] = this->win_hstart;
@@ -4305,7 +4308,13 @@ long Interface::archon_cmd(std::string cmd, std::string &reply) {
                     this->camera_info.detector_pixels[0] = cols;
                     this->camera_info.detector_pixels[1] = rows;
 
-                    this->camera_info.set_axes();
+                    if (error == NO_ERROR) error = this->camera_info.set_axes();
+
+                    // Recalculate image_data_bytes for the new window size
+                    int num_detect = this->modemap[mode].geometry.num_detect;
+                    this->image_data_bytes = (uint32_t) floor(
+                        ((this->camera_info.image_memory * num_detect) + BLOCK_LEN - 1) / BLOCK_LEN
+                    ) * BLOCK_LEN;
 
                 } else {
                     message.str(""); message << "window state " << state_in << " is invalid. Expecting {true,false,0,1}";

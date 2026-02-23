@@ -25,7 +25,8 @@
 
 #define MAXADCCHANS 16             //!< max number of ADC channels per controller (4 mod * 4 ch/mod)
 #define MAXADMCHANS 72             //!< max number of ADM channels per controller (4 mod * 18 ch/mod)
-#define BLOCK_LEN 236             //!< Archon block size 36 + 10*10*2
+#define BLOCK_LEN 1024             //!< Standard
+// #define BLOCK_LEN 236             //!< Archon block size 36 + 10*10*2
 // #define BLOCK_LEN 198             //!< Archon block size 36 + 9*9*2
 #define REPLY_LEN 100 * BLOCK_LEN  //!< Reply buffer size (over-estimate)
 
