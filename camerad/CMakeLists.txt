@@ -151,7 +151,6 @@ target_link_libraries(camerad
         ${CMAKE_THREAD_LIBS_INIT}
         ${CCFITS_LIB}
         ${CFITS_LIB}
-        zmq
 )
 
 target_link_libraries(camerad ${CARC_BASE})

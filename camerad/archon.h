@@ -21,7 +21,6 @@
 #include "logentry.h"
 #include "network.h"
 #include "fits.h"
-#include <zmq.hpp>
 #include <TimingStats.h>
 
 #define MAXADCCHANS 16             //!< max number of ADC channels per controller (4 mod * 4 ch/mod)
@@ -84,38 +83,10 @@ namespace Archon {
     const int DEF_SHUTENABLE_ENABLE = 1;
     const int DEF_SHUTENABLE_DISABLE = 0;
 
-    class PushSocketClass {  // Ensure the class name is correct
-      public:
-        // Constructor with correct name (matches class name) and no return type
-        PushSocketClass()
-         : context(1),
-           push_socket(context, zmq::socket_type::push)
-        {}
-
-        void send_data(zmq::mutable_buffer message) {
-          push_socket.send(message, zmq::send_flags::none);  // Example usage of push_socket
-        }
-
-        void connect(std::string uri) {
-          push_socket.connect(uri);
-        }
-
-      private:
-        zmq::context_t context;       // zmq context as a class member
-        zmq::socket_t push_socket;    // zmq socket as a class member
-
-    };
-
     class Interface {
     private:
         unsigned long int start_timer, finish_timer; //!< Archon internal timer, start and end of exposure
         int n_hdrshift; //!< number of right-shift bits for Archon buffer in HDR mode
-
-        // For ZMQ
-        std::unique_ptr<zmq::context_t> context_;
-        std::unique_ptr<zmq::socket_t> publisher_;
-        std::thread serverThread_;
-        std::mutex serverMutex_;
 
     public:
         Interface();
@@ -151,7 +122,6 @@ namespace Archon {
         bool is_longexposure_set; //!< true for long exposure mode (exptime in sec), false for exptime in msec
         bool is_window; //!< true if in window mode for h2rg, false if not
         bool is_autofetch;
-        bool is_zmq;
         int win_hstart;
         int win_hstop;
         int win_vstart;
@@ -280,10 +250,6 @@ namespace Archon {
         long hwindow(std::string state_in, std::string &state_out);
 
         long autofetch(std::string state_in, std::string &state_out);
-
-        long zmq(std::string state_in, std::string &state_out);
-
-        long int write_to_zmq(const std::string& message);
 
         long video();
 

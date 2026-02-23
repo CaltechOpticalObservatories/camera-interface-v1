@@ -39,7 +39,6 @@ namespace Archon {
     this->is_longexposure_set = false;
     this->is_window = false;
     this->is_autofetch = false;
-    this->is_zmq = false;
     this->win_hstart = 0;
     this->win_hstop = 2047;
     this->win_vstart = 0;
@@ -4421,157 +4420,6 @@ long Interface::archon_cmd(std::string cmd, std::string &reply) {
     }
     /**************** Archon::Interface::autofetch *******************************/
 
-      /**************** Archon::Interface::zmq ******************************/
-    /**
-      * @fn     zmq
-      * @brief  turn zmq server on/off
-      * @param  state_in, string "TRUE, FALSE, 0, or 1"
-      * @return ERROR or NO_ERROR
-      *
-      * NOTE: this assumes LVDS is module 10
-      * This function does the following:
-      *  1) turns zmq server on
-      *
-      */
-     long Interface::zmq(std::string state_in, std::string &state_out) {
-      std::string function = "Archon::Interface::zmq";
-      std::stringstream message;
-      long error = NO_ERROR;
-      const std::string& endpoint = "tcp://*:5555";
-
-      if ( !state_in.empty() ) {
-          try {
-              std::transform( state_in.begin(), state_in.end(), state_in.begin(), ::toupper );  // make uppercase
-
-              if ( state_in == "FALSE" || state_in == "0" ) {
-                // Shut down ZMQ server
-                if (!this->is_zmq) {
-                  return (error);
-                }
-
-                this->is_zmq = false;
-
-                if (this->serverThread_.joinable()) {
-                    this->serverThread_.join();
-                }
-                this->publisher_.reset();
-                this->context_.reset();
-
-                if (error != NO_ERROR) {
-                  message << "shutting down ZMQ server: ";
-                }
-
-                logwrite(function, message.str());
-              } else if ( state_in == "TRUE" || state_in == "1" ) {
-                // Turn on ZMQ server
-                if (this->is_zmq) {
-                  return (error);
-                }
-
-                std::lock_guard<std::mutex> lock(this->serverMutex_);
-
-                try {
-                  context_ = std::make_unique<zmq::context_t>(1);
-                  this->publisher_ = std::make_unique<zmq::socket_t>(*context_, zmq::socket_type::xpub);
-                  this->publisher_->bind(endpoint);
-                  logwrite(function, "ZMQ server started in XPUB mode on " + endpoint);
-                  this->is_zmq = true;
-
-                  serverThread_ = std::thread([this]() {
-                      pthread_setname_np(pthread_self(), "camerad:ZMQ");
-
-                      zmq::pollitem_t items[] = {
-                          { static_cast<void*>(*this->publisher_), 0, ZMQ_POLLIN, 0 }
-                      };
-
-                      while (this->is_zmq) {
-                          try {
-                              int rc = zmq::poll(items, 1, 100); // wait up to 100 ms
-
-                              if (rc > 0 && (items[0].revents & ZMQ_POLLIN)) {
-                                  zmq::message_t message;
-                                  this->publisher_->recv(message); // now it's safe to block
-                                  if (message.size() > 0) {
-                                      std::string received_message(static_cast<char*>(message.data()), message.size());
-                                      logwrite("camerad:ZMQ", "Received ZMQ message: " + received_message);
-                                  }
-                              }
-
-                          } catch (const zmq::error_t& e) {
-                              if (e.num() != ETERM) { // ETERM happens when context is terminated
-                                  std::cerr << "ZMQ poll/recv error: " << e.what() << std::endl;
-                              }
-                          }
-                      }
-
-                      if (this->publisher_) {
-                          this->publisher_->close();
-                      }
-
-                      if (this->context_) {
-                          this->context_->shutdown();
-                      }
-
-                      std::cout << "ZMQ server stopped." << std::endl;
-                  });
-                } catch (const zmq::error_t& e) {
-                    std::cerr << "Error starting ZMQ server: " << e.what() << std::endl;
-                    this->is_zmq = false; // Ensure the flag is reset in case of error.
-                }
-              } else {
-                  message.str(""); message << "ZMQ server " << state_in << " is invalid. Expecting {true,false,0,1}";
-                  this->camera.log_error( function, message.str() );
-                  return ERROR;
-              }
-
-          } catch (...) {
-              message.str(""); message << "unknown exception converting zmq state " << state_in << " to uppercase";
-              this->camera.log_error( function, message.str() );
-              return ERROR;
-          }
-      }
-
-      state_out = ( this->is_zmq ? "true" : "false" );
-
-      if (error != NO_ERROR) {
-          message.str(""); message << "setting autofetch state to " << state_in;
-          this->camera.log_error( function, message.str() );
-          return ERROR;
-      }
-
-      return (error);
-  }
-  /**************** Archon::Interface::zmq *******************************/
-
-  /**************** Archon::Interface::write_to_zmq **************************/
-  /**
-   * @fn     write_to_zmq
-   * @brief  write data on zmq socket
-   * @param  string
-   * @return ERROR or NO_ERROR
-   *
-   */
-  long Interface::write_to_zmq(const std::string& message) {
-    std::string function = "Archon::Interface::write_to_zmq";
-    std::lock_guard<std::mutex> lock(this->serverMutex_); // Protect access
-    long error = NO_ERROR;
-
-    if (this->is_zmq && this->publisher_) {
-        try {
-            zmq::message_t zmq_message(message.size());
-            memcpy(zmq_message.data(), message.data(), message.size());
-            publisher_->send(zmq_message, zmq::send_flags::none);
-            error = NO_ERROR;
-        } catch (const zmq::error_t& e) {
-            std::cerr << "Error publishing message: " << e.what() << std::endl;
-        }
-    } else {
-      error = ERROR;
-      std::cerr << "ZMQ server is not running or publisher is not available." << std::endl;
-    }
-
-    return (error);
-  }
   /**************** Archon::Interface::get_parameter **************************/
 
     /**************** Archon::Interface::hexpose ******************************/
@@ -4671,22 +4519,6 @@ long Interface::archon_cmd(std::string cmd, std::string &reply) {
         if (error != NO_ERROR) {
             logwrite(function, "ERROR: reading frame buffer");
             return error;
-        }
-
-        // Write to ZMQ
-        if (is_zmq) {
-          int16_t *cbuf16s;
-          cbuf16s = reinterpret_cast<int16_t *>(this->image_data);                        // cast to 16b signed int
-          std::stringstream ss;
-          for (size_t i=0; i < this->camera_info.section_size; i++) {
-            ss << cbuf16s[i];
-            if (i < this->camera_info.section_size - 1) {
-              ss << ",";
-            }
-          }
-
-          // std::cout << "Image data: " << ss.str() << std::endl;
-          this->write_to_zmq(ss.str());
         }
 
         if (is_debug) {

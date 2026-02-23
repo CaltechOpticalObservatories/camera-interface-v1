@@ -766,13 +766,6 @@ void doit(Network::TcpSocket sock) {
                 sock.Write( " ");
             }
         }
-        else if (cmd=="zmq") {
-            ret = server.zmq(args, retstring);
-            if (!retstring.empty()) {
-                sock.Write(retstring);
-                sock.Write(" ");
-            }
-        }
         else if ( cmd == "fetchlog" ) {
           ret = server.fetchlog();
         }
