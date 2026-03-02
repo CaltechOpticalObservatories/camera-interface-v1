@@ -1241,7 +1241,6 @@ namespace Archon {
 
   /**************** Archon::Interface::prep_parameter *************************/
   /**
-   * @fn     prep_parameter
    * @brief  
    * @param  
    * @return NO_ERROR or ERROR,  return value from archon_cmd call
@@ -1249,20 +1248,17 @@ namespace Archon {
    */
   long Interface::prep_parameter(const std::string& paramname, std::string value) {
     std::string function = "Archon::Interface::prep_parameter";
-    std::stringstream message;
     std::stringstream scmd;
-    long error = NO_ERROR;
 
     // Prepare to apply it to the system -- will be loaded on next EXTLOAD signal
     //
     scmd << "FASTPREPPARAM " << paramname << " " << value;
-    error = this->archon_cmd(scmd.str());
+    long error = this->archon_cmd(scmd.str());
 
     if (error != NO_ERROR) {
-      message << "ERROR: prepping parameter \"" << paramname << "=" << value;
+      logwrite(function, "ERROR prepping "+paramname+"="+value;
     }
 
-    logwrite( function, message.str() );
     return error;
   }
   /**************** Archon::Interface::prep_parameter *************************/
@@ -3728,10 +3724,10 @@ namespace Archon {
     }
 
     // get system time and Archon's timer after exposure starts
-    // start_timer is used to determine when the exposure has ended, in wait_for_exposure()
+    // archon_timer_start is used to determine when the exposure has ended, in wait_for_exposure()
     //
     this->camera_info.start_time = get_timestamp();                 // current system time formatted as YYYY-MM-DDTHH:MM:SS.sss
-    if ( this->get_timer(&this->start_timer) != NO_ERROR ) {        // Archon internal timer (one tick=10 nsec)
+    if ( this->get_timer(&this->archon_timer_start) != NO_ERROR ) { // Archon internal timer (one tick=10 nsec)
       logwrite( function, "ERROR: could not get start time" );
       return ERROR;
     }
@@ -3835,7 +3831,7 @@ namespace Archon {
         #endif
         if ( !this->camera.datacube() || this->camera.cubeamps() ) {
           this->camera_info.start_time = get_timestamp();               // current system time formatted as YYYY-MM-DDTHH:MM:SS.sss
-          if ( this->get_timer(&this->start_timer) != NO_ERROR ) {      // Archon internal timer (one tick=10 nsec)
+          if ( this->get_timer(&this->archon_timer_start) != NO_ERROR ) { // Archon internal timer (one tick=10 nsec)
             logwrite( function, "ERROR: could not get start time" );
             return ERROR;
           }
@@ -4061,104 +4057,114 @@ namespace Archon {
    * entire exposure time, so this function waits internally for about 90% of the
    * exposure time, then only starts polling the Archon for the remaining time.
    *
-   * A prediction is made of what the Archon's timer will be at the end, in order
+   * A predict_timer is made of what the Archon's timer will be at the end, in order
    * to provide an estimate of completion.
    *
    */
-  long Interface::wait_for_exposure() {
+  long Interface::wait_for_exposure(std::optional<double> exptime_in) {
     const std::string function("Archon::Interface::wait_for_exposure");
     char message[256];
     long error = NO_ERROR;
 
-    uint64_t timer_now;
+    double exptime;
+    if (exptime_in) {
+      exptime = *exptime_in;
+    }
+    else {
+      exptime = this->camera_info.exposure_time.get();
+    }
+
+    SNPRINTF(message, "exposure time=%.3lfs", exptime);
+    logwrite(function, std::string(message));
 
     // waittime is 1s less than the exposure time, or 0
     //
-    double waittime = this->camera_info.exposure_time.get() - 1.0;
-    waittime = ( waittime < 0 ? 0 : waittime );
+    double waittime = exptime - 1.0;
+    waittime = ( waittime < 0 ? 0.0 : waittime );
 
     // wait, don't sleep, for the above waittime.
     // All that is happening here is a wait. There is no Archon polling.
     //
     double start_time = get_clock_time();  // get the current clock time from host (sec)
-    double now = start_time;
+    double clock_time_now = start_time;
 
-    // prediction is the predicted finish_timer, used to compute exposure time progress,
-    // and is computed as last_frame_timer + exposure_time in Archon ticks.
+    // predict_timer is the predicted archon_timer_end, used to compute exposure time progress,
+    // and is computed as archon_timer_start + exposure_time in Archon ticks.
     // Each Archon tick is 10 nsec (1e8 sec).
     //
-    uint64_t prediction = this->last_frame_timer + ( (uint64_t)this->camera_info.exposure_time.get() * SEC_TO_TICK );
+    uint64_t predict_timer = this->archon_timer_start + ( (uint64_t)exptime * SEC_TO_TICK );
 
-#ifdef LOGLEVEL_DEBUG
-    SNPRINTF(message, "exposure_time=%lfs waittime=%lfs last_frame_timer=%lu prediction=%lu",
-             this->camera_info.exposure_time.get(), waittime, this->last_frame_timer, prediction);
-    logwrite(function, std::string(message));
-#endif
+    uint64_t increment=0;
+    struct timespec ts;
+    ts.tv_sec=0;
+    ts.tv_nsec=100000000;  // sleep 1e8 ns = 100 ms = 1e7 Archon ticks
 
     // Wait for waittime (1s less than exposure time).
     // This can be aborted.
     //
-    uint64_t increment=0;
-    while ( (now - (waittime + start_time) < 0) && !this->camera.is_aborted() ) {
-      std::this_thread::sleep_for( std::chrono::milliseconds(100) );  // sleep 100 msec = 1e7 Archon ticks
+    while ( (clock_time_now - (waittime + start_time) < 0) && !this->camera.is_aborted() ) {
+      clock_nanosleep(CLOCK_MONOTONIC, 0, &ts, NULL);
       increment += 10000000;
-      now = get_clock_time();
-      this->camera_info.exposure_progress = static_cast<double>(increment) / static_cast<double>(prediction - this->last_frame_timer);
+      clock_time_now = get_clock_time();
+      this->camera_info.exposure_progress = static_cast<double>(increment)/static_cast<double>(predict_timer-this->archon_timer_start);
       if (this->camera_info.exposure_progress < 0 || this->camera_info.exposure_progress > 1) this->camera_info.exposure_progress=1;
       if ( (increment % 100000000) == 0 ) {
         SNPRINTF(message,
-                 "EXPOSURE:%ld %.2lf",
-                 static_cast<uint64_t>(this->camera_info.exposure_time.get() -
-                                      (this->camera_info.exposure_progress * this->camera_info.exposure_time.get())),
+                 "EXPOSURE:%.3lf %.2lf",
+                 exptime - (this->camera_info.exposure_progress * exptime),
                  this->camera_info.exposure_progress);
-        this->camera.async.enqueue( std::string(message) );
-        std::cerr << message << std::endl;
+        std::cerr << message;
+        for (size_t i=0; i<strlen(message); i++) std::cerr << "\b";
       }
     }
 
-    uint64_t exposure_timeout_msec=1000;
-    if (this->camera_info.exposure_time.get() > 1) {
-      exposure_timeout_msec += 1000.0*this->camera_info.exposure_time.get();
-    }
+    // timeout timer 10% over exptime, minimum 1s
+    double timeout_time = get_clock_time() + std::max(1.1*exptime, 1.0);;
 
     // Poll Archon's internal timer for the last bit.
     // This can be aborted.
     //
     bool done=false;
+    uint64_t archon_timer_now;
+    ts.tv_sec=0;
+    ts.tv_nsec=1000000;  // loop throttle 1ms
     while (!done && !this->camera.is_aborted()) {
 
-      if ( (error=this->get_timer(&timer_now)) == ERROR ) {
+      if ( (error=this->get_timer(&archon_timer_now)) == ERROR ) {
         logwrite(function, "ERROR could not get Archon timer");
         break;
       }
 
       // update progress
-      this->camera_info.exposure_progress = static_cast<double>(timer_now - this->last_frame_timer) /
-                                            static_cast<double>(prediction - this->last_frame_timer);
+      this->camera_info.exposure_progress = static_cast<double>(archon_timer_now - this->archon_timer_start) /
+                                            static_cast<double>(predict_timer - this->archon_timer_start);
       if (this->camera_info.exposure_progress < 0 || this->camera_info.exposure_progress > 1) this->camera_info.exposure_progress=1;
 
       SNPRINTF(message,
-               "EXPOSURE:%ld %.2f",
-               static_cast<uint64_t>(this->camera_info.exposure_time.get() -
-                                    (this->camera_info.exposure_progress * this->camera_info.exposure_time.get())),
+               "EXPOSURE:%.3lf %.2f",
+               exptime - (this->camera_info.exposure_progress * exptime),
                this->camera_info.exposure_progress);
       this->camera.async.enqueue(std::string(message));
-      std::cerr << message << std::endl;
 
-      if ( (timer_now - this->last_frame_timer) >= static_cast<uint64_t>(this->camera_info.exposure_time.get()*SEC_TO_TICK) ) {
-        this->finish_timer=timer_now;
+      std::cerr << message;
+      for (size_t i=0; i<strlen(message); i++) std::cerr << "\b";
+
+      if ( (archon_timer_now - this->archon_timer_start) >= static_cast<uint64_t>(exptime*SEC_TO_TICK) ) {
+        this->archon_timer_end=archon_timer_now;
         done=true;
         break;
       }
 
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+      clock_nanosleep(CLOCK_MONOTONIC, 0, &ts, NULL);  // loop throttle
 
-      if (--exposure_timeout_msec < 0) {
+      if (get_clock_time() > timeout_time) {
         error=ERROR;
+        std::cerr << message << std::endl;
         this->camera.log_error(function, "timeout waiting for exposure");
         break;
       }
     }
+    std::cerr << message << std::endl;
 
     return error;
   }
@@ -4758,7 +4764,7 @@ namespace Archon {
     //
     if ( error == NO_ERROR && this->trigin_state == "untimed" ) {
       this->camera_info.start_time = get_timestamp();                // current system time formatted as YYYY-MM-DDTHH:MM:SS.sss
-      this->get_timer(&this->start_timer);                           // Archon internal timer (one tick=10 nsec)
+      this->get_timer(&this->archon_timer_start);                    // Archon internal timer (one tick=10 nsec)
       this->camera.set_fitstime(this->camera_info.start_time);       // sets camera.fitstime (YYYYMMDDHHMMSS) used for filename
       error=this->camera.get_fitsname(this->camera_info.fits_name);  // Assemble the FITS filename
       this->add_filename_key();                                      // add filename to system keys database
@@ -4834,10 +4840,10 @@ namespace Archon {
         //
 
       // get system time and Archon's timer after exposure starts
-      // start_timer is used to determine when the exposure has ended, in wait_for_exposure()
+      // archon_timer_start is used to determine when the exposure has ended, in wait_for_exposure()
       //
       this->camera_info.start_time = get_timestamp();               // current system time formatted as YYYY-MM-DDTHH:MM:SS.sss
-      error = this->get_timer(&this->start_timer);                  // Archon internal timer (one tick=10 nsec)
+      error = this->get_timer(&this->archon_timer_start);           // Archon internal timer (one tick=10 nsec)
 
       this->camera.set_fitstime(this->camera_info.start_time);      // sets camera.fitstime (YYYYMMDDHHMMSS) used for filename
       error=this->camera.get_fitsname(this->camera_info.fits_name); // assemble the FITS filename
@@ -4889,7 +4895,7 @@ namespace Archon {
           //
           if ( !this->camera.datacube() ) {
             this->camera_info.start_time = get_timestamp();               // current system time formatted as YYYY-MM-DDTHH:MM:SS.sss
-            this->get_timer(&this->start_timer);                          // Archon internal timer (one tick=10 nsec)
+            this->get_timer(&this->archon_timer_start);                   // Archon internal timer (one tick=10 nsec)
             this->camera.set_fitstime(this->camera_info.start_time);      // sets camera.fitstime (YYYYMMDDHHMMSS) used for filename
             error=this->camera.get_fitsname(this->camera_info.fits_name); // Assemble the FITS filename
             if ( error != NO_ERROR ) {
@@ -6734,11 +6740,11 @@ namespace Archon {
       if (error == NO_ERROR) error = this->load_parameter(this->exposeparam, nseqstr);
 
       // get system time and Archon's timer after exposure starts
-      // start_timer is used to determine when the exposure has ended, in wait_for_exposure()
+      // archon_timer_start is used to determine when the exposure has ended, in wait_for_exposure()
       //
       if (error == NO_ERROR) {
         this->camera_info.start_time = get_timestamp();               // current system time formatted as YYYY-MM-DDTHH:MM:SS.sss
-        error = this->get_timer(&this->start_timer);                  // Archon internal timer (one tick=10 nsec)
+        error = this->get_timer(&this->archon_timer_start);           // Archon internal timer (one tick=10 nsec)
         if ( error != NO_ERROR ) {
           logwrite( function, "ERROR: couldn't get start time" );
           return error;
@@ -6793,7 +6799,7 @@ namespace Archon {
         //
         if ( rw && !this->camera.datacube() ) {
           this->camera_info.start_time = get_timestamp();               // current system time formatted as YYYY-MM-DDTHH:MM:SS.sss
-          if ( this->get_timer(&this->start_timer) != NO_ERROR ) {      // Archon internal timer (one tick=10 nsec)
+          if ( this->get_timer(&this->archon_timer_start) != NO_ERROR ) {  // Archon internal timer (one tick=10 nsec)
             logwrite( function, "ERROR: couldn't get start time" );
             return error;
           }

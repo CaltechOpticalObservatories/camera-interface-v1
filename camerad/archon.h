@@ -13,6 +13,7 @@
 #include <numeric>
 #include <fenv.h>
 #include <string_view>
+#include <optional>
 
 #include "utilities.h"
 #include "common.h"
@@ -60,8 +61,8 @@
 namespace Archon {
 
     constexpr std::string_view QUIET = "quiet";  // allows sending commands without logging
-    constexpr uint32_t MSEC_TO_TICK = 100000;    // Archon clock ticks per millisecond
-    constexpr uint32_t SEC_TO_TICK = 100000000;  // Archon clock ticks per second
+    constexpr uint64_t MSEC_TO_TICK = 100000;    // Archon clock ticks per millisecond
+    constexpr uint64_t SEC_TO_TICK = 100000000;  // Archon clock ticks per second
     constexpr uint32_t MAX_EXPTIME  = 0xFFFFF;   // Archon parameters are limited to 20 bits
 
     // Archon hardware-based constants.
@@ -108,7 +109,7 @@ namespace Archon {
 
     class Interface {
     private:
-        uint64_t start_timer, finish_timer;  //!< Archon internal timer, start and end of exposure
+        uint64_t archon_timer_start, archon_timer_end;  //!< Archon internal timer, start and end of exposure
         uint64_t last_frame_timer;           //!< Archon timer of last frame
         int n_hdrshift;                      //!< number of right-shift bits for Archon buffer in HDR mode
         struct timespec cal_systime;
@@ -278,7 +279,7 @@ namespace Archon {
 
         long video();
 
-        long wait_for_exposure();
+        long wait_for_exposure(std::optional<double> exptime_in=std::nullopt);
 
         long wait_for_readout();
 

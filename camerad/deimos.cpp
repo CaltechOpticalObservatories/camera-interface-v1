@@ -189,16 +189,22 @@ namespace Archon {
       return ERROR;
     }
 
+    // Archon internal timer (one tick=10 nsec)
+    if (this->get_timer(&this->archon_timer_start) != NO_ERROR) {
+      camera.log_error(function, "could not get start time");
+      return ERROR;
+    }
+
     logwrite(function, "exposure started");
 
     // wait for exposure delay
-    if ( error==NO_ERROR && (error=this->wait_for_exposure()) != NO_ERROR ) {
+    if ( error==NO_ERROR && (error=this->wait_for_exposure(this->fcs_info.exposure_time.get())) != NO_ERROR ) {
       camera.log_error(function, "waiting for exposure");
     }
 
     // poll for an Archon frame buffer to be ready and record the time
     if ( error==NO_ERROR && (error=this->wait_for_readout())==ERROR ) {
-      camera.log_error(function, "waiting for exposure");
+      camera.log_error(function, "waiting for readout");
     }
 
     // read frame
@@ -328,7 +334,7 @@ namespace Archon {
     if (this->camera_info.current_observing_mode != "SCIENCE") {
       this->camera_info = this->sci_info;
       if ( set_camera_mode("SCIENCE") != NO_ERROR ) {
-        camera.log_error(function, "could not set SCIENCE mode");
+        camera.log_error(function, "could not set mode SCIENCE");
         return ERROR;
       }
     }
@@ -339,11 +345,13 @@ namespace Archon {
       return ERROR;
     }
 
-    logwrite(function, "sci exposure started");
+    // Archon internal timer (one tick=10 nsec)
+    if (this->get_timer(&this->archon_timer_start) != NO_ERROR) {
+      camera.log_error(function, "could not get start time");
+      return ERROR;
+    }
 
-    error = this->wait_for_exposure();
-
-    logwrite(function, "done");
+    logwrite(function, "exposure started");
 
     return error;
   }
@@ -441,7 +449,7 @@ namespace Archon {
     if (this->camera_info.current_observing_mode != "SCIENCE") {
       this->camera_info = this->sci_info;
       if ( set_camera_mode("SCIENCE") != NO_ERROR ) {
-        camera.log_error(function, "could not set SCIENCE mode");
+        camera.log_error(function, "could not set mode SCIENCE");
         return ERROR;
       }
     }
