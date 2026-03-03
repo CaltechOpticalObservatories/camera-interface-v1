@@ -23,40 +23,76 @@
 #include "network.h"
 #include "fits.h"
 
-#define MAXADCCHANS 16             //!< max number of ADC channels per controller (4 mod * 4 ch/mod)
-#define MAXADMCHANS 72             //!< max number of ADM channels per controller (4 mod * 18 ch/mod)
-#define BLOCK_LEN 1024             //!< Archon block size
-#define REPLY_LEN 100 * BLOCK_LEN  //!< Reply buffer size (over-estimate)
+/**
+ * Archon constants
+ */
+constexpr int MAXADCCHANS =   16;              //!< max number of ADC channels per controller (4 mod * 4 ch/mod)
+constexpr int MAXADMCHANS =   72;              //!< max number of ADM channels per controller (4 mod * 18 ch/mod)
+constexpr int BLOCK_LEN   = 1024;              //!< Archon block size
+constexpr int REPLY_LEN   =  100 * BLOCK_LEN;  //!< Reply buffer size (over-estimate)
 
-// Archon commands
-//
-#define  SYSTEM        std::string("SYSTEM")
-#define  STATUS        std::string("STATUS")
-#define  FRAME         std::string("FRAME")
-#define  CLEARCONFIG   std::string("CLEARCONFIG")
-#define  POLLOFF       std::string("POLLOFF")
-#define  POLLON        std::string("POLLON")
-#define  APPLYALL      std::string("APPLYALL")
-#define  POWERON       std::string("POWERON")
-#define  POWEROFF      std::string("POWEROFF")
-#define  APPLYCDS      std::string("APPLYCDS")
-#define  APPLYSYSTEM   std::string("APPLYSYSTEM")
-#define  RESETTIMING   std::string("RESETTIMING")
-#define  LOADTIMING    std::string("LOADTIMING")
-#define  HOLDTIMING    std::string("HOLDTIMING")
-#define  RELEASETIMING std::string("RELEASETIMING")
-#define  LOADPARAMS    std::string("LOADPARAMS")
-#define  TIMER         std::string("TIMER")
-#define  FETCHLOG      std::string("FETCHLOG")
-#define  UNLOCK        std::string("LOCK0")
+/**
+ * Archon Module Types
+ */
+constexpr int MODTYPE_NONE    =  0;
+constexpr int MODTYPE_DRIVER  =  1;
+constexpr int MODTYPE_ADC     =  2;
+constexpr int MODTYPE_LVBIAS  =  3;
+constexpr int MODTYPE_HVBIAS  =  4;
+constexpr int MODTYPE_HEATER  =  5;
+constexpr int MODTYPE_HS      =  7;
+constexpr int MODTYPE_HVXBIAS =  8;
+constexpr int MODTYPE_LVXBIAS =  9;
+constexpr int MODTYPE_LVDS    = 10;
+constexpr int MODTYPE_HEATERX = 11;
+constexpr int MODTYPE_XVBIAS  = 12;
+constexpr int MODTYPE_ADF     = 13;
+constexpr int MODTYPE_ADX     = 14;
+constexpr int MODTYPE_ADLN    = 15;
+constexpr int MODTYPE_UNKNOWN = 16;
+constexpr int MODTYPE_ADM     = 17;
 
-// Minimum required backplane revisions for certain features
-//
-#define REV_RAMP           std::string("1.0.548")
-#define REV_SENSORCURRENT  std::string("1.0.758")
-#define REV_HEATERTARGET   std::string("1.0.1087")
-#define REV_FRACTIONALPID  std::string("1.0.1054")
-#define REV_VCPU           std::string("1.0.784")
+/**
+ * Archon commands
+ */
+const std::string  SYSTEM        = "SYSTEM";
+const std::string  STATUS        = "STATUS";
+const std::string  FRAME         = "FRAME";
+const std::string  CLEARCONFIG   = "CLEARCONFIG";
+const std::string  POLLOFF       = "POLLOFF";
+const std::string  POLLON        = "POLLON";
+const std::string  APPLYALL      = "APPLYALL";
+const std::string  POWERON       = "POWERON";
+const std::string  POWEROFF      = "POWEROFF";
+const std::string  APPLYCDS      = "APPLYCDS";
+const std::string  APPLYSYSTEM   = "APPLYSYSTEM";
+const std::string  RESETTIMING   = "RESETTIMING";
+const std::string  LOADTIMING    = "LOADTIMING";
+const std::string  HOLDTIMING    = "HOLDTIMING";
+const std::string  RELEASETIMING = "RELEASETIMING";
+const std::string  LOADPARAMS    = "LOADPARAMS";
+const std::string  TIMER         = "TIMER";
+const std::string  FETCHLOG      = "FETCHLOG";
+const std::string  UNLOCK        = "LOCK0";
+
+/**
+ * Minimum required backplane revisions for certain features
+ */
+const std::string REV_RAMP           = "1.0.548";
+const std::string REV_SENSORCURRENT  = "1.0.758";
+const std::string REV_HEATERTARGET   = "1.0.1087";
+const std::string REV_FRACTIONALPID  = "1.0.1054";
+const std::string REV_VCPU           = "1.0.784";
+
+/**
+ * Archon Power states
+ */
+const std::string POWER_UNKNOWN        = "UNKNOWN";
+const std::string POWER_NOT_CONFIGURED = "NOT_CONFIGURED";
+const std::string POWER_OFF            = "OFF";
+const std::string POWER_INTERMEDIATE   = "INTERMEDIATE";
+const std::string POWER_ON             = "ON";
+const std::string POWER_STANDBY        = "STANDBY";
 
 namespace Archon {
 
@@ -145,6 +181,8 @@ namespace Archon {
         std::vector<int> offset; //!< digital CDS offset (from TAPLINE definition)
         bool modeselected; //!< true if a valid mode has been selected, false otherwise
         bool firmwareloaded; //!< true if firmware is loaded, false otherwise
+        std::string power_status;        //!< archon power status
+        bool is_powered;                 //!< power_status has 5 states. This is only true is power_status==ON
         bool is_window; //!< true if in window mode for h2rg, false if not
         bool is_autofetch;
         int win_hstart;
@@ -265,8 +303,9 @@ namespace Archon {
 
         long get_status_key( std::string key, std::string &value );     /// get value for indicated key from STATUS string
 
-        long power( std::string state_in, std::string &retstring );     /// wrapper for do_power
-        long do_power( std::string state_in, std::string &retstring );  /// set/get Archon power state
+        long power(const std::string args, std::string &retstring);
+        std::string set_power(int state);
+        std::string get_power();
 
         void set_exptime(double exptime,
                          const std::string &sec_param,

@@ -42,22 +42,4 @@ namespace Archon {
 
     /**************** Archon::Interface::region_of_interest *****************/
 
-
-    /***** Archon::Interface::power *****************************************/
-    /**
-     * @brief      wrapper for Archon::Interface::do_power()
-     * @param[in]  state_in  requested power state
-     * @param[out] restring  return string holds power state
-     * @return     ERROR or NO_ERROR
-     *
-     */
-    long Interface::power( std::string state_in, std::string &retstring ) {
-        std::string function = "Archon::Instrument::power";
-        std::stringstream message;
-
-        // use Archon::Interface::do_power() to set/get the power
-        //
-        return( this->do_power( state_in, retstring ) );
-    }
-    /***** Archon::Interface::power *****************************************/
 }

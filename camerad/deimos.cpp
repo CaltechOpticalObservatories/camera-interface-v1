@@ -28,28 +28,6 @@ namespace Archon {
   /***** Archon::Interface::region_of_interest ********************************/
 
 
-  /***** Archon::Interface::power *********************************************/
-  /**
-   * @brief      wrapper for Archon::Interface::do_power()
-   * @param[in]  args      requested power state
-   * @param[out] restring  return string holds power state
-   * @return     ERROR or NO_ERROR
-   *
-   */
-  long Interface::power(std::string args, std::string &retstring) {
-      const std::string function("Archon::Interface::power");
-      std::stringstream message;
-
-      camera.log_error(function, "not yet implemented");
-      return ERROR;
-
-      // use Archon::Interface::do_power() to set/get the power
-      //
-      return( do_power(args, retstring) );
-  }
-  /***** Archon::Interface::power *********************************************/
-
-
   /***** Archon::Interface::fcs_exptime ***************************************/
   /**
    * @brief      set/get FCS exposure time

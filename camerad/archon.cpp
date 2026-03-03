@@ -6,6 +6,7 @@
  *
  */
 #include "archon.h"
+#include "camerad_commands.h"
 
 #include <sstream>   // for std::stringstream
 #include <iomanip>   // for setfil, setw, etc.
@@ -25,6 +26,7 @@ namespace Archon {
     this->archon_busy = false;
     this->modeselected = false;
     this->firmwareloaded = false;
+    this->is_powered=false;
     this->msgref = 0;
     this->lastframe = 0;
     this->frame.index = 0;
@@ -151,109 +153,6 @@ namespace Archon {
     }
   }
   /***** Archon::Interface::set_exptime ***************************************/
-
-
-  /***** Archon::Interface::do_power ******************************************/
-  /**
-   * @brief      set/get the power state
-   * @param[in]  state_in    input string contains requested power state
-   * @param[out] retstring   return string contains the current power state
-   * @return     ERROR or NO_ERROR
-   *
-   */
-  long Interface::do_power(std::string state_in, std::string &retstring) {
-    std::string function = "Archon::Interface::do_power";
-    std::stringstream message;
-    long error = ERROR;
-
-    if ( !this->archon.isconnected() ) {                        // nothing to do if no connection open to controller
-      this->camera.log_error( function, "connection not open to controller" );
-      return( ERROR );
-    }
-
-    // set the Archon power state as requested
-    //
-    if ( !state_in.empty() ) {                                  // received something
-      std::transform( state_in.begin(), state_in.end(), state_in.begin(), ::toupper );  // make uppercase
-      if ( state_in == "ON" ) {
-        error = this->archon_cmd( POWERON );                    // send POWERON command to Archon
-        if ( error == NO_ERROR ) std::this_thread::sleep_for( std::chrono::seconds(2) );         // wait 2s to ensure power is stable
-      }
-      else
-      if ( state_in == "OFF" ) {
-        error = this->archon_cmd( POWEROFF );                   // send POWEROFF command to Archon
-        if ( error == NO_ERROR ) std::this_thread::sleep_for( std::chrono::milliseconds(200) );  // wait 200ms to ensure power is off
-      }
-      else {
-        message.str(""); message << "unrecognized argument " << state_in << ": expected {on|off}";
-        this->camera.log_error( function, message.str() );
-        return( ERROR );
-      }
-      if ( error != NO_ERROR ) {
-        message.str(""); message << "setting Archon power " << state_in;
-        this->camera.log_error( function, message.str() );
-        return( ERROR );
-      }
-    }
-
-    // Read the Archon power state directly from Archon
-    //
-    std::string power;
-    error = get_status_key( "POWER", power );
-
-    if ( error != NO_ERROR ) return( ERROR );
-
-    int status=-1;
-
-    try { status = std::stoi( power ); }
-    catch (std::invalid_argument &) {
-      this->camera.log_error( function, "unable to convert power status message to integer" );
-      return(ERROR);
-    }
-    catch (std::out_of_range &) {
-      this->camera.log_error( function, "power status out of range" );
-      return(ERROR);
-    }
-
-    // set the power status (or not) depending on the value extracted from the STATUS message
-    //
-    switch( status ) {
-      case -1:                                                  // no POWER token found in status message
-        this->camera.log_error( function, "unable to find power in Archon status message" );
-        return( ERROR );
-      case  0:                                                  // usually an internal error
-        this->camera.power_status = "UNKNOWN";
-        break;
-      case  1:                                                  // no configuration applied
-        this->camera.power_status = "NOT_CONFIGURED";
-        break;
-      case  2:                                                  // power is off
-        this->camera.power_status = "OFF";
-        break;
-      case  3:                                                  // some modules powered, some not
-        this->camera.power_status = "INTERMEDIATE";
-        break;
-      case  4:                                                  // power is on
-        this->camera.power_status = "ON";
-        break;
-      case  5:                                                  // system is in standby
-        this->camera.power_status = "STANDBY";
-        break;
-      default:                                                  // should be impossible
-        message.str(""); message << "unknown power status: " << status;
-        this->camera.log_error( function, message.str() );
-        return( ERROR );
-    }
-
-    message.str(""); message << "POWER:" << this->camera.power_status;
-    this->camera.async.enqueue( message.str() );
-
-    retstring = this->camera.power_status;
-
-    return(NO_ERROR);
-  }
-  /***** Archon::Interface::do_power ******************************************/
-
 
 
   /***** Archon::Interface::configure_controller ******************************/
@@ -926,6 +825,159 @@ namespace Archon {
   /**************** Archon::Interface::disconnect_controller ******************/
 
 
+  /***** Archon::Interface::power *********************************************/
+  /**
+   * @brief      turn on controller bias power supplies
+   * @param[in]  args       requested state or help, on|off|?
+   * @param[out] retstring  contains power_status string on success
+   * @return     ERROR | NO_ERROR | HELP
+   *
+   */
+  long Interface::power(const std::string args, std::string &retstring) {
+    const std::string function("Archon::Interface::power");
+
+    // Help
+    if (args=="?" || args=="help") {
+      retstring = CAMERAD_POWER;
+      retstring.append( " [ on | off ]\n" );
+      retstring.append( "  Turn on|off Archon bias power supplies. If no arg supplied then\n" );
+      retstring.append( "  return current state.\n" );
+      return HELP;
+    }
+
+    // no arg returns state
+    if (args.empty()) {
+      try {
+        retstring = this->get_power();
+        return NO_ERROR;
+      }
+      catch (const std::exception &e) {
+        logwrite(function, "ERROR: "+std::string(e.what()));
+        return ERROR;
+      }
+    }
+
+    // parse the requested state
+    int state=0;
+    if ( caseCompareString(args, "on") )  { state=1; }
+    else
+    if ( caseCompareString(args, "off") ) { state=0; }
+    else {
+      logwrite(function, "ERROR expected {ON|OFF}");
+      return ERROR;
+    }
+    // set the requested Archon power state returns the current state
+    try {
+      retstring = this->set_power(state);
+    }
+    catch (const std::exception &e) {
+      logwrite(function, "ERROR: "+std::string(e.what()));
+      return ERROR;
+    }
+
+    logwrite(function, retstring);
+
+    return NO_ERROR;
+  }
+  /***** Archon::Interface::power *********************************************/
+
+
+  /***** Archon::Controller::set_power ****************************************/
+  /**
+   * @brief      turn on|off controller bias power supplies
+   * @param[in]  state  0=off, 1=on
+   * @return     string power state
+   * @throws     std::runtime_error
+   *
+   */
+  std::string Interface::set_power(int state) {
+    // must be connected
+    if (!this->archon.isconnected()) {
+      throw std::runtime_error("connection not open to controller");
+    }
+
+    // set power according to state
+    switch( state ) {
+      case 0:   // send POWEROFF command to Archon and wait 500ms to ensure off
+                if ( this->archon_cmd(POWEROFF) == NO_ERROR ) {
+                  std::this_thread::sleep_for(std::chrono::milliseconds(500));
+                }
+                break;
+      case 1:   // send POWERON command to Archon and wait 2s to ensure stable
+                if ( this->archon_cmd(POWERON) == NO_ERROR ) {
+                  std::this_thread::sleep_for(std::chrono::seconds(2));
+                }
+                break;
+      default:  throw std::runtime_error("invalid state: expected 0|1");
+    }
+
+    // get_power on return sets the class power_status variable
+    return( this->get_power() );
+  }
+  /***** Archon::Controller::set_power ****************************************/
+
+
+  /***** Archon::Controller::get_power **********************************/
+  /**
+   * @brief      get Archon power status
+   * @param[in]  power  reference to string to return the power_status
+   * @return     string  Archon power status
+   * @throws     std::runtime_error
+   *
+   */
+  std::string Interface::get_power() {
+
+    // Read the Archon power state directly from Archon,
+    // which will be a string representation of an integer.
+    std::string power_status_key;
+    if (this->get_status_key("POWER", power_status_key) != NO_ERROR) {
+      throw std::runtime_error("reading status key: POWER");
+    }
+
+    // convert that string into a real integer
+    int status=-1;
+    try { status = std::stoi( power_status_key ); }
+    catch (const std::exception &e) {
+      throw std::runtime_error("parsing status key \""+power_status_key+"\": "+std::string(e.what()));
+    }
+
+    // power_status has 5 different states. this is only true if state is POWER_ON
+    this->is_powered=false;
+
+    // convert that integer into a human readable string
+    // set the power status (or not) depending on the value extracted from the STATUS message
+    switch( status ) {
+      case -1:                                  // no POWER token found in status message
+        throw std::runtime_error("no POWER token found in status message");
+      case  0:                                  // usually an internal error
+        this->power_status = POWER_UNKNOWN;
+        break;
+      case  1:                                  // no configuration applied
+        this->power_status = POWER_NOT_CONFIGURED;
+        break;
+      case  2:                                  // power is off
+        this->power_status = POWER_OFF;
+        break;
+      case  3:                                  // some modules powered, some not
+        this->power_status = POWER_INTERMEDIATE;
+        break;
+      case  4:                                  // power is on
+        this->power_status = POWER_ON;
+        this->is_powered=true;
+        break;
+      case  5:                                  // system is in standby
+        this->power_status = POWER_STANDBY;
+        break;
+      default:                                  // should be impossible
+        throw std::runtime_error("unknown power status: "+power_status_key);
+    }
+
+    // return variable is the class power status
+    return this->power_status;
+  }
+  /***** Camera::ArchonController::get_power **********************************/
+
+
   /**************** Archon::Interface::native *********************************/
   /**
    * @fn     native
@@ -1256,7 +1308,7 @@ namespace Archon {
     long error = this->archon_cmd(scmd.str());
 
     if (error != NO_ERROR) {
-      logwrite(function, "ERROR prepping "+paramname+"="+value;
+      logwrite(function, "ERROR prepping "+paramname+"="+value);
     }
 
     return error;
