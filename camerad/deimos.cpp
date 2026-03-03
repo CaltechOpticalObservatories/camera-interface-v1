@@ -131,18 +131,21 @@ namespace Archon {
     }
 
     // set the mode if needed
-    if (this->camera_info.current_observing_mode != "FCS") {
+    if (!caseCompareString(this->camera_info.current_observing_mode, mode_fcs)) {
       this->camera_info = this->fcs_info;
-      if ( set_camera_mode("FCS") != NO_ERROR ) {
-        camera.log_error(function, "setting mode");
+      if ( set_camera_mode(mode_fcs) != NO_ERROR ) {
+        camera.log_error(function, "setting mode '"+mode_fcs+"'");
         return ERROR;
       }
     }
+
+    this->clear_abortstate();
 
     // get system time and Archon's timer after exposure starts,
     // and assemble FITS filename
     this->camera_info.start_time = get_timestamp();                 // current system time formatted as YYYY-MM-DDTHH:MM:SS.sss
     this->camera.set_fitstime(this->camera_info.start_time);        // sets camera.fitstime (YYYYMMDDHHMMSS) used for filename
+
     if ( this->camera.get_fitsname(this->camera_info.fits_name) != NO_ERROR ) {
       camera.log_error(function, "validating FITS filename");
       return ERROR;
@@ -309,13 +312,15 @@ namespace Archon {
     }
 
     // set the mode if needed
-    if (this->camera_info.current_observing_mode != "SCIENCE") {
+    if (!caseCompareString(this->camera_info.current_observing_mode, mode_science)) {
       this->camera_info = this->sci_info;
-      if ( set_camera_mode("SCIENCE") != NO_ERROR ) {
-        camera.log_error(function, "could not set mode SCIENCE");
+      if ( set_camera_mode(mode_science) != NO_ERROR ) {
+        camera.log_error(function, "could not set mode '"+mode_science+"'");
         return ERROR;
       }
     }
+
+    this->clear_abortstate();
 
     // start SCI exposure by setting science exposure parameter = 1
     if ( (set_parameter(sci_start_param, 1) != NO_ERROR) ) {
@@ -352,7 +357,7 @@ namespace Archon {
 
     // Help
     if (args=="?" || args=="help") {
-      retstring = CAMERAD_SCI_EXPOSE;
+      retstring = CAMERAD_SCI_START;
       retstring.append("\n");
       retstring.append("  stops SCI detector idle, which begins integration. This only starts\n");
       retstring.append("  an exposure, it does not stop or read out.\n");
@@ -424,15 +429,16 @@ namespace Archon {
     }
 
     // set the mode if needed
-    if (this->camera_info.current_observing_mode != "SCIENCE") {
+    if (!caseCompareString(this->camera_info.current_observing_mode, mode_science)) {
       this->camera_info = this->sci_info;
-      if ( set_camera_mode("SCIENCE") != NO_ERROR ) {
-        camera.log_error(function, "could not set mode SCIENCE");
+      if ( set_camera_mode(mode_science) != NO_ERROR ) {
+        camera.log_error(function, "could not set mode '"+mode_science+"'");
         return ERROR;
       }
     }
 
-    this->camera.set_fitstime(this->camera_info.start_time);        // sets camera.fitstime (YYYYMMDDHHMMSS) used for filename
+    this->camera.set_fitstime(this->sci_info.start_time);        // sets camera.fitstime (YYYYMMDDHHMMSS) used for filename
+
     if ( this->camera.get_fitsname(this->camera_info.fits_name) != NO_ERROR ) {
       camera.log_error(function, "validating FITS filename");
       return ERROR;

@@ -7,6 +7,7 @@
 
 #ifndef CAMERAD_COMMANDS_H
 #define CAMERAD_COMMANDS_H
+const std::string CAMERAD_ABORT = "abort";
 const std::string CAMERAD_CLOSE = "close";
 const std::string CAMERAD_EXIT = "exit";
 const std::string CAMERAD_FCS_EXPOSE = "fcs_expose";
@@ -22,6 +23,7 @@ const std::string CAMERAD_SCI_START = "sci_start";
 const std::string CAMERAD_TEST = "test";
 
 const std::vector<std::string> CAMERAD_SYNTAX = {
+                                                 CAMERAD_ABORT+" [ ? ]",
                                                  CAMERAD_CLOSE,
                                                  CAMERAD_EXIT,
                                                  CAMERAD_FCS_EXPOSE+" [ ? ]",

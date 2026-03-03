@@ -23,24 +23,6 @@
 #include "camera.h"
 
 namespace Camera {
-    /** Camera::Camera::abort ***************************************************/
-    /**
-     * @fn     abort
-     * @brief  abort the current operation (exposure, readout, etc.)
-     * @param  none
-     * @return none
-     *
-     */
-    void Camera::abort() {
-        std::string function = "Camera::Camera::abort";
-        std::stringstream message;
-        this->abortstate = true;
-        logwrite(function, "received abort");
-        return;
-    }
-
-    /** Camera::Camera::abort ***************************************************/
-
 
     /** Camera::Camera::log_error ***********************************************/
     /**

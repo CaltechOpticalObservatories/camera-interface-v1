@@ -31,6 +31,14 @@ constexpr int MAXADMCHANS =   72;              //!< max number of ADM channels p
 constexpr int BLOCK_LEN   = 1024;              //!< Archon block size
 constexpr int REPLY_LEN   =  100 * BLOCK_LEN;  //!< Reply buffer size (over-estimate)
 
+/*
+ * Archon hardware-based constants.
+ * These shouldn't change unless there is a significant hardware change.
+ */
+static constexpr int MAXNBUFS = 3;             //!< total number of frame buffers
+static constexpr int MAXNMODS = 12;            //!< number of modules per controller
+static constexpr int MAXNADCHAN = 4;           //!< number of channels per ADC module
+
 /**
  * Archon Module Types
  */
@@ -173,7 +181,6 @@ namespace Archon {
         FITS_file fits_file; //!< instantiate a FITS container object
 
         int msgref; //!< Archon message reference identifier, matches reply to command
-        bool abort;
         int taplines;
         int configlines;  //!< number of configuration lines
         bool logwconfig;  //!< optionally log WCONFIG commands
@@ -185,6 +192,7 @@ namespace Archon {
         bool is_powered;                 //!< power_status has 5 states. This is only true is power_status==ON
         bool is_window; //!< true if in window mode for h2rg, false if not
         bool is_autofetch;
+        std::atomic<bool> abortstate{false};
         int win_hstart;
         int win_hstop;
         int win_vstart;
@@ -224,7 +232,10 @@ namespace Archon {
         //!< protects Archon from being accessed by multiple threads,
                                                     //!< use in conjunction with archon_busy flag
         std::string exposeparam; //!< param name to trigger exposure when set =1
+        std::string abort_param; //!< param name to abort when set =1
 
+        std::string mode_science;
+        std::string mode_fcs;
         std::string fcs_exptime_sec_param;   //!< param name for FCS exposure time seconds
         std::string fcs_exptime_msec_param;  //!< param name for FCS exposure time milliseconds
         std::string sci_exptime_sec_param;   //!< param name for SCI exposure time seconds
@@ -239,10 +250,17 @@ namespace Archon {
 
         // Functions
         //
+        void set_abortstate()   { this->abortstate.store(true, std::memory_order_seq_cst); }
+        void clear_abortstate() { this->abortstate.store(false, std::memory_order_seq_cst); }
+        bool is_aborted()       { return this->abortstate.load(std::memory_order_seq_cst); }
+        long abort(const std::string args, std::string &retstring);
+        long abort_archon();
+
         static long interface(std::string &iface); //!< get interface type
         long configure_controller(); //!< get configuration parameters
         long prepare_image_buffer(); //!< prepare image_data, allocating memory as needed
-        long connect_controller(const std::string &devices_in); //!< open connection to archon controller
+        void connect();                      //!< open connection to archon controller
+        long connect_controller(const std::string args, std::string &retstring);  //!< open connection to archon controller
         long disconnect_controller(); //!< disconnect from archon controller
         long load_timing(std::string acffile); //!< load specified ACF then LOADTIMING
         long load_timing(std::string acffile, std::string &retstring);
@@ -390,10 +408,10 @@ namespace Archon {
         };
 
       /**
-       * @var     struct frame_data_t frame
+       * @var     struct frame_info_t frame
        * @details structure to contain Archon results from "FRAME" command
        */
-      struct frame_data_t {
+      struct frame_info_t {
         std::atomic<int>      index;          // index of newest buffer data
         std::atomic<int>      currentframe;   // frame of newest buffer data
         int      next_index;                  // index of next buffer
@@ -415,7 +433,7 @@ namespace Archon {
         std::vector<uint64_t> buftimestamp;   // buffer hex 64 bit timestamp
         std::vector<uint64_t> bufretimestamp; // buf trigger rising edge time stamp
         std::vector<uint64_t> buffetimestamp; // buf trigger falling edge time stamp
-      } frame;
+      } frameinfo;
 
         /** @var      vector modtype
          *  @details  stores the type of each module from the SYSTEM command

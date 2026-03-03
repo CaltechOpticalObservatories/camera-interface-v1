@@ -545,10 +545,6 @@ void doit(Network::TcpSocket sock) {
             sock.Write(server.config.filename);
             sock.Write(" ");
             ret = NO_ERROR;
-        } else if (cmd == "open") {
-            ret = server.connect_controller(args);
-        } else if (cmd == "close") {
-            ret = server.disconnect_controller();
         } else if (cmd == "load") {
             if (args.empty()) ret = server.load_firmware(retstring);
             else ret = server.load_firmware(args, retstring);
@@ -620,10 +616,19 @@ void doit(Network::TcpSocket sock) {
                 ret = server.userkeys.addkey(args);
                 if (ret != NO_ERROR) server.camera.log_error(function, "bad syntax");
             }
-        } else if (cmd == "abort") {
-            server.camera.abort();
-            ret = 0;
         }
+    else
+    if (cmd==CAMERAD_ABORT) {
+      ret = server.abort(args, retstring);
+    }
+    else
+    if (cmd==CAMERAD_OPEN) {
+      ret = server.connect_controller(args, retstring);
+    }
+    else
+    if (cmd==CAMERAD_CLOSE) {
+      ret = server.disconnect_controller();
+    }
     else
     if (cmd==CAMERAD_POWER) {
       ret = server.power(args, retstring);

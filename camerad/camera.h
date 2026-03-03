@@ -39,15 +39,13 @@ namespace Camera {
         bool is_datacube;
         bool is_longerror; //!< set to return error message on command port
         bool is_cubeamps; //!< should amplifiers be written as multi-extension data cubes?
-        std::atomic<bool> abortstate;
 
-        std::mutex abort_mutex;
         std::stringstream lasterrorstring; //!< a place to preserve an error message
 
     public:
         Camera() : image_dir("/tmp"), base_name("image"), fits_naming("time"),
                    dirmode(0), image_num(0), is_datacube(false), is_longerror(false), is_cubeamps(false),
-                   abortstate(false), autodir_state(true), writekeys_when("before") {
+                   autodir_state(true), writekeys_when("before") {
         }
 
 
@@ -56,10 +54,6 @@ namespace Camera {
 
         std::string writekeys_when; //!< when to write fits keys "before" or "after" exposure
         Common::Queue async; /// message queue object
-
-        inline void set_abort()   { this->abortstate.store(true, std::memory_order_seq_cst); };
-        inline void clear_abort() { this->abortstate.store(false, std::memory_order_seq_cst); };
-        inline bool is_aborted()  { return this->abortstate.load(std::memory_order_seq_cst); };
 
         void set_dirmode(mode_t mode_in) { this->dirmode = mode_in; }
 
@@ -94,8 +88,6 @@ namespace Camera {
         long get_fitsname(std::string &name_out);
 
         long get_fitsname(std::string controllerid, std::string &name_out);
-
-        void abort();
 
         void datacube(bool state_in);
 
@@ -420,6 +412,7 @@ namespace Camera {
 
 
         Information() {
+            this->activebufs=3;
             this->axes[0] = 1;
             this->axes[1] = 1;
             this->binning[0] = 1;
