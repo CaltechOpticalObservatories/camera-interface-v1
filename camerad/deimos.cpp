@@ -444,6 +444,10 @@ namespace Archon {
       return ERROR;
     }
 
+    this->camera.datacube(true);
+    this->camera_info.iscube = true;
+    this->camera_info.extension=0;
+
     // open guarded FITS file (closes automatically on exit)
     FitsFileGuard guarded_fits(this->fits_file, this->camera_info, true);
 
@@ -464,9 +468,11 @@ namespace Archon {
     }
 
     // read frame
-    if ( (error=this->read_frame()) != NO_ERROR ) {
+    if ( (error=this->read_frame(Camera::FRAME_IMAGE)) != NO_ERROR ) {
       camera.log_error(function, "reading frame buffer");
     }
+
+    this->write_science();
 
     // ASYNC status message on completion of each file
     SNPRINTF(message, "FILE:%s %s", this->camera_info.fits_name.c_str(), (error==NO_ERROR ? "COMPLETE" : "ERROR"));
@@ -478,4 +484,92 @@ namespace Archon {
     return error;
   }
   /***** Archon::Interface::sci_readout ***************************************/
+
+
+  long Interface::write_science() {
+    const std::string function("Archon::Interface::write_science");
+    long error=NO_ERROR;
+    uint32_t *cbuf32 = (uint32_t *)this->image_data;
+
+    if (!cbuf32) {
+      logwrite(function, "ERROR invalid image_data buffer");
+      return ERROR;
+    }
+
+    int num_detect = this->modemap[this->camera_info.current_observing_mode].geometry.num_detect;
+    int num_cols   = this->camera_info.axes[0];
+    int num_rows   = this->camera_info.axes[1];
+    long buf_width = num_cols * num_detect/2;
+
+    if (num_detect==0 || num_cols==0 || num_rows==0) {
+      logwrite(function, "ERROR zero-dimension image");
+      return ERROR;
+    }
+    if (num_detect % 2 != 0) {
+      logwrite(function, "ERROR expected even number of CCDs");
+      return ERROR;
+    }
+
+    {
+    std::ostringstream oss;
+    oss << "[DEBUG] section_size=" << this->camera_info.section_size
+        << " image_memory=" << this->camera_info.image_memory
+        << " num_detect=" << this->modemap[this->camera_info.current_observing_mode].geometry.num_detect
+        << " num_cols=" << num_cols
+        << " num_rows=" << num_rows
+        << " buf_width=" << buf_width
+        << " axes[0]=" << this->camera_info.axes[0]
+        << " axes[1]=" << this->camera_info.axes[1];
+    logwrite(function, oss.str());
+    }
+
+    for (int half=0, dir_half=2; half < 2; half++, dir_half--) {
+
+      // loop through half of all CCDs
+      for (long ccd_count=0; ccd_count < num_detect/2; ccd_count++) {  // 0,1,2,3
+
+        // directional counter up, then down
+        long dir_count = half == 0 ? ccd_count                         // 0,1,2,3
+                                   : num_detect/2 - 1 - ccd_count;     // 3,2,1,0
+
+        // temporary buffer for a single CCD
+        auto ccdbuf = std::make_unique<float[]>(this->camera_info.section_size);
+
+        for (long row=0; row < num_rows; row++) {
+          for (long col=0; col < num_cols; col++) {
+
+            // this indexes into each CCD
+            long pix  = col + (row * num_cols);
+
+            // this indexes into the Archon buffer
+            long cbufpix = col + (dir_count * num_cols) + (row * buf_width) + (half * num_rows * buf_width);
+
+            // copy each CCD out of main image buffer into temp buffer,
+            // scaling and converting to float
+            ccdbuf[pix] = (float)(cbuf32[cbufpix]/65536.0);
+          }
+        }
+
+        this->camera_info.extension = ccd_count + half * (num_detect/2);  // 0-indexed
+
+        long ccdnum = this->camera_info.extension+1;                      // 1-indexed
+
+        std::ostringstream oss;
+        oss << "DETSEC=[" << (dir_count*num_cols)+1 << ":" << (dir_count+1)*num_cols
+                          << ","
+                          << (dir_half-1)*num_rows+1 << ":" << (dir_half)*num_rows
+                          << "]";
+        this->systemkeys.addkey(oss.str());  // not getting to extensions!
+
+        error = this->fits_file.write_image(ccdbuf.get(), this->camera_info);
+
+        if (error!=NO_ERROR) {
+          logwrite(function, "ERROR writing CCD "+std::to_string(ccdnum));
+          break;
+        }
+      }
+    }
+
+    return error;
+  }
 }

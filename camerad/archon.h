@@ -378,6 +378,7 @@ namespace Archon {
         long sci_expose(std::string args, std::string &retstring);
         long sci_start(std::string args, std::string &retstring);
         long sci_readout(std::string args, std::string &retstring);
+        long write_science();
         long fcs_exptime(std::string args, std::string &retstring);
         void set_fcs_exptime(double exptime);
         long fcs_expose(std::string args, std::string &retstring);

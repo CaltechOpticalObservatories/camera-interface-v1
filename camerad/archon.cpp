@@ -2891,7 +2891,6 @@ namespace Archon {
 
   /**************** Archon::Interface::read_frame *****************************/
   /**
-   * @fn     read_frame
    * @brief  read latest Archon frame buffer
    * @param  none
    * @return ERROR or NO_ERROR
@@ -2917,69 +2916,11 @@ namespace Archon {
       return ERROR;
     }
 
-    int rawenable = this->modemap[this->camera_info.current_observing_mode].rawenable;
-
-    if (rawenable == -1) {
-      this->camera.log_error( function, "RAWENABLE is undefined" );
-      return ERROR;
-    }
-
-    // RAW-only
-    //
-    if (this->camera_info.current_observing_mode == "RAW") {              // "RAW" is the only reserved mode name
-
-      // the RAWENABLE parameter must be set in the ACF file, in order to read RAW data
-      //
-      if (rawenable==0) {
-        this->camera.log_error( function, "observing mode is RAW but RAWENABLE=0 -- change mode or set RAWENABLE?" );
-        return ERROR;
-
-      } else {
-        error = this->read_frame(Camera::FRAME_RAW);                              // read raw frame
-        if ( error != NO_ERROR ) { logwrite( function, "ERROR: reading raw frame" ); return error; }
-        error = this->write_frame();                                              // write raw frame
-        if ( error != NO_ERROR ) { logwrite( function, "ERROR: writing raw frame" ); return error; }
-      }
-
-    } else {
-        // IMAGE, or IMAGE+RAW
-        // datacube was already set = true in the expose function
-      error = this->read_frame(Camera::FRAME_IMAGE);                              // read image frame
-      if ( error != NO_ERROR ) { logwrite( function, "ERROR: reading image frame" ); return error; }
-      error = this->write_frame();                                                // write image frame
-      if ( error != NO_ERROR ) { logwrite( function, "ERROR: writing image frame" ); return error; }
-
-      // If mode is not RAW but RAWENABLE=1, then we will first read an image
-      // frame (just done above) and then a raw frame (below). To do that we
-      // must switch to raw mode then read the raw frame. Afterward, switch back
-      // to the original mode, for any subsequent exposures.
-      //
-      if (rawenable == 1) {
-        #ifdef LOGLEVEL_DEBUG
-        logwrite(function, "[DEBUG] rawenable is set -- IMAGE+RAW file will be saved");
-        logwrite(function, "[DEBUG] switching to mode=RAW");
-        #endif
-        std::string orig_mode = this->camera_info.current_observing_mode; // save the original mode, so we can come back to it
-        error = this->set_camera_mode("raw");                             // switch to raw mode
-        if ( error != NO_ERROR ) { logwrite( function, "ERROR: switching to raw mode" ); return error; }
-
-        #ifdef LOGLEVEL_DEBUG
-        message.str(""); message << "error=" << error << "[DEBUG] calling read_frame(Camera::FRAME_RAW) if error=0"; logwrite(function, message.str());
-        #endif
-        error = this->read_frame(Camera::FRAME_RAW);                      // read raw frame
-        if ( error != NO_ERROR ) { logwrite( function, "ERROR: reading raw frame" ); return error; }
-        #ifdef LOGLEVEL_DEBUG
-        message.str(""); message << "error=" << error << "[DEBUG] calling write_frame() for raw data if error=0"; logwrite(function, message.str());
-        #endif
-        error = this->write_frame();                                      // write raw frame
-        if ( error != NO_ERROR ) { logwrite( function, "ERROR: writing raw frame" ); return error; }
-        #ifdef LOGLEVEL_DEBUG
-        message.str(""); message << "error=" << error << "[DEBUG] switching back to original mode if error=0"; logwrite(function, message.str());
-        #endif
-        error = this->set_camera_mode(orig_mode);                         // switch back to the original mode
-        if ( error != NO_ERROR ) { logwrite( function, "ERROR: switching back to previous mode" ); return error; }
-      }
-    }
+    // datacube was already set = true in the expose function
+    error = this->read_frame(Camera::FRAME_IMAGE);                              // read image frame
+    if ( error != NO_ERROR ) { logwrite( function, "ERROR: reading image frame" ); return error; }
+    error = this->write_frame();                                                // write image frame
+    if ( error != NO_ERROR ) { logwrite( function, "ERROR: writing image frame" ); return error; }
 
     return error;
   }
@@ -2988,7 +2929,6 @@ namespace Archon {
 
   /**************** Archon::Interface::read_frame *****************************/
   /**
-   * @fn     read_frame
    * @brief  read latest Archon frame buffer
    * @param  frame_type
    * @return ERROR or NO_ERROR
@@ -3001,8 +2941,8 @@ namespace Archon {
    *
    */
   long Interface::read_frame(Camera::frame_type_t frame_type) {
-    std::string function = "Archon::Interface::read_frame";
-    std::stringstream message;
+    const std::string function("Archon::Interface::read_frame");
+    std::ostringstream message;
     int retval;
     int bufready;
     char check[5], header[5];
@@ -3015,46 +2955,20 @@ namespace Archon {
 
     this->camera_info.frame_type = frame_type;
 
-/***
-    // Check that image buffer is prepared  //TODO should I call prepare_image_buffer() here, automatically?
-    //
-    if ( (this->image_data == nullptr) ||
-         (this->image_data_bytes == 0) ) {
-      this->camera.log_error( function, "image buffer not ready" );
-//    return ERROR;
-    }
-
-    if ( this->image_data_allocated != this->image_data_bytes ) {
-      message.str(""); message << "incorrect image buffer size: " 
-                               << this->image_data_allocated << " bytes allocated but " << this->image_data_bytes << " needed";
-      this->camera.log_error( function, message.str() );
-//    return ERROR;
-    }
-***/
-
     error = this->prepare_image_buffer();
+
     if (error == ERROR) {
       logwrite( function, "ERROR: unable to allocate an image buffer" );
       return ERROR;
     }
-
-// TODO removed 2021-Jun-09
-// This shouldn't be needed since wait_for_readout() was called previously.
-//  // Get the current frame buffer status
-//  //
-//  error = this->get_frame_status();
-//
-//  if (error != NO_ERROR) {
-//    this->camera.log_error( function, "unable to get frame status");
-//    return error;
-//  }
 
     // Archon buffer number of the last frame read into memory
     //
     bufready = this->frameinfo.index + 1;
 
     if (bufready < 1 || bufready > this->camera_info.activebufs) {
-      message.str(""); message << "invalid Archon buffer " << bufready << " requested. Expected {1:" << this->camera_info.activebufs << "}";
+      message.str("");
+      message << "invalid Archon buffer " << bufready << ". Expected {1:" << this->camera_info.activebufs << "}";
       this->camera.log_error( function, message.str() );
       return ERROR;
     }
@@ -3288,7 +3202,6 @@ namespace Archon {
       return ERROR;
     }
 
-//  message.str(""); message << "writing " << this->fits_info.bitpix << "-bit data from memory to disk";  //TODO
     message.str(""); message << "writing " << this->camera_info.bitpix << "-bit data from memory to disk";
     logwrite(function, message.str());
 
