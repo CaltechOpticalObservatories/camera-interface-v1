@@ -19,6 +19,7 @@
 #include "utilities.h"
 #include "network.h"
 #include "camerad_commands.h"
+#include "message.h"
 
 namespace Camera {
 
@@ -28,6 +29,8 @@ namespace Camera {
     public:
       Server();
       ~Server();
+
+      Message::Server message_server;
 
       std::unique_ptr<Interface> interface;
 
@@ -43,6 +46,10 @@ namespace Camera {
       void exit_cleanly();
       void block_main(std::shared_ptr<Network::TcpSocket> socket);
       void doit(Network::TcpSocket sock);
+
+      void start();
+
+      std::string dispatch(const std::string &message) { logwrite("Camera::Server::dispatch", "foo"); return "bar"; }
   };
 }
 

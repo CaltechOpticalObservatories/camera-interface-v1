@@ -28,4 +28,6 @@
 #include "common.h"
 #include "logentry.h"
 
+#include "message.h"
+
 int main(int argc, char** argv);  ///< the main function

@@ -19,6 +19,8 @@ namespace Camera {
     id_pool(N_THREADS),
     cmd_num(0)
   {
+    message_server.set_handler( std::bind(&Camera::Server::dispatch, this, std::placeholders::_1) );
+
     interface=Camera::Interface::create();  // factory funcion creates the appropriate interface type
     interface->set_server(this);            // pointer back to this Server instance
   }
@@ -80,6 +82,13 @@ namespace Camera {
     exit(EXIT_SUCCESS);
   }
   /***** Camera::Server::exit_cleanly *****************************************/
+
+
+  void Server::start() {
+    const std::string function("Camera::Server::start");
+    std::string ret = message_server.test("killroy was here");
+    logwrite(function, ret);
+  }
 
 
   /***** Camera::Server::block_main *******************************************/
