@@ -12,6 +12,8 @@
 //#include <atomic>
 //#include <mutex>
 #include <limits.h>
+#include <signal.h>
+#include <sys/types.h>
 //#include <json.hpp>
 
 #include "common.h"
@@ -26,6 +28,8 @@ namespace Camera {
   const int N_THREADS=10;
 
   class Server {
+    private:
+      std::atomic<uint32_t> cmd_id{0};
     public:
       Server();
       ~Server();
@@ -47,9 +51,7 @@ namespace Camera {
       void block_main(std::shared_ptr<Network::TcpSocket> socket);
       void doit(Network::TcpSocket sock);
 
-      void start();
-
-      std::string dispatch(const std::string &message) { logwrite("Camera::Server::dispatch", "foo"); return "bar"; }
+      std::string dispatch(const std::string &message, Message::AckFunction send_ack);
   };
 }
 

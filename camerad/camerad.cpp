@@ -54,15 +54,13 @@ int main( int argc, char** argv ) {
     exit(1);
   }
 
-//Message::Server test;
-
-  // start the ZMQ router
+  // start the ZMQ Message Server
   //
   try {
-    camerad.start();
+    camerad.message_server.start(5555);
   }
   catch (const std::exception &e) {
-    logwrite(function, "ERROR starting server: "+std::string(e.what()));
+    logwrite(function, "ERROR starting ZMQ message server: "+std::string(e.what()));
     exit(1);
   }
 
