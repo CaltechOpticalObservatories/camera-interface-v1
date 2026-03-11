@@ -15,8 +15,7 @@ namespace Camera {
    *
    */
   Server::Server() :
-    blkport(-1),
-    id_pool(N_THREADS),
+    cmd_port(-1),
     cmd_num(0)
   {
     message_server.set_handler( std::bind(&Camera::Server::dispatch, this,
@@ -55,10 +54,10 @@ namespace Camera {
     // iterate through each row in config file
     for (int row=0; row < interface->configfile.n_rows; row++) {
 
-      // BLKPORT
-      if (interface->configfile.param[row]=="BLKPORT") {
+      // CMDPORT
+      if (interface->configfile.param[row]=="CMDPORT") {
         try {
-          this->blkport = std::stoi( interface->configfile.arg[row] );
+          cmd_port = std::stoi( interface->configfile.arg[row] );
         }
         catch (const std::exception &e) {
           std::ostringstream oss;
@@ -68,6 +67,19 @@ namespace Camera {
         }
       }
     }
+
+    // start the ZMQ Message Server
+    //
+    if (cmd_port<1) throw std::runtime_error("CMDPORT not configured");
+    try {
+      if (message_server.get_isrunning()) message_server.stop();
+      message_server.start(cmd_port);
+    }
+    catch (const std::exception &e) {
+      logwrite(function, "ERROR starting ZMQ message server: "+std::string(e.what()));
+      exit(1);
+    }
+
   }
   /***** Camera::Server::configure_server *************************************/
 
@@ -85,25 +97,6 @@ namespace Camera {
     exit(EXIT_SUCCESS);
   }
   /***** Camera::Server::exit_cleanly *****************************************/
-
-
-  /***** Camera::Server::block_main *******************************************/
-  /**
-   * @brief      main function for blocking connection thread
-   * @param[in]  sock  shared pointer to Network::TcpSocket socket object
-   *
-   * accepts a socket connection and processes the request by
-   * calling function doit()
-   *
-   */
-  void Server::block_main( std::shared_ptr<Network::TcpSocket> sock ) {
-    this->threads_active.fetch_add(1);  // atomically increment threads_busy counter
-    sock->Close();
-    this->threads_active.fetch_sub(1);  // atomically increment threads_busy counter
-    this->id_pool.release_number( sock->id );
-    return;
-  }
-  /***** Camera::Server::block_main *******************************************/
 
 
   /***** Camera::Server::doit *************************************************/
@@ -132,7 +125,7 @@ namespace Camera {
         }
 
         std::ostringstream oss;
-        oss << "received command " << ++cmd_id << ": " << message;
+        oss << "received command " << ++cmd_num << ": " << message;
         logwrite(function, oss.str());
 
       //
@@ -278,12 +271,12 @@ namespace Camera {
         if ( ret != HELP && ret != JSON ) retstring.append( ret == NO_ERROR ? "DONE" : "ERROR" );
 
         if ( ret == JSON ) {
-          logwrite(function, "command ("+std::to_string(cmd_id)+") reply with JSON message");
+          logwrite(function, "command ("+std::to_string(cmd_num)+") reply with JSON message");
         }
         else
         if ( ! retstring.empty() && ret != HELP ) {
           retstring.append( "\n" );
-          logwrite(function, "command ("+std::to_string(cmd_id)+") reply: "+retstring);
+          logwrite(function, "command ("+std::to_string(cmd_num)+") reply: "+retstring);
         }
       }
       return retstring;

@@ -51,16 +51,7 @@ int main( int argc, char** argv ) {
   }
   catch (const std::exception &e) {
     logwrite(function, "ERROR configuring system: "+std::string(e.what()));
-    exit(1);
-  }
-
-  // start the ZMQ Message Server
-  //
-  try {
-    camerad.message_server.start(5555);
-  }
-  catch (const std::exception &e) {
-    logwrite(function, "ERROR starting ZMQ message server: "+std::string(e.what()));
+    camerad.message_server.stop();
     exit(1);
   }
 

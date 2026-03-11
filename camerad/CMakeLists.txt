@@ -127,6 +127,7 @@ list (APPEND INTERFACE_SOURCES
   )
 add_library(${INTERFACE_TARGET} ${INTERFACE_SOURCES})
 target_link_libraries(${INTERFACE_TARGET}
+                      network
                       common
                       )
 target_include_directories(${INTERFACE_TARGET} PUBLIC ${INTERFACE_INCLUDES})
@@ -169,7 +170,6 @@ add_executable(camerad
 # link everything
 # ----------------------------------------------------------------------------
 target_link_libraries(camerad
-  network
   utilities
   logentry
   ${INTERFACE_TARGET}

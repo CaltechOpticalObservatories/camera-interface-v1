@@ -50,11 +50,15 @@ namespace Message {
    */
   inline std::string timestamp() {
     auto now = std::chrono::system_clock::now();
+    auto us  = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch())%1000000;
     std::time_t time = std::chrono::system_clock::to_time_t(now);
-    std::tm tm = *std::gmtime(&time);
+    std::tm tm;
+    if (gmtime_r(&time, &tm)==NULL) { perror("gmtime_r failed"); return ""; }
     char buf[20];
-    std::strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S", &tm);
-    return std::string(buf);
+    std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%S", &tm);
+    char out[28];
+    std::snprintf(out, sizeof(out), "%s.%06ld", buf, us.count());
+    return std::string(out);
   }
 
   /***** Message::Server ******************************************************/
@@ -204,7 +208,7 @@ namespace Message {
         // call my message handler function
         // this is an external function that must have been registered
         //
-        std::string reply = handler ? handler(payload, ack) : "ERROR: no handler registered";
+        std::string reply = handler ? handler(payload, ack) : "no handler registered";
 
         push_reply(routing, messageid, reply);
       }
