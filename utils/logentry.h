@@ -7,10 +7,13 @@
 
 #pragma once
 
+#include <atomic>
+#include <condition_variable>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <mutex>
+#include <queue>
 #include <chrono>
 #include <thread>
 #include <ctime>
