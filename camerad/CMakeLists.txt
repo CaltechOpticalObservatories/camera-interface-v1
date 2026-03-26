@@ -172,6 +172,7 @@ target_link_libraries(camerad
   network
   utilities
   logentry
+  shared_memory_writer
   ${INTERFACE_TARGET}
   ${INTERFACE_LIBS}
   ${CMAKE_THREAD_LIBS_INIT}

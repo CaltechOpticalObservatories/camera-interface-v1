@@ -23,6 +23,12 @@ add_library(network STATIC
 )
 target_link_libraries(network nlohmann_json::nlohmann_json)
 
+add_library(shared_memory_writer STATIC
+        ${PROJECT_UTILS_DIR}/shared_memory_writer.cpp
+)
+target_include_directories(shared_memory_writer PRIVATE ${PROJECT_BASE_DIR}/common ${PROJECT_BASE_DIR}/utils)
+target_link_libraries(shared_memory_writer nlohmann_json::nlohmann_json $<IF:$<PLATFORM_ID:Linux>,rt,>)
+
 add_library(md5 STATIC
         ${PROJECT_UTILS_DIR}/md5.cpp
 )
