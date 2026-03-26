@@ -1006,6 +1006,62 @@ namespace Network {
   /**************** Network::TcpSocket::Bytes_ready ***************************/
 
 
+  /**************** Network::TcpSocket::is_readable ***************************/
+  /**
+   * @brief      check if socket has data available to read
+   * @param[in]  timeout_ms  poll timeout in milliseconds (0 = non-blocking check)
+   * @return     true if data is available, false otherwise
+   *
+   */
+  bool TcpSocket::is_readable(int timeout_ms) {
+    struct pollfd pfd{};
+    pfd.fd = this->fd;
+    pfd.events = POLLIN;
+    return (poll(&pfd, 1, timeout_ms) > 0) && (pfd.revents & POLLIN);
+  }
+  /**************** Network::TcpSocket::is_readable ***************************/
+
+
+  /**************** Network::TcpSocket::set_tcp_nodelay ***********************/
+  /**
+   * @brief      enable or disable TCP_NODELAY to control Nagle's algorithm
+   * @param[in]  enable  true to disable Nagle (low latency), false to enable it
+   * @return     0 on success, -1 on error
+   *
+   */
+  int TcpSocket::set_tcp_nodelay(bool enable) {
+    int flag = enable ? 1 : 0;
+    return setsockopt(this->fd, IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
+  }
+  /**************** Network::TcpSocket::set_tcp_nodelay ***********************/
+
+
+  /**************** Network::TcpSocket::set_recv_buf_size *********************/
+  /**
+   * @brief      set the socket receive buffer size
+   * @param[in]  size  desired buffer size in bytes
+   * @return     0 on success, -1 on error
+   *
+   */
+  int TcpSocket::set_recv_buf_size(int size) {
+    return setsockopt(this->fd, SOL_SOCKET, SO_RCVBUF, &size, sizeof(size));
+  }
+  /**************** Network::TcpSocket::set_recv_buf_size *********************/
+
+
+  /**************** Network::TcpSocket::set_send_buf_size *********************/
+  /**
+   * @brief      set the socket send buffer size
+   * @param[in]  size  desired buffer size in bytes
+   * @return     0 on success, -1 on error
+   *
+   */
+  int TcpSocket::set_send_buf_size(int size) {
+    return setsockopt(this->fd, SOL_SOCKET, SO_SNDBUF, &size, sizeof(size));
+  }
+  /**************** Network::TcpSocket::set_send_buf_size *********************/
+
+
   /**************** Network::TcpSocket::Flush *********************************/
   /**
    * @fn         Flush

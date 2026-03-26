@@ -32,6 +32,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+// for TCP_NODELAY
+#include <netinet/tcp.h>
+
 namespace Network {
 
   constexpr const int POLLTIMEOUT = 3000;       /// default Poll timeout in msec
@@ -92,7 +95,12 @@ namespace Network {
       int Read(std::string &retstring, char delim); /// read data from connected socket until delimiter found
       int Read(std::string &retstring, std::string endstr);
       int Bytes_ready();                 /// get the number of bytes available on the socket descriptor this->fd
+      bool is_readable(int timeout_ms=0); /// check if socket has data available to read
       void Flush();                      /// flush a socket by reading until it's empty
+
+      int set_tcp_nodelay(bool enable);  /// enable or disable TCP_NODELAY (Nagle's algorithm)
+      int set_recv_buf_size(int size);   /// set SO_RCVBUF socket option
+      int set_send_buf_size(int size);   /// set SO_SNDBUF socket option
 
       int Write(std::string msg_in);     /// write data to a socket
 
