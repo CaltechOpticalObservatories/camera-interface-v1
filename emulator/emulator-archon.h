@@ -17,7 +17,6 @@
 
 #include "utilities.h"
 #include "common.h"
-#include "camera.h"
 #include "config.h"
 #include "logentry.h"
 #include "network.h"
@@ -40,7 +39,6 @@ namespace Archon {
       std::string instr;
       std::atomic<bool> abort{false};
       std::atomic<bool> exposing{false};
-      unsigned long int start_timer, finish_timer;  //!< Archon internal timer, start and end of exposure
 
       // Declare a map to contain image types for each recognized instrument.
       //

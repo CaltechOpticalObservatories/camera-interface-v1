@@ -849,20 +849,12 @@ namespace Archon {
         //
         double rowtime = iface.image->calc_rowtime();
 
-        int i=0;
-
         std::cout << function << "readout line: ";
         for ( iface.frame.buflines.at(iface.frame.index) = 0; iface.frame.buflines.at(iface.frame.index) < iface.image->linecount; iface.frame.buflines.at(iface.frame.index)++ ) {
           for ( iface.frame.bufpixels.at(iface.frame.index)= 0; iface.frame.bufpixels.at(iface.frame.index) < iface.image->pixelcount; iface.frame.bufpixels.at(iface.frame.index)++ ) {
-            for ( int tap = 0; tap < iface.image->taplines; tap++ ) {
-//            iface.frame.buffer.at( i ) = rand() % 40000 + 30000;  // random number between {30k:40k}
-              i++;
-            }
-//          iface.frame.bufpixels.at( iface.frame.index )++;
+            // placeholder for pixel data generation
           }
-//        iface.frame.buflines.at( iface.frame.index )++;
           std::cout << std::dec << std::setw(6) << iface.frame.buflines.at(iface.frame.index) << "\b\b\b\b\b\b";
-//        usleep( linetime );
           std::this_thread::sleep_for( std::chrono::microseconds(static_cast<long long>(rowtime)) );
         }
         std::cout << std::dec << std::setw(6) << iface.frame.buflines.at(iface.frame.index) << " complete\n";

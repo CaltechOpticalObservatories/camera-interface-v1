@@ -6,7 +6,7 @@ cmake_minimum_required( VERSION 3.12 )
 
 set( EMULATOR_DIR ${PROJECT_BASE_DIR}/emulator )
 
-add_definitions( -Wall -ansi -O1 -Wno-variadic-macros -std=c++17 -ggdb )
+add_compile_options( -Wall -O1 -Wno-variadic-macros -ggdb )
 
 include_directories( ${PROJECT_BASE_DIR}/utils 
                      ${PROJECT_BASE_DIR}/camerad 
@@ -21,10 +21,12 @@ if( ${INTERFACE_TYPE} STREQUAL "Archon" )
         add_library(emulatorInterface STATIC
                 ${EMULATOR_DIR}/emulator-archon.cpp
                 )
+        target_link_libraries(emulatorInterface common utilities)
 
 add_library(${EMULATOR_TARGET} ${EMULATOR_SOURCE})
 
 target_include_directories(${EMULATOR_TARGET} PUBLIC ${PROJECT_INCL_DIR})
+target_link_libraries(${EMULATOR_TARGET} common utilities)
 
 add_executable(emulator
         ${EMULATOR_DIR}/emulator-server.cpp

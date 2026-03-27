@@ -42,9 +42,9 @@ endif()
 
 project(camera)
 
-set(CMAKE_GXX_STANDARD 17)
-set(CMAKE_GXX_STANDARD_REQUIRED ON)
-set(CMAKE_GXX_EXTENSIONS OFF)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Run "cmake .." from the project's build/ directory!
 #
@@ -54,14 +54,11 @@ set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BASE_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_BASE_DIR}/lib)
 
 
-if (${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
-    include_directories(/usr/local/include)
-endif()
-
 find_package(Threads)
+find_package(nlohmann_json REQUIRED)
 
 add_subdirectory(${PROJECT_BASE_DIR}/utils)
 add_subdirectory(${PROJECT_BASE_DIR}/common)
 add_subdirectory(${PROJECT_BASE_DIR}/camerad)
-#add_subdirectory(${PROJECT_BASE_DIR}/emulator)
+add_subdirectory(${PROJECT_BASE_DIR}/emulator)
 add_subdirectory(${PROJECT_BASE_DIR}/tests EXCLUDE_FROM_ALL)

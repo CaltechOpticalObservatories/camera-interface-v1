@@ -85,7 +85,7 @@ int main(int argc, char **argv) {
 
   // get the configuration file from the command line
   //
-  long ret;
+  long ret=NO_ERROR;
   if (argc>1) {
     server->config.filename = std::string( argv[1] );
     ret = server->config.read_config();                    // read configuration file specified on command line
