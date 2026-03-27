@@ -38,8 +38,8 @@ static void logger_worker() {
     pthread_setname_np("camerad:log");
 #endif
 
+    std::unique_lock<std::mutex> lock(loglock);
     while (logger_running || !log_queue.empty()) {
-        std::unique_lock<std::mutex> lock(loglock);
         log_cv.wait(lock, [] { return !log_queue.empty() || !logger_running; });
 
         while (!log_queue.empty()) {

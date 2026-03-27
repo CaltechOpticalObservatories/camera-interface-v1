@@ -1197,20 +1197,19 @@ namespace Camera {
       std::transform(state.begin(), state.end(), state.begin(), ::toupper);
 
       if (state == "TRUE" || state == "1") {
-        this->is_autofetch_mode = true;
         if (this->controller->send_cmd("FASTAUTOFETCH1") != NO_ERROR) {
           logwrite(function, "ERROR enabling autofetch mode");
-          this->is_autofetch_mode = false;
           return ERROR;
         }
+        this->is_autofetch_mode = true;
         logwrite(function, "enabled");
       }
       else if (state == "FALSE" || state == "0") {
-        this->is_autofetch_mode = false;
         if (this->controller->send_cmd("FASTAUTOFETCH0") != NO_ERROR) {
           logwrite(function, "ERROR disabling autofetch mode");
           return ERROR;
         }
+        this->is_autofetch_mode = false;
         logwrite(function, "disabled");
       }
       else {
