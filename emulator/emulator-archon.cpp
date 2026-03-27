@@ -775,7 +775,7 @@ namespace Archon {
    *
    */
   void Interface::dothread_expose( Archon::Interface &iface, int numexpose ) {
-    std::string function = " (Archon::Interface::dothread_expose) ";
+    const std::string function = " (Archon::Interface::dothread_expose) ";
 
     std::cout << get_timestamp() << function << "numexpose=" << numexpose
                                              << iface.image->sample_info()
@@ -788,14 +788,18 @@ namespace Archon {
       return;
     }
 
-    int frames_per_exposure = iface.image->get_frames_per_exposure();
+    const int frames_per_exposure = iface.image->get_frames_per_exposure();
 
     std::cout << get_timestamp() << function << "frames_per_exposure=" << frames_per_exposure << "\n";
 
-    iface.exposing.store(true);
-    std::atomic<bool> _exception{false};
+    auto &frame = iface.frame;
+    auto &image = *iface.image;
 
-    int num=0, framecount=0;
+    iface.exposing.store(true);
+
+    bool had_error=false;
+    int num=0;
+    int framecount=0;
 
     for ( num = 0; num < numexpose; num++ ) {
     for ( framecount = 0; framecount < frames_per_exposure; ++framecount ) {
@@ -805,30 +809,27 @@ namespace Archon {
       // emulate an exposure delay
       //
       std::cout << "\nexposure progress: ";
-      if ( iface.image->exptime >= 0 ) {
-        auto time_start = std::chrono::steady_clock::now();
-        auto time_end = time_start + std::chrono::milliseconds( static_cast<long long>( iface.image->exptime ) );
+      if ( image.exptime >= 0 ) {
+        const auto time_start      = std::chrono::steady_clock::now();
+        const auto time_end        = time_start + std::chrono::milliseconds( static_cast<long long>( iface.image->exptime ) );
         const auto update_interval = std::chrono::milliseconds(100);
-        auto update_time = time_start + update_interval;
+        auto update_time           = time_start + update_interval;
 
         while ( !iface.abort.load() && std::chrono::steady_clock::now() < time_end ) {
-          std::chrono::steady_clock::time_point time_now = std::chrono::steady_clock::now();
-          double elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(time_now - time_start).count();  // msec elapsed
-          double progress = ( elapsed / iface.image->exptime ) * 100.;       // progress as a percentage
+          const auto time_now   = std::chrono::steady_clock::now();
+          const double elapsed  = std::chrono::duration<double, std::milli>(time_now - time_start).count();  // msec elapsed
+          const double progress = ( elapsed / iface.image->exptime ) * 100.;       // progress as a percentage
 
           if ( time_now >= update_time ) {                            // limits updates to stdout
             update_time += update_interval;
-//          std::cout << std::setw(3) << static_cast<int>(progress) << "\%\b\b\b\b";
-            std::cout << "\rexposure progress: " << std::setw(3) << static_cast<int>(progress) << "\%\r";
-            std::cout << std::flush;
+            std::cout << "\rexposure progress: " << std::setw(3) << static_cast<int>(progress) << "\%\r"
+                      << std::flush;
           }
 
-          if ( iface.abort.load() ) break;
           std::this_thread::sleep_for(std::chrono::milliseconds(1));  // limits loop rate
         }
 
       }
-//    std::cout << "100\%\n\n";
       std::cout << "\rexposure progress: " << std::setw(3) << 100 << "\%\n\n";
 
       // iface.frame.frame is the 1-based frame buffer number to write to now
@@ -836,55 +837,57 @@ namespace Archon {
       // increment each time
       // cycle back to 1 if greater than the number of active buffers
       //
-      iface.frame.frame++;
-      if ( iface.frame.frame > iface.image->activebufs ) iface.frame.frame = 1;
-      iface.frame.index = iface.frame.frame - 1;
+      if ( ++frame.frame > image.activebufs ) frame.frame = 1;
+      frame.index = frame.frame - 1;
 
       // initialize random seed for data
       //
       std::srand( time( nullptr ) );
 
       try {
-        iface.frame.bufpixels.at( iface.frame.index ) = 0;
-        iface.frame.buflines.at( iface.frame.index ) = 0;
-        iface.frame.bufcomplete.at( iface.frame.index ) = 0;
+        const int idx = frame.index;
+
+        frame.bufpixels.at( idx )   = 0;
+        frame.buflines.at( idx )    = 0;
+        frame.bufcomplete.at( idx ) = 0;
 
         // calculates instrument-specific row time
         //
-        double rowtime = iface.image->calc_rowtime();
+        const auto rowtime = std::chrono::microseconds(static_cast<long long>( image.calc_rowtime() ));
 
         int i=0;
 
         std::cout << function << "readout line: ";
-        for ( iface.frame.buflines.at(iface.frame.index) = 0; iface.frame.buflines.at(iface.frame.index) < iface.image->linecount; iface.frame.buflines.at(iface.frame.index)++ ) {
-          for ( iface.frame.bufpixels.at(iface.frame.index)= 0; iface.frame.bufpixels.at(iface.frame.index) < iface.image->pixelcount; iface.frame.bufpixels.at(iface.frame.index)++ ) {
-            for ( int tap = 0; tap < iface.image->taplines; tap++ ) {
-//            iface.frame.buffer.at( i ) = rand() % 40000 + 30000;  // random number between {30k:40k}
+
+        for ( int line=1; line <= image.linecount; line++ ) {  // actual lines read, so 1-based
+          frame.buflines.at(idx) = line;
+
+          for ( int pix=0; pix < image.pixelcount; pix++ ) {
+            frame.bufpixels.at(idx) = pix;
+
+            for ( int tap = 0; tap < image.taplines; tap++ ) {
+//            frame.buffer.at( i ) = rand() % 40000 + 30000;  // random number between {30k:40k}
               i++;
             }
-//          iface.frame.bufpixels.at( iface.frame.index )++;
           }
-//        iface.frame.buflines.at( iface.frame.index )++;
-          std::cout << std::dec << std::setw(6) << iface.frame.buflines.at(iface.frame.index) << "\b\b\b\b\b\b";
-//        usleep( linetime );
-          std::this_thread::sleep_for( std::chrono::microseconds(static_cast<long long>(rowtime)) );
+          std::cout << std::dec << std::setw(6) << line << "\b\b\b\b\b\b";
+          std::this_thread::sleep_for( rowtime );
         }
-        std::cout << std::dec << std::setw(6) << iface.frame.buflines.at(iface.frame.index) << " complete\n";
-        iface.frame.bufcomplete.at( iface.frame.index ) = 1;
-        iface.image->framen++;
-        iface.frame.bufframen.at( iface.frame.index ) = iface.image->framen;
+        std::cout << std::dec << std::setw(6) << frame.buflines.at(idx) << " complete\n";
+        frame.bufcomplete.at( idx ) = 1;
+        frame.bufframen.at( idx ) = ++image.framen;
       }
-      catch( std::out_of_range & ) {
-        std::cerr << get_timestamp() << function << "ERROR: frame.index=" << iface.frame.index << " out of range\n";
-        _exception.store(true);
+      catch( const std::out_of_range & ) {
+        std::cerr << get_timestamp() << function << "ERROR: frame.index=" << frame.index << " out of range\n";
+        had_error = true;
       }
       catch( ... ) {
-        std::cerr << get_timestamp() << function << "unknown error using frame index " << iface.frame.index << "\n";
-        _exception.store(true);
+        std::cerr << get_timestamp() << function << "unknown error using frame index " << frame.index << "\n";
+        had_error = true;
       }
-      if ( _exception.load() || iface.abort.load() ) break;
+      if ( had_error || iface.abort.load() ) break;
     }
-    if ( _exception.load() || iface.abort.load() ) break;
+    if ( had_error || iface.abort.load() ) break;
     }
 
     std::cout << get_timestamp() << function << "finished " << num << " x " << framecount << " = " << num*framecount << " frames\n\n";
@@ -892,7 +895,6 @@ namespace Archon {
     iface.exposing.store(false);
     iface.abort.store(false);
     return;
-
   }
   /***** Interface::dothread_expose *******************************************/
 }
