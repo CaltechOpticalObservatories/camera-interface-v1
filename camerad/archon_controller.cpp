@@ -761,20 +761,25 @@ namespace Camera {
       throw std::runtime_error("connection not open to controller");
     }
 
-    // exposure time parameters must be defined
-    if (this->sec_param.empty() || this->msec_param.empty()) {
+    if (this->msec_param.empty()) {
       throw std::runtime_error("exposure time parameters not in configuration");
     }
 
     try {
-      // split the requested exposure time into seconds and milliseconds
-      auto [sec, msec] = this->exposure_time->split(exptime);
-
-      // Set the sec and msec parameters on the controller,
-      // store the exptime in the class on success.
-      if ( (set_parameter(sec_param, sec)   == NO_ERROR) &&
-           (set_parameter(msec_param, msec) == NO_ERROR) ) {
-        this->exposure_time->set(exptime);
+      if (!this->sec_param.empty()) {
+        // Split into seconds and milliseconds when both parameters are configured
+        auto [sec, msec] = this->exposure_time->split(exptime);
+        if ( (set_parameter(sec_param, sec)   == NO_ERROR) &&
+             (set_parameter(msec_param, msec) == NO_ERROR) ) {
+          this->exposure_time->set(exptime);
+        }
+      }
+      else {
+        // Single parameter mode: write as milliseconds
+        int msec = static_cast<int>(exptime * 1000.0);
+        if (set_parameter(msec_param, msec) == NO_ERROR) {
+          this->exposure_time->set(exptime);
+        }
       }
     }
     catch (const std::exception &e) {

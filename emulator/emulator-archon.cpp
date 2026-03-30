@@ -249,7 +249,7 @@ namespace Archon {
     statstr << "VALID="          <<  1            << " "
             << "COUNT="          <<  1            << " "
             << "LOG="            <<  0            << " "
-            << "POWER="          << this->poweron << " "
+            << "POWER="          << ( this->poweron ? 4 : 2 ) << " "
             << "POWERGOOD="      <<  1            << " "
             << "OVERHEAT="       <<  0            << " "
             << "BACKPLANE_TEMP=" << 40            << " "
