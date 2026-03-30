@@ -982,28 +982,36 @@ namespace Camera {
     if (cmd.size() >= 5 && memcmp(cmd.data(), "FETCH", 5)==0 &&
        (cmd.size() < 8 || memcmp(cmd.data(), "FETCHLOG", 8) != 0)) return NO_ERROR;
 
-    // For all other commands, receive the reply
+    // For all other commands, receive the reply.
+    // In autofetch mode, the Archon may interleave unsolicited <QF frame data
+    // on the socket. Discard any such data and keep reading until the expected
+    // command response (<XX) arrives.
     //
     constexpr size_t BUFSZ = 64*1024;
-    char* buffer = new char[BUFSZ+1]{};                  // temporary buffer for holding Archon replies
-    reply.clear();                                       // zero reply buffer
+    auto buffer = std::make_unique<char[]>(BUFSZ+1);
+    reply.clear();
     do {
       if ( (retval=this->archon.Poll()) <= 0) {
         if (retval==0) { logwrite(function, "Poll timeout waiting for response from Archon command (maybe unrecognized command?)"); error=TIMEOUT; }
         if (retval<0)  { logwrite(function, "Poll error waiting for response from Archon command"); error=ERROR; }
         break;
       }
-      retval = this->archon.Read(buffer, BUFSZ);         // read into temp buffer
+      retval = this->archon.Read(buffer.get(), BUFSZ);
       if (retval <= 0) {
         logwrite( function, "ERROR reading Archon" );
         break;
       }
-      buffer[retval] = '\0';                             // null-terminate bytes read
-      reply.append(buffer);                              // append read buffer into the reply string
-      if (strchr(buffer, '\n') != nullptr) break;        // exit on newline
-    } while(retval>0);
+      buffer[retval] = '\0';
 
-    delete [] buffer;
+      // In autofetch mode, discard unsolicited autofetch frame data
+      if (this->interface->is_autofetch_mode &&
+          retval >= 3 && std::memcmp(buffer.get(), "<QF", 3) == 0) {
+        continue;
+      }
+
+      reply.append(buffer.get(), retval);
+      if (std::memchr(buffer.get(), '\n', retval) != nullptr) break;
+    } while(retval>0);
 
     // If there was an Archon error then clear the busy flag and get out now
     //

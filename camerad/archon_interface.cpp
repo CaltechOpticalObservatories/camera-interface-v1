@@ -67,6 +67,10 @@ namespace Camera {
     if ( cmd == CAMERAD_MODE ) {
       return this->set_camera_mode(args, retstring);
     }
+    else
+    if ( cmd == "autofetch_mode" ) {
+      return this->autofetch_mode(args, retstring);
+    }
     else {
       retstring="unrecognized command";
       return ERROR;
@@ -1175,5 +1179,49 @@ namespace Camera {
     return error;
   }
   /***** Camera::ArchonInterface::do_expose ***********************************/
+
+
+  /***** Camera::ArchonInterface::autofetch_mode *****************************/
+  /**
+   * @brief      toggle Archon autofetch mode on or off
+   * @param[in]  args       "true"|"1" to enable, "false"|"0" to disable, empty to query
+   * @param[out] retstring  current autofetch state ("true" or "false")
+   * @return     ERROR | NO_ERROR
+   *
+   */
+  long ArchonInterface::autofetch_mode(const std::string &args, std::string &retstring) {
+    const std::string function("Camera::ArchonInterface::autofetch_mode");
+
+    if (!args.empty()) {
+      std::string state = args;
+      std::transform(state.begin(), state.end(), state.begin(), ::toupper);
+
+      if (state == "TRUE" || state == "1") {
+        if (this->controller->send_cmd("FASTAUTOFETCH1") != NO_ERROR) {
+          logwrite(function, "ERROR enabling autofetch mode");
+          return ERROR;
+        }
+        this->is_autofetch_mode = true;
+        logwrite(function, "enabled");
+      }
+      else if (state == "FALSE" || state == "0") {
+        if (this->controller->send_cmd("FASTAUTOFETCH0") != NO_ERROR) {
+          logwrite(function, "ERROR disabling autofetch mode");
+          return ERROR;
+        }
+        this->is_autofetch_mode = false;
+        logwrite(function, "disabled");
+      }
+      else {
+        logwrite(function, "ERROR unrecognized argument: " + args);
+        retstring = "invalid_argument";
+        return ERROR;
+      }
+    }
+
+    retstring = this->is_autofetch_mode ? "true" : "false";
+    return NO_ERROR;
+  }
+  /***** Camera::ArchonInterface::autofetch_mode *****************************/
 
 }

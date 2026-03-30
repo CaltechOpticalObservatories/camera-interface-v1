@@ -227,21 +227,21 @@ namespace Camera {
        * config_line_t is a struct for the configfile key=value map, used to
        * store the configuration line and its associated line number.
        */
-      typedef struct {
+      struct config_line_t {
         int line;          // line number used for updating Archon
         std::string value; // used for configmap
-      } config_line_t;
+      };
 
       /**
        * param_line_t is a struct for the PARAMETER name key=value map, used to
        * store parameters where the format is PARAMETERn=parametername=value
        */
-      typedef struct {
+      struct param_line_t {
         int line;          // line number used for updating Archon
         std::string key;   // PARAMETERn part
         std::string name;  // parametername part
         std::string value; // value part
-      } param_line_t;
+      };
 
       typedef std::map<std::string, config_line_t> cfg_map_t;
       typedef std::map<std::string, param_line_t> param_map_t;
@@ -260,7 +260,7 @@ namespace Camera {
        * \details structure contains a configmap and parammap unique to each mode,
        *          specified in the [MODE_*] sections at the end of the .acf file.
        */
-      typedef struct {
+      struct modeinfo_t {
         int rawenable=-1;          //!< initialized to -1, then set according to RAWENABLE in .acf file
         cfg_map_t configmap;       //!< key=value map for configuration lines set in mode sections
         param_map_t parammap;      //!< PARAMETERn=parametername=value map for mode sections
@@ -269,7 +269,7 @@ namespace Camera {
         tapinfo_t tapinfo;
         long bigbuf=-1;
         long samplemode=-1;
-      } modeinfo_t;
+      };
 
 //  protected:
       ArchonInterface* interface;      //!< pointer back to the parent interface

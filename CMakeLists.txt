@@ -53,7 +53,6 @@ set(PROJECT_BASE_DIR $ENV{PWD}/../)
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BASE_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_BASE_DIR}/lib)
 
-
 find_package(Threads)
 find_package(nlohmann_json REQUIRED)
 

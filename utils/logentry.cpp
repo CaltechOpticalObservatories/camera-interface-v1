@@ -11,11 +11,51 @@
 
 #include "logentry.h"
 
+#include <pthread.h>
+
 std::mutex loglock; /// mutex to protect from multiple access
 std::ofstream filestream; /// IO stream class
 unsigned int nextday = 86410; /// number of seconds until a new day
 bool to_stderr = true; /// write to stderr by default
 std::string tmzone_log; /// optional time zone for logging
+
+// Non-blocking log queue — logwrite() pushes here, logger_worker drains to file/stderr
+std::queue<std::string> log_queue;
+std::condition_variable log_cv;
+std::atomic<bool> logger_running{false};
+std::thread logger_thread;
+
+
+/***** logger_worker **********************************************************/
+/**
+ * @brief      background thread that drains the log queue to file and stderr
+ *
+ */
+static void logger_worker() {
+#ifdef __linux__
+    pthread_setname_np(pthread_self(), "camerad:log");
+#elif defined(__APPLE__)
+    pthread_setname_np("camerad:log");
+#endif
+
+    std::unique_lock<std::mutex> lock(loglock);
+    while (logger_running || !log_queue.empty()) {
+        log_cv.wait(lock, [] { return !log_queue.empty() || !logger_running; });
+
+        while (!log_queue.empty()) {
+            std::string msg = std::move(log_queue.front());
+            log_queue.pop();
+            lock.unlock();
+
+            if (filestream.is_open()) filestream << msg;
+            if (to_stderr) std::cerr << msg;
+
+            lock.lock();
+        }
+        if (filestream.is_open()) filestream.flush();
+    }
+}
+/***** logger_worker **********************************************************/
 
 
 /***** init_log ***************************************************************/
@@ -119,6 +159,10 @@ long init_log(std::string name, std::string logpath, std::string logstderr, std:
         return 1;
     }
 
+    // Start the background log writer thread
+    logger_running = true;
+    logger_thread = std::thread(logger_worker);
+
     return 0;
 }
 
@@ -132,10 +176,10 @@ long init_log(std::string name, std::string logpath, std::string logstderr, std:
  *
  */
 void close_log() {
-    if (filestream.is_open()) {
-        filestream.flush();
-        filestream.close();
-    }
+    logger_running = false;
+    log_cv.notify_one();
+    if (logger_thread.joinable()) logger_thread.join();
+    if (filestream.is_open()) filestream.close();
 }
 
 /***** close_log **************************************************************/
@@ -156,18 +200,14 @@ void close_log() {
  */
 void logwrite(const std::string &function, const std::string &message) {
     std::stringstream logmsg;
-
-    std::lock_guard<std::mutex> lock(loglock); // lock mutex to protect from multiple access
-
     std::string timestamp = get_timestamp(tmzone_log); // get the current time (defined in utilities.h)
-
     logmsg << timestamp << "  (" << function << ") " << message << "\n";
 
-    if (filestream.is_open()) {
-        filestream << logmsg.str(); // send to the file stream (if open)
-        filestream.flush();
+    {
+        std::lock_guard<std::mutex> lock(loglock);
+        log_queue.push(logmsg.str());
     }
-    if (to_stderr) std::cerr << logmsg.str(); // send to standard error if requested
+    log_cv.notify_one();
 }
 
 /***** logwrite ***************************************************************/
