@@ -112,6 +112,7 @@ namespace Archon {
         std::vector<uint64_t> buftimestamp;   // buffer hex 64 bit timestamp
         std::vector<uint64_t> bufretimestamp; // buf trigger rising edge time stamp
         std::vector<uint64_t> buffetimestamp; // buf trigger falling edge time stamp
+        std::vector<std::vector<char>> bufdata;  // pixel data per buffer
       } frame;
 
       // Functions

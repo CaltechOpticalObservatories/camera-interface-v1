@@ -54,7 +54,8 @@ namespace Archon {
              std::vector<int>(Archon::NBUFS),       // bufrawoffset
              std::vector<uint64_t>(Archon::NBUFS),  // bufrtimestamp
              std::vector<uint64_t>(Archon::NBUFS),  // bufretimestemp
-             std::vector<uint64_t>(Archon::NBUFS)   // buffetimestamp
+             std::vector<uint64_t>(Archon::NBUFS),  // buffetimestamp
+             std::vector<std::vector<char>>(Archon::NBUFS)  // bufdata
            },
       modtype( NMODS ),
       modversion( NMODS )
@@ -407,69 +408,72 @@ namespace Archon {
    */
   long Interface::fetch_data( const std::string &ref, const std::string &cmd, Network::TcpSocket &sock ) {
     std::string function = " (Archon::Interface::fetch_data) ";
-    unsigned int reqblocks;  //!< number of requested blocks, from the FETCH command
-    unsigned int block;      //!< block counter
-    size_t byteswritten;     //!< bytes written for this block
-    int totalbyteswritten;   //!< total bytes written for this image
-    size_t towrite=0;        //!< remaining bytes to write for this block
-    char* image_data=nullptr;
+    unsigned int reqblocks;
+    uint64_t bufaddr;
 
     std::cout << get_timestamp() << function << "got command " << cmd << "\n";
 
-    if ( cmd.length() != 21 ) {             // must be "FETCHxxxxxxxxyyyyyyyy", 21 chars
+    if ( cmd.length() != 21 ) {
       std::cerr << get_timestamp() << function << "ERROR: expecting form FETCHxxxxxxxxyyyyyyyy but got \"" << cmd << "\"\n";
       return ERROR;
     }
 
     try {
-      std::stringstream hexblocks;
-      hexblocks << std::hex << "0x" << cmd.substr(13);
-      hexblocks >> reqblocks;
+      bufaddr   = std::stoull(cmd.substr(5, 8), nullptr, 16);
+      reqblocks = std::stoul(cmd.substr(13, 8), nullptr, 16);
     }
-    catch( std::invalid_argument & ) {
-      std::cerr << get_timestamp() << function << "ERROR: invalid argument parsing " << cmd << "\n";
-      return ERROR;
-    }
-    catch( std::out_of_range & ) {
-      std::cerr << get_timestamp() << function << "ERROR: value out of range parsing " << cmd << "\n";
-      return ERROR;
-    }
-    catch( ... ) {
-      std::cerr << get_timestamp() << function << "unknown error parsing " << cmd << "\n";
+    catch( const std::exception &e ) {
+      std::cerr << get_timestamp() << function << "ERROR parsing " << cmd << ": " << e.what() << "\n";
       return ERROR;
     }
 
-    image_data = new char[reqblocks * BLOCKLEN];
-
-    std::srand( time( nullptr ) );
-    for ( unsigned int i=0; i<(reqblocks*BLOCKLEN)/2; i+=10 ) {
-      image_data[i] = rand() % 40000 + 30000;
+    // Find which buffer matches the requested base address
+    int bufidx = -1;
+    for ( int i = 0; i < this->image->activebufs; i++ ) {
+      if ( this->frame.bufbase.at(i) == bufaddr ) { bufidx = i; break; }
     }
+
+    if ( bufidx < 0 || this->frame.bufdata.at(bufidx).empty() ) {
+      std::cerr << get_timestamp() << function << "ERROR: no frame data for address 0x"
+                << std::hex << bufaddr << "\n";
+      return ERROR;
+    }
+
+    const auto &data = this->frame.bufdata.at(bufidx);
+    size_t data_size = data.size();
+
+    std::cout << get_timestamp() << function << "sending " << std::dec << reqblocks
+              << " blocks (" << data_size << " bytes available) from buffer " << bufidx+1 << "\n";
 
     std::string header = "<" + ref + ":";
-    totalbyteswritten = 0;
+    int totalbyteswritten = 0;
+    size_t data_offset = 0;
 
-    std::cout << get_timestamp() << function << "host requested " << std::dec << reqblocks << " (0x" << std::hex << reqblocks << ") blocks \n";
-
-    std::cout << "writing bytes: ";
-
-    for ( block = 0; block < reqblocks; block++ ) {
+    for ( unsigned int block = 0; block < reqblocks; block++ ) {
       sock.Write(header);
-      byteswritten = 0;
-      do {
-        int retval=0;
-        towrite = BLOCKLEN - byteswritten;
-        if ( ( retval = sock.Write(image_data, towrite) ) > 0 ) {
+      size_t byteswritten = 0;
+      while ( byteswritten < BLOCKLEN ) {
+        size_t towrite = BLOCKLEN - byteswritten;
+        const char* src;
+        // Serve from frame data, or zero-pad if request exceeds buffer
+        if ( data_offset < data_size ) {
+          src = data.data() + data_offset;
+          towrite = std::min(towrite, data_size - data_offset);
+        }
+        else {
+          static const char zeros[BLOCKLEN] = {};
+          src = zeros;
+        }
+        int retval = sock.Write(src, towrite);
+        if ( retval > 0 ) {
           byteswritten += retval;
           totalbyteswritten += retval;
-          std::cout << std::dec << std::setw(10) << totalbyteswritten << "\b\b\b\b\b\b\b\b\b\b";
+          data_offset += retval;
         }
-      } while ( byteswritten < BLOCKLEN );
+        else break;
+      }
     }
-    std::cout << std::dec << std::setw(10) << totalbyteswritten << " complete\n";
-    std::cout << get_timestamp() << function << "wrote " << std::dec << block << " blocks to host\n";
-
-    delete[] image_data;
+    std::cout << get_timestamp() << function << "wrote " << std::dec << totalbyteswritten << " bytes\n";
 
     return NO_ERROR;
   }
@@ -841,26 +845,37 @@ namespace Archon {
       std::srand( time( nullptr ) );
 
       try {
-        iface.frame.bufpixels.at( iface.frame.index ) = 0;
-        iface.frame.buflines.at( iface.frame.index ) = 0;
-        iface.frame.bufcomplete.at( iface.frame.index ) = 0;
+        int idx = iface.frame.index;
+        iface.frame.bufpixels.at(idx) = 0;
+        iface.frame.buflines.at(idx) = 0;
+        iface.frame.bufcomplete.at(idx) = 0;
 
-        // calculates instrument-specific row time
-        //
+        int width  = iface.image->pixelcount * iface.image->taplines;
+        int height = iface.image->linecount;
+        size_t frame_bytes = static_cast<size_t>(width) * height * sizeof(uint16_t);
+
+        // Allocate and fill with a ramp pattern (value wraps at 65535)
+        iface.frame.bufdata.at(idx).resize(frame_bytes);
+        auto* pixels = reinterpret_cast<uint16_t*>(iface.frame.bufdata.at(idx).data());
+        for (size_t i = 0; i < frame_bytes / sizeof(uint16_t); i++) {
+          pixels[i] = static_cast<uint16_t>(i & 0xFFFF);
+        }
+
+        iface.frame.bufwidth.at(idx)  = width;
+        iface.frame.bufheight.at(idx) = height;
+
         double rowtime = iface.image->calc_rowtime();
 
         std::cout << function << "readout line: ";
-        for ( iface.frame.buflines.at(iface.frame.index) = 0; iface.frame.buflines.at(iface.frame.index) < iface.image->linecount; iface.frame.buflines.at(iface.frame.index)++ ) {
-          for ( iface.frame.bufpixels.at(iface.frame.index)= 0; iface.frame.bufpixels.at(iface.frame.index) < iface.image->pixelcount; iface.frame.bufpixels.at(iface.frame.index)++ ) {
-            // placeholder for pixel data generation
-          }
-          std::cout << std::dec << std::setw(6) << iface.frame.buflines.at(iface.frame.index) << "\b\b\b\b\b\b";
+        for ( iface.frame.buflines.at(idx) = 0; iface.frame.buflines.at(idx) < height; iface.frame.buflines.at(idx)++ ) {
+          iface.frame.bufpixels.at(idx) = width;
+          std::cout << std::dec << std::setw(6) << iface.frame.buflines.at(idx) << "\b\b\b\b\b\b";
           std::this_thread::sleep_for( std::chrono::microseconds(static_cast<long long>(rowtime)) );
         }
-        std::cout << std::dec << std::setw(6) << iface.frame.buflines.at(iface.frame.index) << " complete\n";
-        iface.frame.bufcomplete.at( iface.frame.index ) = 1;
+        std::cout << std::dec << std::setw(6) << iface.frame.buflines.at(idx) << " complete\n";
+        iface.frame.bufcomplete.at(idx) = 1;
         iface.image->framen++;
-        iface.frame.bufframen.at( iface.frame.index ) = iface.image->framen;
+        iface.frame.bufframen.at(idx) = iface.image->framen;
       }
       catch( std::out_of_range & ) {
         std::cerr << get_timestamp() << function << "ERROR: frame.index=" << iface.frame.index << " out of range\n";
