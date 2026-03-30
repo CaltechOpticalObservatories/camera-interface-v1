@@ -23,6 +23,7 @@
 
 #include "generic.h"
 #include "nirc2.h"
+#include "frame_source.h"
 
 namespace Archon {
 
@@ -49,6 +50,7 @@ namespace Archon {
     public:
 
       std::unique_ptr<ImageInfoBase> image;   ///!< smart pointer to the base class
+      std::unique_ptr<Emulator::FrameSource> frame_source;
 
       Interface( const std::string &instr );
 

@@ -97,19 +97,21 @@ namespace Archon {
    */
   long Interface::configure_controller() {
     std::string function = " (Archon::Interface::configure_controller) ";
+    std::string datadir;
 
-    // loop through the rows in the configuration file, stored in config class
-    //
     for ( int row=0; row < this->config.n_rows; row++ ) {
 
       try {
         this->image->set_config_parameter( config.param[row], config.arg[row] );
 
-        if ( config.param.at(row).compare(0, 15, "EMULATOR_SYSTEM")==0 ) {
+        if ( config.param.at(row) == "EMULATOR_SYSTEM" ) {
           this->systemfile = config.arg.at(row);
         }
-        if ( config.param.at(row).compare(0, 12, "EXPOSE_PARAM")==0) {
+        if ( config.param.at(row) == "EXPOSE_PARAM" ) {
           this->exposeparam = config.arg[row];
+        }
+        if ( config.param.at(row) == "EMULATOR_DATADIR" ) {
+          datadir = config.arg[row];
         }
       }
       catch(const std::exception &e ) {
@@ -121,6 +123,10 @@ namespace Archon {
         return ERROR;
       }
     }
+
+    this->frame_source = Emulator::make_frame_source(datadir);
+    std::cout << get_timestamp() << function << "frame source: "
+              << (datadir.empty() ? "synthetic" : datadir) << "\n";
 
     std::cout << get_timestamp() << function << "complete" << "\n";
 
@@ -854,11 +860,9 @@ namespace Archon {
         int height = iface.image->linecount;
         size_t frame_bytes = static_cast<size_t>(width) * height * sizeof(uint16_t);
 
-        // Allocate and fill with a ramp pattern (value wraps at 65535)
         iface.frame.bufdata.at(idx).resize(frame_bytes);
-        auto* pixels = reinterpret_cast<uint16_t*>(iface.frame.bufdata.at(idx).data());
-        for (size_t i = 0; i < frame_bytes / sizeof(uint16_t); i++) {
-          pixels[i] = static_cast<uint16_t>(i & 0xFFFF);
+        if (iface.frame_source) {
+          iface.frame_source->fill_frame(iface.frame.bufdata.at(idx).data(), width, height);
         }
 
         iface.frame.bufwidth.at(idx)  = width;
