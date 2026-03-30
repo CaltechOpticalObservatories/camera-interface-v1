@@ -44,14 +44,15 @@ namespace Camera {
    */
   void Server::configure_server() {
     const std::string function("Camera::Server::configure_server");
-    logwrite(function, "");
 
     if (interface->configfile.n_rows < 1) throw std::runtime_error("empty configuration");
 
-    // iterate through each row in config file
+    std::string logpath;
+    std::string log_tmzone;
+    std::string log_stderr = "true";
+
     for (int row=0; row < interface->configfile.n_rows; row++) {
 
-      // BLKPORT
       if (interface->configfile.param[row]=="BLKPORT") {
         try {
           this->blkport = std::stoi( interface->configfile.arg[row] );
@@ -63,7 +64,23 @@ namespace Camera {
           throw std::runtime_error(oss.str());
         }
       }
+
+      if (interface->configfile.param[row]=="LOGPATH")
+        logpath = interface->configfile.arg[row];
+
+      if (interface->configfile.param[row]=="TM_ZONE_LOG")
+        log_tmzone = interface->configfile.arg[row];
+
+      if (interface->configfile.param[row]=="LONGERROR")
+        log_stderr = interface->configfile.arg[row];
     }
+
+    if (logpath.empty()) throw std::runtime_error("LOGPATH not specified in configuration file");
+
+    if (init_log("camerad", logpath, log_stderr, log_tmzone) != 0)
+      throw std::runtime_error("unable to initialize logging to " + logpath);
+
+    logwrite(function, "logging initialized");
   }
   /***** Camera::Server::configure_server *************************************/
 

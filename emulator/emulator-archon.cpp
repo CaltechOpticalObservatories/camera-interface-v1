@@ -752,8 +752,8 @@ namespace Archon {
     //
     else {
       line = this->parammap[ key ].line;         // line number is stored in parammap
-      this->configmap[ line ].value = value;     // configmap is indexed by line number
-      this->parammap[ key ].value = value;       //TODO needed??
+      this->parammap[ key ].value = value;
+      this->configmap[ line ].value = key + "=" + value;  // preserve PARAMETERn=name=value format
     }
 
     return NO_ERROR;
