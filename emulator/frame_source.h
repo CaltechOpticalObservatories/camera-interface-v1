@@ -30,25 +30,60 @@ namespace Emulator {
   };
 
 
-  // Generate synthetic frames: bias level + Gaussian noise
+  // Generate synthetic frames with bias + Gaussian noise
+  // Mode-aware: RXR generates signal/reset halves with correlated noise
   class SyntheticSource : public FrameSource {
     private:
       std::mt19937 rng{std::random_device{}()};
-      uint16_t bias = 5000;
       double noise_stddev = 50.0;
+      std::string* active_mode;  // non-owning pointer to emulator's active mode
+      int taplines = 0;
 
     public:
+      // @param mode  pointer to the active mode string (owned by Interface)
+      // @param taps  number of taplines for RXR half-width calculation
+      SyntheticSource(std::string* mode = nullptr, int taps = 0)
+        : active_mode(mode), taplines(taps) {}
+
+      void set_taplines(int taps) { taplines = taps; }
+
       bool fill_frame(char* buffer, int width, int height) override {
         auto* pixels = reinterpret_cast<uint16_t*>(buffer);
         std::normal_distribution<double> noise(0.0, noise_stddev);
         size_t npixels = static_cast<size_t>(width) * height;
 
-        for (size_t i = 0; i < npixels; i++) {
-          double val = bias + noise(rng);
-          // Add a horizontal gradient so orientation is verifiable
-          int col = i % width;
-          val += static_cast<double>(col) * 100.0 / width;
-          pixels[i] = static_cast<uint16_t>(std::clamp(val, 0.0, 65535.0));
+        // Check if active mode contains "RXR" (covers VideoRXR, RXRV, etc)
+        bool rxr_mode = active_mode &&
+                         active_mode->find("RXR") != std::string::npos;
+
+        if (rxr_mode && taplines > 0) {
+          // RXR: each tap has signal pixels then reset pixels
+          // Signal half: higher bias (10000), reset half: lower bias (5000)
+          // Correlated noise: same noise added to both halves so subtraction cancels it
+          int pixels_per_tap = width / taplines;
+          int half = pixels_per_tap / 2;
+
+          for (int row = 0; row < height; row++) {
+            for (int tap = 0; tap < taplines; tap++) {
+              int tap_offset = row * width + tap * pixels_per_tap;
+              for (int col = 0; col < pixels_per_tap; col++) {
+                double common_noise = noise(rng);
+                double readout_noise = noise(rng) * 0.3;  // uncorrelated readout noise
+                bool is_signal = (col < half);
+                double base = is_signal ? 10000.0 : 5000.0;
+                double val = base + common_noise + readout_noise;
+                pixels[tap_offset + col] = static_cast<uint16_t>(std::clamp(val, 0.0, 65535.0));
+              }
+            }
+          }
+        }
+        else {
+          // Default: flat bias + noise + horizontal gradient
+          for (size_t i = 0; i < npixels; i++) {
+            int col = i % width;
+            double val = 5000.0 + noise(rng) + static_cast<double>(col) * 100.0 / width;
+            pixels[i] = static_cast<uint16_t>(std::clamp(val, 0.0, 65535.0));
+          }
         }
         return true;
       }
@@ -56,6 +91,7 @@ namespace Emulator {
 
 
   // Read FITS files from folder, serve them sequentially, cycling
+  // Not mode-aware: FITS data is already in the correct format for its mode
   class FitsFileSource : public FrameSource {
     private:
       std::vector<std::string> files;
@@ -131,12 +167,15 @@ namespace Emulator {
   };
 
 
-  // Factory: create the appropriate FrameSource based on config
-  inline std::unique_ptr<FrameSource> make_frame_source(const std::string &datadir) {
+  // Create the appropriate FrameSource based on config
+  inline std::unique_ptr<FrameSource> make_frame_source(
+      const std::string &datadir,
+      std::string* active_mode = nullptr,
+      int taplines = 0) {
     if (!datadir.empty() && std::filesystem::is_directory(datadir)) {
       return std::make_unique<FitsFileSource>(datadir);
     }
-    return std::make_unique<SyntheticSource>();
+    return std::make_unique<SyntheticSource>(active_mode, taplines);
   }
 
 }

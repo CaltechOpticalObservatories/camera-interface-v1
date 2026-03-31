@@ -124,7 +124,7 @@ namespace Archon {
       }
     }
 
-    this->frame_source = Emulator::make_frame_source(datadir);
+    this->frame_source = Emulator::make_frame_source(datadir, &this->active_mode);
     std::cout << get_timestamp() << function << "frame source: "
               << (datadir.empty() ? "synthetic" : datadir) << "\n";
 
@@ -596,6 +596,9 @@ namespace Archon {
 
         else if ( key == "TAPLINES" ) {
           this->image->taplines = std::stoi(value);
+          // Update synthetic source if active
+          auto* synth = dynamic_cast<Emulator::SyntheticSource*>(this->frame_source.get());
+          if (synth) synth->set_taplines(this->image->taplines);
         }
 
         else if ( key == "PIXELCOUNT" ) {
@@ -732,6 +735,12 @@ namespace Archon {
         // providing polymorphic behavior based on the actual object type.
         //
         this->image->handle_key( key, ival );
+
+        // Detect active mode from ACF mode parameters
+        if ( key.compare(0, 5, "mode_") == 0 && ival > 0 ) {
+          this->active_mode = key.substr(5);
+          std::cout << get_timestamp() << function << "active mode: " << this->active_mode << "\n";
+        }
       }
     }
     catch( std::out_of_range & ) {

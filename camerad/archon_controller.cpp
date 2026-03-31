@@ -1608,16 +1608,36 @@ namespace Camera {
       this->get_configmap_value("SAMPLEMODE", mode->samplemode);
       this->get_configmap_value("BIGBUF", mode->bigbuf);
       this->get_configmap_value("FRAMEMODE", mode->geometry.framemode);
-      this->get_configmap_value("LINECOUNT", mode->geometry.linecount);
-      this->get_configmap_value("PIXELCOUNT", mode->geometry.pixelcount);
       this->get_configmap_value("RAWENABLE", mode->rawenable);
       this->get_configmap_value("RAWSEL", this->rawinfo.adchan);
       this->get_configmap_value("RAWSAMPLES", this->rawinfo.rawsamples);
       this->get_configmap_value("RAWENDLINE", this->rawinfo.rawlines);
+
+      // Read geometry from the mode's configmap (not the global one) since each
+      // mode section can override LINECOUNT/PIXELCOUNT
+      auto get_mode_value = [&](const std::string &key, int &out) {
+        auto it = mode->configmap.find(key);
+        if (it != mode->configmap.end()) {
+          out = std::stoi(it->second.value);
+        } else {
+          this->get_configmap_value(key, out);
+        }
+      };
+      get_mode_value("LINECOUNT",  mode->geometry.linecount);
+      get_mode_value("PIXELCOUNT", mode->geometry.pixelcount);
     }
     catch (const std::exception &e) {
       logwrite(function, "ERROR: "+std::string(e.what()));
       return ERROR;
+    }
+
+    // Write geometry to the Archon so the controller matches the selected mode
+    bool changed = false;
+    write_config_key("LINECOUNT",  std::to_string(mode->geometry.linecount).c_str(),  changed);
+    write_config_key("PIXELCOUNT", std::to_string(mode->geometry.pixelcount).c_str(), changed);
+
+    if (changed) {
+      logwrite(function, "applied mode geometry to controller");
     }
 
     return NO_ERROR;

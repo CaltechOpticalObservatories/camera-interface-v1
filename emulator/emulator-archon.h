@@ -63,7 +63,9 @@ namespace Archon {
       unsigned long long init_time;
       bool poweron;                //!< is the power on?
       bool bigbuf;                 //!< is BIGBUF==1 in ACF file?
-      std::string exposeparam;               //!< param name to trigger exposure when set =1
+      std::string exposeparam;     //!< param name to trigger exposure when set =1
+
+      std::string active_mode;    //!< currently active mode detected from ACF parameters
 
       struct image_t {
         uint32_t framen;
