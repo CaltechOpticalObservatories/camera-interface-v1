@@ -21,13 +21,24 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y \
           libccfits-dev libcfitsio-dev libcurl4-openssl-dev \
-          nlohmann-json3-dev libzmqpp-dev libzmq3-dev \
+          nlohmann-json3-dev libzmq3-dev \
           libopencv-dev libboost-thread-dev libboost-chrono-dev
+
+    - name: Build and install zmqpp from source
+      run: |
+        git clone --depth 1 https://github.com/zeromq/zmqpp.git /tmp/zmqpp
+        cd /tmp/zmqpp
+        mkdir build && cd build
+        cmake ..
+        make -j$(nproc)
+        sudo make install
+        sudo ldconfig
 
     - name: Build camerad and emulator
       run: |
-        mkdir build && cd build
-        cmake .. -DINSTR=hispec_tracking_camera -DDETECTOR_TYPE=Hxrg
+        mkdir -p ${{github.workspace}}/build
+        cd ${{github.workspace}}/build
+        cmake -DCONTROLLER=archon -DINSTR=hispec_tracking_camera -DDETECTOR_TYPE=Hxrg ..
         make camerad emulator -j$(nproc)
 
     - name: CryoScope synthetic test
