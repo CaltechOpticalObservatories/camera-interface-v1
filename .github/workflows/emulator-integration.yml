@@ -1,0 +1,121 @@
+name: Emulator integration tests
+
+on:
+  push:
+    branches: [ "main", "mike/camera2-emulator" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  cryoscope-emulator-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        submodules: true
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libccfits-dev libcfitsio-dev libcurl4-openssl-dev \
+          nlohmann-json3-dev libzmqpp-dev libzmq3-dev \
+          libopencv-dev libboost-thread-dev libboost-chrono-dev
+
+    - name: Build camerad and emulator
+      run: |
+        mkdir build && cd build
+        cmake .. -DINSTR=hispec_tracking_camera -DDETECTOR_TYPE=Hxrg
+        make camerad emulator -j$(nproc)
+
+    - name: CryoScope synthetic test
+      run: |
+        bin/emulator Config/cryoscope/cryoscope.cfg -i generic &
+        sleep 2
+        bin/camerad --foreground --config Config/cryoscope/cryoscope.cfg &
+        sleep 3
+
+        python3 << 'EOF'
+        import socket, sys
+
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(120)
+        s.connect(('localhost', 3031))
+
+        def cmd(c):
+            s.sendall((c + '\n').encode())
+            data = b''
+            while True:
+                try:
+                    chunk = s.recv(4096)
+                    if not chunk: break
+                    data += chunk
+                    if b'\n' in data: break
+                except socket.timeout:
+                    break
+            return data.decode().strip()
+
+        failed = False
+        for c in ['open', 'load', 'power on', 'mode VIDEORXR', 'exptime 0.1',
+                   'exposuremode SINGLE', 'expose 1']:
+            resp = cmd(c)
+            status = 'OK' if 'DONE' in resp else 'FAIL'
+            print(f'  {status}: {c} -> {resp}')
+            if status == 'FAIL':
+                failed = True
+
+        s.close()
+        sys.exit(1 if failed else 0)
+        EOF
+
+        pkill -f 'bin/camerad' || true
+        pkill -f 'bin/emulator' || true
+        sleep 1
+
+    - name: CryoScope FITS playback test
+      run: |
+        cp Config/cryoscope/cryoscope.cfg /tmp/cryoscope_fits_test.cfg
+        echo "EMULATOR_DATADIR=Config/cryoscope" >> /tmp/cryoscope_fits_test.cfg
+
+        bin/emulator /tmp/cryoscope_fits_test.cfg -i generic &
+        sleep 2
+        bin/camerad --foreground --config /tmp/cryoscope_fits_test.cfg &
+        sleep 3
+
+        python3 << 'EOF'
+        import socket, sys
+
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(120)
+        s.connect(('localhost', 3031))
+
+        def cmd(c):
+            s.sendall((c + '\n').encode())
+            data = b''
+            while True:
+                try:
+                    chunk = s.recv(4096)
+                    if not chunk: break
+                    data += chunk
+                    if b'\n' in data: break
+                except socket.timeout:
+                    break
+            return data.decode().strip()
+
+        failed = False
+        for c in ['open', 'load', 'power on', 'mode VIDEORXR', 'exptime 0.1',
+                   'exposuremode SINGLE', 'expose 1']:
+            resp = cmd(c)
+            status = 'OK' if 'DONE' in resp else 'FAIL'
+            print(f'  {status}: {c} -> {resp}')
+            if status == 'FAIL':
+                failed = True
+
+        s.close()
+        sys.exit(1 if failed else 0)
+        EOF
+
+        pkill -f 'bin/camerad' || true
+        pkill -f 'bin/emulator' || true
