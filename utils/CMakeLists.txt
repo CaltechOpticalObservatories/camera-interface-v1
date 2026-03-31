@@ -32,3 +32,11 @@ add_executable(listener
 add_executable(socksend
         ${PROJECT_UTILS_DIR}/sendcmd.cpp
 )
+
+include_directories(${PROJECT_BASE_DIR}/common)
+add_executable(zmqsend
+        ${PROJECT_UTILS_DIR}/zmqsend.cpp
+)
+target_link_libraries(zmqsend
+  zmq
+  )

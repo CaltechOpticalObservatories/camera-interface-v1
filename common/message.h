@@ -24,11 +24,15 @@
 #include <mutex>
 #include <optional>
 #include <iostream>
+#include <chrono>
+#include <ctime>
+#include <sstream>
 
 namespace Message {
 
   /// callback passed to the message handler
-  using AckFunction    = std::function<void(const std::string&)>;
+  using AckFunction    = std::function<void()>;
+
   /// registered message handler
   using MessageHandler = std::function<std::string(const std::string &message, AckFunction send_ack)>;
 
@@ -60,6 +64,32 @@ namespace Message {
     std::snprintf(out, sizeof(out), "%s.%06ld", buf, us.count());
     return std::string(out);
   }
+
+  /***** Message::Packet ******************************************************/
+  /**
+   * @brief      defines a serialized message packet for transmission
+   */
+  struct Packet {
+    std::string id;
+    std::string type;
+    std::string payload;
+
+    NLOHMANN_DEFINE_TYPE_INTRUSIVE(Packet, id, type, payload)
+
+    std::string serialize() const {
+      nlohmann::json msg_out = *this;
+      return msg_out.dump();
+    }
+
+    static std::optional<Packet> deserialize(const std::string &s) {
+      try {
+        auto msg_in = nlohmann::json::parse(s);
+        return msg_in.get<Packet>();
+      }
+      catch (...) { return std::nullopt; }
+    }
+  };
+
 
   /***** Message::Server ******************************************************/
   /**
@@ -203,7 +233,7 @@ namespace Message {
           return;
         }
 
-        AckFunction ack = std::bind(&Server::push_reply, this, routing, messageid, std::placeholders::_1);
+        AckFunction ack = std::bind(&Server::push_reply, this, routing, messageid, Message::MSG_ACK);
 
         // call my message handler function
         // this is an external function that must have been registered
@@ -425,10 +455,13 @@ namespace Message {
           }
           else
           if (is_complete) {
+            if (req.ack_promise.has_value()) {
+              try { req.ack_promise->set_value(reply); } catch (...) {}
+            }
             req.complete_promise.set_value(reply);
             pending.erase(it);
           }
-          else {
+          else if (reply != Message::MSG_ACK) {
             std::cerr << timestamp() << "  (Message::Client::recv_loop) unrecognized reply '"
                                          << reply << "' for id " << id << " ignored\n";
           }

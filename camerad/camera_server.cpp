@@ -209,6 +209,7 @@ namespace Camera {
       }
       else
       if ( cmd == CAMERAD_TEST ) {
+        send_ack();
         ret = interface->test(args, retstring);
       }
       /**

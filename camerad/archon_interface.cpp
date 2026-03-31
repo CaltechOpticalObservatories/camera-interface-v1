@@ -1037,7 +1037,13 @@ namespace Camera {
       retstring.append( " <testname> [ <args> ]\n" );
       retstring.append( "  framestatus   prints Archon frame status to log\n" );
       retstring.append( "  showinfo      prints camera info and friends\n" );
+      retstring.append( "  longwait      just waits\n" );
       return HELP;
+    }
+    else
+    if (testname=="longwait") {
+      std::this_thread::sleep_for(std::chrono::seconds(5));
+      return NO_ERROR;
     }
     else
     if (testname=="framestatus") {
