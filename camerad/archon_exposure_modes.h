@@ -21,7 +21,8 @@ namespace Camera {
     constexpr const char* RAW = "RAW";
     constexpr const char* SINGLE = "SINGLE";
     constexpr const char* RXRV = "RXRV";
-    constexpr const char* ALLMODES[] = {RAW, SINGLE, RXRV};
+    constexpr const char* UTR_RR = "UTR_RR";
+    constexpr const char* ALLMODES[] = {RAW, SINGLE, RXRV, UTR_RR};
   };
 
   /** @struct   ArchonImageBuffer
@@ -78,6 +79,15 @@ namespace Camera {
   };
   /***** Camera::ExposureModeSingle *******************************************/
 
+
+  // UTR with Rolling Reset — behaves like SINGLE for now, multi-sample logic TBD
+  class ExposureModeUtrRR : public ExposureModeSingle {
+    public:
+      ExposureModeUtrRR(Camera::ArchonInterface* iface)
+        : ExposureModeSingle(iface) {
+          type=ArchonExposureMode::UTR_RR;
+        }
+  };
 
   class ExposureModeRXRV : public ArchonImageBuffer, public ExposureModeTemplate<Camera::ArchonInterface> {
     public:

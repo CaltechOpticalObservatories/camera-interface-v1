@@ -595,9 +595,9 @@ namespace Network {
       message.str(""); message << ( revents & POLLHUP  ? "POLLHUP "  : "" )
                                << ( revents & POLLERR  ? "POLLERR "  : "" )
                                << ( revents & POLLNVAL ? "POLLNVAL " : "" )
-                               << "recevied: closing socket " << this->host << "/" << this->port << " on fd " << this->fd;
+                               << "on socket " << this->host << "/" << this->port << " fd " << this->fd;
       logwrite( function, message.str() );
-      this->Close();
+      return -1;
     }
 
     return( ret );

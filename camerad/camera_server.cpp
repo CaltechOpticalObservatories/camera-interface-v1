@@ -126,7 +126,7 @@ namespace Camera {
    * @param[in]  sock  Network::TcpSocket socket object
    *
    */
-  void Server::doit( Network::TcpSocket sock ) {
+  void Server::doit( Network::TcpSocket &sock ) {
     const std::string function("Camera::Server::doit");
     std::stringstream message;
     std::string cmd, args;

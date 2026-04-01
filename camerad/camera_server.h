@@ -42,7 +42,7 @@ namespace Camera {
       void configure_server();
       void exit_cleanly();
       void block_main(std::shared_ptr<Network::TcpSocket> socket);
-      void doit(Network::TcpSocket sock);
+      void doit(Network::TcpSocket &sock);
   };
 }
 

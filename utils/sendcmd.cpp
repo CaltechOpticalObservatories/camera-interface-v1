@@ -1,5 +1,6 @@
 
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/time.h>
@@ -83,6 +84,24 @@ int main(int argc, char *argv[]) {
     std::cerr << "ERROR connecting: " << std::strerror(errno) << "\n";
     close (sock);
     return -errno;
+  }
+
+  // Wait for non-blocking connect to complete
+  struct pollfd pfd = { sock, POLLOUT, 0 };
+  int pret = poll(&pfd, 1, timeout * 1000);
+  if ( pret <= 0 ) {
+    std::cerr << "ERROR connect timeout: " << std::strerror(errno) << "\n";
+    close(sock);
+    return -ETIME;
+  }
+  // Verify the connection actually succeeded
+  int sockerr = 0;
+  socklen_t errlen = sizeof(sockerr);
+  getsockopt(sock, SOL_SOCKET, SO_ERROR, &sockerr, &errlen);
+  if ( sockerr != 0 ) {
+    std::cerr << "ERROR connecting: " << std::strerror(sockerr) << "\n";
+    close(sock);
+    return -sockerr;
   }
 
   message += "\n";

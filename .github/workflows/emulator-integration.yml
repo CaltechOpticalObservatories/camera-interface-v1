@@ -39,7 +39,7 @@ jobs:
         mkdir -p ${{github.workspace}}/build
         cd ${{github.workspace}}/build
         cmake -DCONTROLLER=archon -DINSTR=hispec_tracking_camera -DDETECTOR_TYPE=Hxrg ..
-        make camerad emulator -j$(nproc)
+        make camerad emulator socksend -j$(nproc)
 
     - name: CryoScope synthetic test
       run: |
@@ -48,38 +48,16 @@ jobs:
         bin/camerad --foreground --config Config/cryoscope/cryoscope.cfg &
         sleep 3
 
-        python3 << 'EOF'
-        import socket, sys
+        send() { bin/socksend -p 3031 -t 60 "$1"; }
 
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(120)
-        s.connect(('localhost', 3031))
-
-        def cmd(c):
-            s.sendall((c + '\n').encode())
-            data = b''
-            while True:
-                try:
-                    chunk = s.recv(4096)
-                    if not chunk: break
-                    data += chunk
-                    if b'\n' in data: break
-                except socket.timeout:
-                    break
-            return data.decode().strip()
-
-        failed = False
-        for c in ['open', 'load', 'power on', 'mode VIDEORXR', 'exptime 0.1',
-                   'exposuremode SINGLE', 'expose 1']:
-            resp = cmd(c)
-            status = 'OK' if 'DONE' in resp else 'FAIL'
-            print(f'  {status}: {c} -> {resp}')
-            if status == 'FAIL':
-                failed = True
-
-        s.close()
-        sys.exit(1 if failed else 0)
-        EOF
+        send "open"
+        send "load"
+        send "power on"
+        send "mode VIDEORXR"
+        send "exptime 0.1"
+        resp=$(send "expose 1")
+        echo "expose -> $resp"
+        echo "$resp" | grep -q "DONE" || exit 1
 
         pkill -f 'bin/camerad' || true
         pkill -f 'bin/emulator' || true
@@ -95,38 +73,16 @@ jobs:
         bin/camerad --foreground --config /tmp/cryoscope_fits_test.cfg &
         sleep 3
 
-        python3 << 'EOF'
-        import socket, sys
+        send() { bin/socksend -p 3031 -t 60 "$1"; }
 
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(120)
-        s.connect(('localhost', 3031))
-
-        def cmd(c):
-            s.sendall((c + '\n').encode())
-            data = b''
-            while True:
-                try:
-                    chunk = s.recv(4096)
-                    if not chunk: break
-                    data += chunk
-                    if b'\n' in data: break
-                except socket.timeout:
-                    break
-            return data.decode().strip()
-
-        failed = False
-        for c in ['open', 'load', 'power on', 'mode VIDEORXR', 'exptime 0.1',
-                   'exposuremode SINGLE', 'expose 1']:
-            resp = cmd(c)
-            status = 'OK' if 'DONE' in resp else 'FAIL'
-            print(f'  {status}: {c} -> {resp}')
-            if status == 'FAIL':
-                failed = True
-
-        s.close()
-        sys.exit(1 if failed else 0)
-        EOF
+        send "open"
+        send "load"
+        send "power on"
+        send "mode VIDEORXR"
+        send "exptime 0.1"
+        resp=$(send "expose 1")
+        echo "expose -> $resp"
+        echo "$resp" | grep -q "DONE" || exit 1
 
         pkill -f 'bin/camerad' || true
         pkill -f 'bin/emulator' || true
