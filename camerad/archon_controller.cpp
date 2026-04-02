@@ -1958,7 +1958,7 @@ namespace Camera {
       while ( this->archon.Bytes_ready() < (BLOCK_LEN+4) ) {
         auto now = std::chrono::steady_clock::now();             // check the time again
         std::chrono::duration<double> diff = now-start;          // calculate the duration
-        if (diff.count() > 1) {                                  // break while loop if duration > 1 second
+        if (diff.count() > 5) {                                   // break while loop if duration > 5 seconds
           logwrite(function, "timeout waiting for data from Archon");
           error = ERROR;
           break;                       // breaks out of while loop
