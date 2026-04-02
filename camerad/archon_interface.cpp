@@ -854,6 +854,17 @@ namespace Camera {
       return ERROR;
     }
 
+    std::stringstream msg;
+    msg << "detector=" << info->detector_pixels[0] << "x" << info->detector_pixels[1]
+        << " image_memory=" << info->image_memory
+        << " image_data_bytes=" << info->image_data_bytes
+        << " num_detect=" << mode->geometry.num_detect
+        << " amps=" << mode->geometry.amps[0] << "x" << mode->geometry.amps[1]
+        << " pixelcount=" << mode->geometry.pixelcount
+        << " linecount=" << mode->geometry.linecount
+        << " samplemode=" << mode->samplemode;
+    logwrite(function, msg.str());
+
     return NO_ERROR;
   }
   /***** Camera::ArchonInterface::set_image_geometry **************************/

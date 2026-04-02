@@ -107,7 +107,7 @@ namespace Camera {
         const std::string function("Camera::Information::set_axes");
         std::ostringstream oss;
 
-        uint8_t bytes_per_pixel = bits_per_pixel / 2;
+        uint8_t bytes_per_pixel = bits_per_pixel / 8;
 
         uint32_t cols = this->region_of_interest[1]
                       - this->region_of_interest[0]
