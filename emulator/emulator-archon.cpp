@@ -451,33 +451,44 @@ namespace Archon {
     std::cout << get_timestamp() << function << "sending " << std::dec << reqblocks
               << " blocks (" << data_size << " bytes available) from buffer " << bufidx+1 << "\n";
 
+    // Disable Nagle's algorithm for low-latency block transfer
+    int flag = 1;
+    setsockopt(sock.getfd(), IPPROTO_TCP, TCP_NODELAY, &flag, sizeof(flag));
+
     std::string header = "<" + ref + ":";
+    size_t header_len = header.size();
+    size_t block_with_header = header_len + BLOCKLEN;
     int totalbyteswritten = 0;
     size_t data_offset = 0;
 
+    // Assemble header + one block into a single buffer per write
+    std::vector<char> sendbuf(block_with_header);
+    std::memcpy(sendbuf.data(), header.data(), header_len);
+
     for ( unsigned int block = 0; block < reqblocks; block++ ) {
-      sock.Write(header);
-      size_t byteswritten = 0;
-      while ( byteswritten < BLOCKLEN ) {
-        size_t towrite = BLOCKLEN - byteswritten;
-        const char* src;
-        // Serve from frame data, or zero-pad if request exceeds buffer
+      size_t block_filled = 0;
+      while ( block_filled < BLOCKLEN ) {
+        size_t remaining = BLOCKLEN - block_filled;
         if ( data_offset < data_size ) {
-          src = data.data() + data_offset;
-          towrite = std::min(towrite, data_size - data_offset);
+          size_t avail = std::min(remaining, data_size - data_offset);
+          std::memcpy(sendbuf.data() + header_len + block_filled, data.data() + data_offset, avail);
+          data_offset += avail;
+          block_filled += avail;
         }
         else {
-          static const char zeros[BLOCKLEN] = {};
-          src = zeros;
+          std::memset(sendbuf.data() + header_len + block_filled, 0, remaining);
+          block_filled = BLOCKLEN;
         }
-        int retval = sock.Write(src, towrite);
-        if ( retval > 0 ) {
-          byteswritten += retval;
-          totalbyteswritten += retval;
-          data_offset += retval;
-        }
+      }
+
+      // Write header + block in one syscall
+      size_t written = 0;
+      while ( written < block_with_header ) {
+        int retval = sock.Write(sendbuf.data() + written, block_with_header - written);
+        if ( retval > 0 ) written += retval;
         else break;
       }
+      totalbyteswritten += BLOCKLEN;
     }
     std::cout << get_timestamp() << function << "wrote " << std::dec << totalbyteswritten << " bytes\n";
 
