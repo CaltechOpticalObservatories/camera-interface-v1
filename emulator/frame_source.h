@@ -57,22 +57,22 @@ namespace Emulator {
                          active_mode->find("RXR") != std::string::npos;
 
         if (rxr_mode && taplines > 0) {
-          // RXR: each tap has signal pixels then reset pixels
-          // Signal half: higher bias (10000), reset half: lower bias (5000)
-          // Correlated noise: same noise added to both halves so subtraction cancels it
+          // RXR: each tap has signal pixels (first half) then reset pixels (second half)
+          // Generate correlated noise per pixel pair so CDS subtraction cancels it,
+          // leaving bias difference (10000 - 5000 = 5000) + small readout noise
           int pixels_per_tap = width / taplines;
           int half = pixels_per_tap / 2;
 
           for (int row = 0; row < height; row++) {
             for (int tap = 0; tap < taplines; tap++) {
               int tap_offset = row * width + tap * pixels_per_tap;
-              for (int col = 0; col < pixels_per_tap; col++) {
+              // Generate noise once per pixel pair, apply to both signal and reset
+              for (int col = 0; col < half; col++) {
                 double common_noise = noise(rng);
-                double readout_noise = noise(rng) * 0.3;  // uncorrelated readout noise
-                bool is_signal = (col < half);
-                double base = is_signal ? 10000.0 : 5000.0;
-                double val = base + common_noise + readout_noise;
-                pixels[tap_offset + col] = static_cast<uint16_t>(std::clamp(val, 0.0, 65535.0));
+                double sig_val = 10000.0 + common_noise + noise(rng) * 0.3;
+                double res_val =  5000.0 + common_noise + noise(rng) * 0.3;
+                pixels[tap_offset + col]        = static_cast<uint16_t>(std::clamp(sig_val, 0.0, 65535.0));
+                pixels[tap_offset + col + half] = static_cast<uint16_t>(std::clamp(res_val, 0.0, 65535.0));
               }
             }
           }
