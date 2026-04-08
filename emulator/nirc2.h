@@ -103,7 +103,7 @@ namespace Archon {
        * @param[in]  value  value
        *
        */
-      void set_config_parameter( const std::string &key, const std::string &val ) {
+      void set_config_parameter( const std::string &key, const std::string &val ) override {
         ImageInfoBase::set_config_parameter( key, val ); // Call base class method for common parameters
         if ( key == "PIXEL_TIME" )        { this->pixel_time = std::stod( val );        }
         else
@@ -145,7 +145,7 @@ namespace Archon {
       }
       /***** Nirc2Image::get_readouttime **************************************/
 
-      inline int get_frames_per_exposure() { return numsamples * ( iscds ? 2 : 1 ); }
+      int get_frames_per_exposure() const override { return numsamples * ( iscds ? 2 : 1 ); }
   };
   /***** Archon::Nirc2Image ***************************************************/
 }

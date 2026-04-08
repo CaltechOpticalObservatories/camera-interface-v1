@@ -102,7 +102,7 @@ namespace Camera {
 
             // loop through the entries in the configuration file, stored in config class
             //
-            for (int entry = 0; entry < this->config.n_entries; entry++) {
+            for (int entry = 0; entry < this->config.n_rows; entry++) {
                 // NBPORT
                 if (config.param[entry].compare(0, 6, "NBPORT") == 0) {
                     int port;

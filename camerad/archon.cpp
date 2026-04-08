@@ -472,7 +472,7 @@ namespace Archon {
 
     // loop through the entries in the configuration file, stored in config class
     //
-    for (int entry=0; entry < this->config.n_entries; entry++) {
+    for (int entry=0; entry < this->config.n_rows; entry++) {
 
       // ARCHON_IP is used to set the Archon host name in the Network::TcpSocket archon object
       //

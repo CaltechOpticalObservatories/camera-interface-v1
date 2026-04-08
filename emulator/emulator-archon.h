@@ -17,13 +17,13 @@
 
 #include "utilities.h"
 #include "common.h"
-#include "camera.h"
 #include "config.h"
 #include "logentry.h"
 #include "network.h"
 
 #include "generic.h"
 #include "nirc2.h"
+#include "frame_source.h"
 
 namespace Archon {
 
@@ -40,7 +40,6 @@ namespace Archon {
       std::string instr;
       std::atomic<bool> abort{false};
       std::atomic<bool> exposing{false};
-      unsigned long int start_timer, finish_timer;  //!< Archon internal timer, start and end of exposure
 
       // Declare a map to contain image types for each recognized instrument.
       //
@@ -51,6 +50,7 @@ namespace Archon {
     public:
 
       std::unique_ptr<ImageInfoBase> image;   ///!< smart pointer to the base class
+      std::unique_ptr<Emulator::FrameSource> frame_source;
 
       Interface( const std::string &instr );
 
@@ -63,7 +63,9 @@ namespace Archon {
       unsigned long long init_time;
       bool poweron;                //!< is the power on?
       bool bigbuf;                 //!< is BIGBUF==1 in ACF file?
-      std::string exposeparam;               //!< param name to trigger exposure when set =1
+      std::string exposeparam;     //!< param name to trigger exposure when set =1
+
+      std::string active_mode;    //!< currently active mode detected from ACF parameters
 
       struct image_t {
         uint32_t framen;
@@ -114,6 +116,7 @@ namespace Archon {
         std::vector<uint64_t> buftimestamp;   // buffer hex 64 bit timestamp
         std::vector<uint64_t> bufretimestamp; // buf trigger rising edge time stamp
         std::vector<uint64_t> buffetimestamp; // buf trigger falling edge time stamp
+        std::vector<std::vector<char>> bufdata;  // pixel data per buffer
       } frame;
 
       // Functions

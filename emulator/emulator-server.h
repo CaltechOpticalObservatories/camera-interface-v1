@@ -72,18 +72,18 @@ namespace Emulator {
         int applied=0;
         long error;
 
-        // loop through the entries in the configuration file, stored in config class
+        // loop through the rows in the configuration file, stored in config class
         //
-        for (int entry=0; entry < this->config.n_entries; entry++) {
+        for (int row=0; row < this->config.n_rows; row++) {
 
-          if ( config.param[entry] == "INSTRUMENT" ) {
+          if ( config.param[row] == "INSTRUMENT" ) {
           }
 
           // EMULATOR_PORT
-          if (config.param[entry].compare(0, 13, "EMULATOR_PORT")==0) {
+          if (config.param[row].compare(0, 13, "EMULATOR_PORT")==0) {
             int port;
             try {
-              port = std::stoi( config.arg[entry] );
+              port = std::stoi( config.arg[row] );
             }
             catch (std::invalid_argument &) {
               std::cerr << function << "ERROR: bad EMULATOR_PORT: unable to convert to integer\n";
@@ -98,10 +98,10 @@ namespace Emulator {
           }
 
           // NBPORT
-          if (config.param[entry].compare(0, 6, "NBPORT")==0) {
+          if (config.param[row].compare(0, 6, "NBPORT")==0) {
             int port;
             try {
-              port = std::stoi( config.arg[entry] );
+              port = std::stoi( config.arg[row] );
             }
             catch (std::invalid_argument &) {
               std::cerr << function << "ERROR: bad NBPORT: unable to convert to integer\n";
@@ -116,10 +116,10 @@ namespace Emulator {
           }
 
           // BLKPORT
-          if (config.param[entry].compare(0, 7, "BLKPORT")==0) {
+          if (config.param[row].compare(0, 7, "BLKPORT")==0) {
             int port;
             try {
-              port = std::stoi( config.arg[entry] );
+              port = std::stoi( config.arg[row] );
             }
             catch (std::invalid_argument &) {
               std::cerr << function << "ERROR: bad BLKPORT: unable to convert to integer\n";
@@ -133,7 +133,7 @@ namespace Emulator {
             applied++;
           }
 
-        } // end loop through the entries in the configuration file
+        } // end loop through the rows in the configuration file
 
         message.str("");
         if (applied==0) {

@@ -106,15 +106,18 @@ int main(int argc, char **argv) {
         server.exit_cleanly();
     }
 
-    if (server.config.read_config(server.config) != NO_ERROR) {
-        // read configuration file specified on command line
-        logwrite(function, "ERROR: unable to configure system");
-        server.exit_cleanly();
+    try {
+      // read configuration file specified on command line
+      server.config.read_config();
+    }
+    catch (const std::exception &e) {
+      logwrite(function, "ERROR configuring system: "+std::string(e.what()));
+      server.exit_cleanly();
     }
 
     // camerad would like a few configuration keys before the daemon starts up
     //
-    for (int entry = 0; entry < server.config.n_entries; entry++) {
+    for (int entry = 0; entry < server.config.n_rows; entry++) {
         if (server.config.param[entry] == "LOGPATH") log_path = server.config.arg[entry]; // where to write log files
 
         if (server.config.param[entry] == "LOGSTDERR") {
@@ -209,7 +212,7 @@ int main(int argc, char **argv) {
     server.systemkeys.addkey(message.str());
 
     message.str("");
-    message << server.config.n_entries << " lines read from " << server.config.filename;
+    message << server.config.n_rows << " lines read from " << server.config.filename;
     logwrite(function, message.str());
 
     if (ret == NO_ERROR) ret = server.configure_server();
