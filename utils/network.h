@@ -32,6 +32,9 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
+// for TCP_NODELAY
+#include <netinet/tcp.h>
+
 namespace Network {
 
   constexpr const int POLLTIMEOUT = 60000;      /// default Poll timeout in msec

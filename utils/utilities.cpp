@@ -56,6 +56,51 @@ char *getCmdOption(char **begin, char **end, const std::string &option) {
 /***** getCmdOption *********************************************************/
 
 
+/***** getOptionArg *********************************************************/
+/**
+ * @brief      returns command line argument for specified command line option
+ * @details    Give it argv, argc and an option and it will return the argument
+ *             associated with that option, or empty string if no argument.
+ * @param[in]  argc    argc as passed to main()
+ * @param[in]  argv    argv as passed to main()
+ * @param[in]  option  option to search for
+ * @return     string  argument associated with option
+ *
+ */
+std::string getOptionArg(int argc, char** argv, const std::string &option) {
+  char** begin=argv;
+  char** end  =argv+argc;
+  auto is_option = [option](const char* arg) {return std::string(arg)==option;};
+  char** found = std::find_if(begin, end, is_option);
+  // if option found and if there is an argument then return that argument
+  if (found != end && ++found != end) {
+    return std::string(*found);
+  }
+  else return "";
+}
+/***** getCmdOption *********************************************************/
+
+
+/***** hasOption ************************************************************/
+/**
+ * @brief      check for presence of a command line option
+ * @details    Give it argv, argc and an option and it will return true|false
+ *             if that option is present.
+ * @param[in]  argc    argc as passed to main()
+ * @param[in]  argv    argv as passed to main()
+ * @param[in]  option  option to search for
+ * @return     true|false
+ *
+ */
+bool hasOption(int argc, char** argv, const std::string &option) {
+  char** begin=argv;
+  char** end  =argv+argc;
+  auto is_option = [option](const char* arg) {return std::string(arg)==option;};
+  if (std::find_if(begin, end, is_option) != end) return true; else return false;
+}
+/***** hasOption ************************************************************/
+
+
 /***** my_hardware_concurrency **********************************************/
 /**
  * @brief      return number of concurrent threads supported by the implementation
