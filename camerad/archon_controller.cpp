@@ -1855,8 +1855,6 @@ namespace Camera {
     int num_detect = this->modemap[this->selectedmode].geometry.num_detect;
     auto index = this->frameinfo.index.load();
 
-    logwrite(function, "");
-
     this->frametype = type;
 
     // Archon buffer number of the last frame read into memory

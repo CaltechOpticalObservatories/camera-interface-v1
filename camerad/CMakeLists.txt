@@ -50,6 +50,7 @@ elseif (CONTROLLER STREQUAL "archon")
       ${CAMERAD_DIR}/archon_interface.cpp
       ${CAMERAD_DIR}/archon_controller.cpp
       ${CAMERAD_DIR}/archon_exposure_modes.cpp
+      ${CAMERAD_DIR}/archon_exposure_modes_rxrv.cpp
       )
 # ----------------------------------------------------------------------------
 # AstroCam ARC-64/66 PCI/e

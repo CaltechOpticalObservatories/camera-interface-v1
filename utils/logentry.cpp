@@ -198,7 +198,7 @@ void close_log() {
  * log filestream isn't open.
  *
  */
-void logwrite(const std::string &function, const std::string &message) {
+void logwrite(std::string_view function, std::string_view message) {
     std::stringstream logmsg;
     std::string timestamp = get_timestamp(tmzone_log); // get the current time (defined in utilities.h)
     logmsg << timestamp << "  (" << function << ") " << message << "\n";

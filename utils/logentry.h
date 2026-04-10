@@ -25,6 +25,6 @@ long init_log(std::string name, std::string logpath, std::string logstderr, std:
 
 /// initialize the logging system
 void close_log(); /// close the log file stream
-void logwrite(const std::string &function, const std::string &message);
+void logwrite(std::string_view function, std::string_view message);
 
 /// create a time-stamped log entry "message" from "function"

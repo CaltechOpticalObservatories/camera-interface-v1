@@ -22,11 +22,11 @@ int main( int argc, char** argv ) {
   // immediately daemonize.
   //
   if (!hasOption(argc, argv, "--foreground")) {
-    logwrite(function, "starting daemon");
+    std::cerr << get_timestamp() << " (" << function << ") starting daemon" << std::endl;;
     Daemon::daemonize( "camerad", "/tmp", "/dev/null", "/tmp/camerad.stderr", "", false );
     std::cerr << get_timestamp() << "  (" << function << ") daemonized. child process running" << std::endl;
   }
-  else logwrite(function, "starting");
+  else std::cerr << get_timestamp() << "  (" << function << ") starting" << std::endl;
 
   // the child process instantiates a Server object
   //
@@ -37,13 +37,21 @@ int main( int argc, char** argv ) {
   auto filename = getOptionArg(argc, argv, "--config");
 
   if (filename.empty()) {
-    logwrite(function, "ERROR --config <filename> is required");
+    std::cerr << get_timestamp() << "  (" << function << ") ERROR --config <filename> is required" << std::endl;
     exit(1);
   }
   camerad.interface->configfile.filename = filename;
 
   try {
     camerad.interface->configfile.read_config();
+    // initialize the logging system
+    if ( ( init_log("camerad",
+                    camerad.interface->configfile.required("LOGPATH"),
+                    camerad.interface->configfile.optional("STDERR"),
+                    camerad.interface->configfile.required("TM_ZONE_LOG")) != 0 ) ) {
+      std::cerr << get_timestamp() << " (" << function << ") ERROR unable to initialize logging system" << std::endl;
+      exit(1);
+    }
     camerad.configure_server();
     camerad.interface->configure_controller();
     camerad.interface->configure_interface();

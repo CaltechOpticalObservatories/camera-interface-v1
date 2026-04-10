@@ -411,10 +411,11 @@ namespace Camera {
       logwrite(function, "ERROR not connected to controller");
       return ERROR;
     }
-    if (!this->controller->is_powered) {
-      logwrite(function, "ERROR power is not on");
-      return ERROR;
-    }
+// there might be cases when this could be useful
+//  if (!this->controller->is_powered) {
+//    logwrite(function, "ERROR power is not on");
+//    return ERROR;
+//  }
     if (!this->is_exposuremode_set()) {
       logwrite(function, "ERROR exposure mode not set!");
       return ERROR;
@@ -549,14 +550,16 @@ namespace Camera {
       this->exposuremode = std::make_shared<ExposureModeSingle>(this);
     }
     else
-    if (caseCompareString(modein, ArchonExposureMode::RXRV)) {
-      this->exposuremode = std::make_shared<ExposureModeRXRV>(this);
+    if (caseCompareString(modein, ArchonExposureMode::VIDEORXR)) {
+      this->exposuremode = std::make_shared<ExposureMode_VIDEORXR>(this, modeargs);
+      this->set_camera_mode(ArchonExposureMode::VIDEORXR);
     }
     else {
       logwrite("Camera::ArchonInterface::set_exposure_mode",
-               "ERROR unrecognized exposure mode \""+modein+"\"");
+               "ERROR unrecognized exposure mode '"+modein+"'");
       return ERROR;
     }
+
     return NO_ERROR;
   }
   /***** Camera::ArchonInterface::set_exposure_mode ***************************/

@@ -16,15 +16,11 @@ namespace Camera {
   class DeInterlacer {
     public:
       virtual ~DeInterlacer() = default;
-      virtual void deinterlace(char* in, char* out) {
-        throw std::runtime_error("deinterlace(char*, char*) not supported");
-      }
-      virtual void deinterlace(char* in, uint16_t* out) {
-        throw std::runtime_error("deinterlace(char*, uint16_t*) not supported");
-      }
-      virtual void deinterlace(char* in, uint16_t* out1, uint16_t* out2) {
-        throw std::runtime_error("deinterlace(char*, uint16_t*, uint16_t*) not supported");
-      }
+      virtual void deinterlace(uint32_t* in,
+                               uint32_t* sig,
+                               uint32_t* res,
+                               long cols,
+                               long rows) = 0;
   };
 
   class Subtractor {
@@ -67,8 +63,12 @@ namespace Camera {
           _coadder(std::move(c)) { }
 
       DeInterlacer* deinterlacer() const { return _deinterlacer.get(); }
-      Subtractor* subtractor() const { return _subtractor.get(); }
-      Coadder* coadder() const { return _coadder.get(); }
+      Subtractor*   subtractor()   const { return _subtractor.get(); }
+      Coadder*      coadder()      const { return _coadder.get(); }
+
+      bool has_deinterlacer() const { return (bool)_deinterlacer; }
+      bool has_subtractor()   const { return (bool)_subtractor; }
+      bool has_coadder()      const { return (bool)_coadder; }
   };
 
   /**

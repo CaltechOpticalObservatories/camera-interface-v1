@@ -15,7 +15,7 @@ namespace Camera {
    *
    */
   long ExposureModeSingle::expose() {
-    const std::string function("Camera::ExposureModeSingle::expose");
+    std::string_view function("Camera::ExposureModeSingle::expose");
     logwrite(function, "hi");
     return NO_ERROR;
   }
@@ -29,7 +29,7 @@ namespace Camera {
    *
    */
   void ExposureModeSingle::image_acquisition_thread() {
-    const std::string function("Camera::ExposureModeSingle::image_acquisition_thread");
+    std::string_view function("Camera::ExposureModeSingle::image_acquisition_thread");
     char message[256];
 
     logwrite(function, "");
@@ -115,7 +115,7 @@ namespace Camera {
    *
    */
   void ExposureModeSingle::image_processing_thread() {
-    const std::string function("Camera::ExposureModeSingle::image_processing_thread");
+    std::string_view function("Camera::ExposureModeSingle::image_processing_thread");
     logwrite(function, "enter");
 
 //  open FITS file ?
@@ -174,65 +174,5 @@ namespace Camera {
     return 0;
   }
   /***** Camera::ExposureModeRaw::expose *************************************/
-
-
-  /***** Camera::ExposureModeRXRV ********************************************/
-  /**
-   * @brief  implementation of Archon-specific expose for RXR-Video
-   *
-   */
-  long ExposureModeRXRV::expose() {
-    const std::string function("Camera::ExposureModeRXRV::expose");
-
-    size_t sz=100;
-
-    // Two each of signal and reset buffers, current and previous, since
-    // we need to pair the reset from the previous frame with signal from
-    // the current frame. These will hold deinterlaced frames.
-    //
-    std::vector<std::vector<uint16_t>> sigbuf(2, std::vector<uint16_t>(sz));
-    std::vector<std::vector<uint16_t>> resbuf(2, std::vector<uint16_t>(sz));
-
-    // allocate memory for frame buffer read from Archon
-    interface->allocate_framebuf(sz);
-
-    // create an appropriate deinterlacer object
-    try { processor = make_image_processor("rxrv");
-    }
-    catch(const std::exception &e) {
-      logwrite(function, "ERROR: "+std::string(e.what()));
-      return ERROR;
-    }
-
-    // read first frame pair into my frame buffer
-    char* buffer=new char[1024]{};  // TODO temporary, for compilation only
-    this->interface->controller->read_frame(ArchonController::FRAME_IMAGE, buffer);
-
-    // process (deinterlace) first frame pair
-    processor->deinterlacer()->deinterlace(interface->get_framebuf(), sigbuf[0].data(), resbuf[0].data());
-
-    // sample calls to other processor functions
-    uint16_t a, b;
-    int16_t c;
-    processor->subtractor()->subtract(&a, &b, &c);
-    processor->coadder()->coadd(&a, &b);
-
-    // show contents
-    std::stringstream message;
-    message << "sig:";
-    for (int i=0; i<10; i++) message << " " << sigbuf[0][i];
-    logwrite(function, message.str());
-    message.str(""); message << "res:";
-    for (int i=0; i<10; i++) message << " " << resbuf[0][i];
-    logwrite(function, message.str());
-
-    // loop:
-    // subsequent frame pairs, read, deinterlace, write
-
-    delete [] buffer;
-
-    return NO_ERROR;
-  }
-  /***** Camera::ExposureModeRXRV ********************************************/
 
 }

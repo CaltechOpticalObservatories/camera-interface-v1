@@ -10,6 +10,7 @@
 
 #include <fstream>
 #include <vector>
+#include <map>
 #include "utilities.h"  // for rtrim
 
 /***** Config ***************************************************************/
@@ -30,6 +31,39 @@ class Config {
     int n_rows;
     std::vector<std::string> param;
     std::vector<std::string> arg;
+    std::map<std::string, std::string> configmap;
+
+
+    /***** Config::get ******************************************************/
+    /**
+     * @brief      return configuration value for provided key
+     * @details    When is_required is true then this will throw an
+     *             exception if the key is not found. When false, silently
+     *             return an empty string.
+     * @param[in]  key          configuration key
+     * @param[in]  is_required  true|false must I return a value?
+     * @return     value  configuration value
+     * @throws     runtime_error
+     *
+     */
+    std::string get(const std::string &key, bool is_required=false) {
+      if (configmap.find(key) != configmap.end()) {
+        return configmap.at(key);
+      }
+      if (is_required) {
+        throw std::runtime_error("'"+key+"' not in configuration");
+      }
+      else return "";
+    }
+    /***** Config::get ******************************************************/
+
+    /** @brief calls Config::get() with is_requred=true
+     */
+    std::string required(const std::string &key) { return get(key, true);  }
+
+    /** @brief calls Config::get() with is_requred=false
+     */
+    std::string optional(const std::string &key) { return get(key, false); }
 
 
     /***** Config::read_config **********************************************/
@@ -66,6 +100,7 @@ class Config {
       //
       this->param.clear();
       this->arg.clear();
+      this->configmap.clear();
 
       // Read the config file
       //
@@ -73,6 +108,8 @@ class Config {
         // setting the fail bit above requires catching exceptions here
         while (getline(filestream, line)) {
           // Get a line from the file as long as they are available
+
+          std::string key="", value="";
 
           if (line.length() > 2) {
             // valid line is at least 3 characters, ie. X=Y
@@ -88,6 +125,8 @@ class Config {
               rtrim(line); // remove trailing whitespace
               index1 = line.find_first_of("="); // Find the = delimiter in the line
               this->param.push_back(line.substr(0, index1));
+              key = line.substr(0, index1);
+
               // Put the variable name into the vector holding the names
 
               // Look for configuration parameters in a vector format (i.e. surrounded by parentheses).
@@ -104,6 +143,7 @@ class Config {
                     //
                     index2 = line.find_first_of("\t\0");
                     this->arg.push_back(line.substr(index1 + 1, index2 - index1));
+                    value = line.substr(index1 + 1, index2 - index1);
                   }
 
                   // There is a comment, get the index and put the value (note the
@@ -112,6 +152,7 @@ class Config {
                   else {
                     index2 = line.find_first_of(" \t#");
                     this->arg.push_back(line.substr(index1 + 1, index2 - index1 - 1));
+                    value = line.substr(index1 + 1, index2 - index1 - 1);
                   }
                 }
 
@@ -122,6 +163,7 @@ class Config {
                   index1 = line.find_first_of("\"") + 1;
                   index2 = line.find_last_of("\"");
                   this->arg.push_back(line.substr(index1, index2 - index1));
+                  value = line.substr(index1, index2 - index1);
                 }
               }
 
@@ -131,8 +173,12 @@ class Config {
                 index1 = line.find_first_of("(") + 1;
                 index2 = line.find_last_of(")");
                 this->arg.push_back(line.substr(index1, index2 - index1));
+                value = line.substr(index1, index2 - index1);
               }
             }
+
+            configmap[key] = value;
+
           } else continue; // For lines of less than 2 characters, we just loop to the next line
 
           linesread++; // Increment the number of values read successfully

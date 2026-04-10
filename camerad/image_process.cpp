@@ -16,7 +16,11 @@ namespace Camera {
    */
   class DeInterlace_None : public DeInterlacer {
     public:
-      void deinterlace(char* bufin, uint16_t* bufout) {
+      void deinterlace(uint32_t* in,
+                       uint32_t* sig,
+                       uint32_t* res,
+                       long cols,
+                       long rows) {
         const std::string function("Camera::DeInterlace_None::deinterlace");
         logwrite(function, "here");
       }
@@ -24,30 +28,44 @@ namespace Camera {
   /***** Camera::DeInterlace_None *********************************************/
 
 
-  /***** Camera::DeInterlace_RXRV *********************************************/
+  /***** Camera::DeInterlace_VIDEORXR *****************************************/
   /**
-   * @brief      specialization for deinterlacing RXRV
+   * @brief      specialization for deinterlacing VIDEORXR
    * @param[in]  imgbuf  pointer to input buffer
    * @param[out] sigbuf  pointer to deinterlaced signal frame from imgbuf
    * @param[out] resbuf  pointer to deinterlaced reset frame from imgbuf
    */
-  class DeInterlace_RXRV : public DeInterlacer {
+  class DeInterlace_VIDEORXR : public DeInterlacer {
     public:
-      void deinterlace(char* imgbuf, uint16_t* sigbuf, uint16_t* resbuf) {
-        const std::string function("Camera::DeInterlace_RXRV::deinterlace");
-        logwrite(function, "here");
-        std::stringstream message;
-        message << "contents:";
-        for (int i=0; i<10; i++) {
-          message << " " << i;
-          // modify contents of output buffers
-          sigbuf[i]=i;
-          resbuf[i]=100-i;
+      void deinterlace(uint32_t* in,
+                       uint32_t* sig,
+                       uint32_t* res,
+                       long cols,
+                       long rows) {
+
+        const long bufw = cols * 2;  // interleaved reset/read
+
+        for (long r = 0; r < rows; ++r) {
+          uint32_t* row_in  = in  + r * bufw;
+          uint32_t* row_sig = sig + r * cols;
+          uint32_t* row_res = res + r * cols;
+
+          for (long c = 0; c < cols; c += 64) {
+
+            // read (sig) frame
+            std::memcpy(row_sig + c,
+                        row_in + (c*2),
+                        64 * sizeof(uint32_t));
+
+            // reset (res) frame
+            std::memcpy(row_res + c,
+                        row_in + (c*2)+64,
+                        64 * sizeof(uint32_t));
+          }
         }
-        logwrite(function, message.str());
       }
   };
-  /***** Camera::DeInterlace_RXRV *********************************************/
+  /***** Camera::DeInterlace_VIDEORXR *****************************************/
 
 
   class SubtractSimple : public Subtractor {
@@ -96,7 +114,7 @@ namespace Camera {
     else
     if (mode=="rxrv") {
       return std::make_unique<ImageProcessor>(
-          std::make_unique<DeInterlace_RXRV>(),
+          std::make_unique<DeInterlace_VIDEORXR>(),
           std::make_unique<SubtractSimple>(),
           std::make_unique<CoaddAdd>()
           );
