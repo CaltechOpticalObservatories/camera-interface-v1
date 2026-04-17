@@ -1,3 +1,9 @@
 [submodule "camerad/Instruments/hispec_tracking_camera"]
 	path = camerad/Instruments/hispec_tracking_camera
-	url = git@github.com:CaltechOpticalObservatories/hispec-tracking-camera-instrument.git
+	url = https://github.com/CaltechOpticalObservatories/hispec-tracking-camera-instrument.git
+[submodule "camerad/Instruments/cryoscope"]
+	path = camerad/Instruments/cryoscope
+	url = https://github.com/CaltechOpticalObservatories/cryoscope-instrument.git
+[submodule "camerad/Instruments/hispec"]
+	path = camerad/Instruments/hispec
+	url = https://github.com/CaltechOpticalObservatories/hispec-instrument.git
