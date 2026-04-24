@@ -139,6 +139,21 @@ namespace Archon {
       }
     }
 
+    // The FCS output FITS file is a single flat image holding all CCDs
+    // side-by-side (along axis 1) at their full row count. set_camera_mode()
+    // set axes[0] to the per-CCD column count, so widen it here to cover all
+    // CCDs before opening the FITS file, and update section_size to match.
+    // num_detect is defined by the mode geometry (nominally 2 for FCS).
+    {
+      const int num_detect = this->modemap[this->camera_info.current_observing_mode].geometry.num_detect;
+      if (num_detect <= 0) {
+        camera.log_error(function, "invalid num_detect for FCS mode");
+        return ERROR;
+      }
+      this->camera_info.axes[0]     = this->camera_info.axes[0] * num_detect;
+      this->camera_info.section_size = this->camera_info.axes[0] * this->camera_info.axes[1];
+    }
+
     this->clear_abortstate();
 
     // get system time and Archon's timer after exposure starts,
@@ -491,6 +506,21 @@ namespace Archon {
   /***** Archon::Interface::sci_readout ***************************************/
 
 
+  /***** Archon::Interface::write_fcs *****************************************/
+  /**
+   * @brief      deinterlace the Archon FCS buffer and write it as a flat FITS
+   * @details    The raw Archon buffer contains num_detect CCDs laid out
+   *             side-by-side along rows (each CCD occupies a contiguous slab
+   *             of columns of width per_ccd_cols, for every row). The output
+   *             FITS image is a single flat image of the same dimensions as
+   *             the raw buffer (num_rows x (per_ccd_cols * num_detect)), with
+   *             pixels converted from uint32 to float and scaled by 1/65536.
+   *             Row count comes from camera_info.axes[1], so a future
+   *             band-of-interest mode that delivers fewer rows will flow
+   *             through without changes here.
+   * @return     ERROR | NO_ERROR
+   *
+   */
   long Interface::write_fcs() {
     const std::string function("Archon::Interface::write_fcs");
     long error=NO_ERROR;
@@ -501,53 +531,66 @@ namespace Archon {
       return ERROR;
     }
 
-/***
-    float *fbuf = nullptr;
-    fbuf = new float[this->camera_info.section_size];
-    for (long pix=0; pix < this->camera_info.section_size; pix++) {
-      fbuf[pix] = (float)(cbuf32[pix]/65536.0);
-    }
+    const int num_detect = this->modemap[this->camera_info.current_observing_mode].geometry.num_detect;
+    const long num_cols  = this->camera_info.axes[0];  // full output width (all CCDs side-by-side)
+    const long num_rows  = this->camera_info.axes[1];  // rows per CCD
 
-    error = this->fits_file.write_image(fbuf, this->camera_info);
-
-    if (error != NO_ERROR) {
-      camera.log_error(function, "writing image to disk");
-    }
-
-    delete [] fbuf;
- ***/
-
-    int num_detect = this->modemap[this->camera_info.current_observing_mode].geometry.num_detect;
-    int num_cols   = this->camera_info.axes[0];
-    int num_rows   = this->camera_info.axes[1];
-    long buf_width = num_cols * num_detect/2;
-
-    if (num_rows==0 || buf_width==0) {
-      logwrite(function, "ERROR zero-dimension image");
+    if (num_detect <= 0 || num_cols <= 0 || num_rows <= 0) {
+      logwrite(function, "ERROR zero or negative image dimension");
       return ERROR;
     }
-    if (num_detect != 2) {
-      logwrite(function, "ERROR expected 2 CCDs");
+    if (num_cols % num_detect != 0) {
+      logwrite(function, "ERROR output width not divisible by num_detect");
       return ERROR;
     }
+
+    const long per_ccd_cols = num_cols / num_detect;
+    const long npix         = num_cols * num_rows;
 
     {
     std::ostringstream oss;
     oss << "[DEBUG] section_size=" << this->camera_info.section_size
         << " image_memory=" << this->camera_info.image_memory
-        << " num_detect=" << this->modemap[this->camera_info.current_observing_mode].geometry.num_detect
+        << " num_detect=" << num_detect
+        << " per_ccd_cols=" << per_ccd_cols
         << " num_cols=" << num_cols
         << " num_rows=" << num_rows
-        << " buf_width=" << buf_width
         << " axes[0]=" << this->camera_info.axes[0]
         << " axes[1]=" << this->camera_info.axes[1];
     logwrite(function, oss.str());
     }
 
+    // sanity check: section_size must match the pixel count we're about to write
+    if (this->camera_info.section_size != npix) {
+      std::ostringstream oss;
+      oss << "ERROR section_size=" << this->camera_info.section_size
+          << " does not match expected pixel count " << npix;
+      logwrite(function, oss.str());
+      return ERROR;
+    }
+
+    // allocate output buffer and deinterlace the raw Archon buffer into it.
+    // The raw buffer is already laid out as (num_rows x num_cols) with the
+    // CCDs occupying contiguous column slabs, so the mapping is a straight
+    // linear copy with the uint32 -> float conversion and scaling.
+    auto fbuf = std::make_unique<float[]>(npix);
+
+    for (long pix=0; pix < npix; pix++) {
+      fbuf[pix] = (float)(cbuf32[pix] / 65536.0);
+    }
+
+    error = this->fits_file.write_image(fbuf.get(), this->camera_info);
+
+    if (error != NO_ERROR) {
+      camera.log_error(function, "writing FCS image to disk");
+    }
+
     return error;
   }
+  /***** Archon::Interface::write_fcs *****************************************/
 
 
+  /***** Archon::Interface::write_science *************************************/
   long Interface::write_science() {
     const std::string function("Archon::Interface::write_science");
     long error=NO_ERROR;
@@ -634,4 +677,5 @@ namespace Archon {
 
     return error;
   }
+  /***** Archon::Interface::write_science *************************************/
 }
