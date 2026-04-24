@@ -585,6 +585,14 @@ namespace Archon {
       camera.log_error(function, "writing FCS image to disk");
     }
 
+    if (error == NO_ERROR) {
+      std::ostringstream det1, det2;
+      det1 << "[1:" << per_ccd_cols << ",1:" << num_rows << "]";
+      det2 << "[" << per_ccd_cols+1 << ":" << num_cols << ",1:" << num_rows << "]";
+      this->fits_file.add_key("DET1SEC", "STRING", det1.str(), "detector 1 section");
+      this->fits_file.add_key("DET2SEC", "STRING", det2.str(), "detector 2 section");
+    }
+
     return error;
   }
   /***** Archon::Interface::write_fcs *****************************************/
@@ -659,12 +667,14 @@ namespace Archon {
 
         long ccdnum = this->camera_info.extension+1;                      // 1-indexed
 
-        std::ostringstream oss;
-        oss << "DETSEC=[" << (dir_count*num_cols)+1 << ":" << (dir_count+1)*num_cols
-                          << ","
-                          << (dir_half-1)*num_rows+1 << ":" << (dir_half)*num_rows
-                          << "]";
-        this->systemkeys.addkey(oss.str());  // not getting to extensions!
+        {
+          std::ostringstream oss;
+          oss << "[" << (dir_count*num_cols)+1 << ":" << (dir_count+1)*num_cols
+                     << ","
+                     << (dir_half-1)*num_rows+1 << ":" << (dir_half)*num_rows
+                     << "]";
+          this->camera_info.detsec = oss.str();
+        }
 
         error = this->fits_file.write_image(ccdbuf.get(), this->camera_info);
 

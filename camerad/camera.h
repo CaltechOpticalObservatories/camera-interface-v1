@@ -404,6 +404,7 @@ namespace Camera {
         std::string start_time; //!< system time when the exposure started (YYYY-MM-DDTHH:MM:SS.sss)
 
         std::vector<std::vector<long> > amp_section;
+        std::string detsec;          ///< detector section in mosaic, e.g. "[1:2188,1:4124]"
 
         ExposureTime exposure_time;
 
