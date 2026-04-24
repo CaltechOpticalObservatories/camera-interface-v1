@@ -189,8 +189,13 @@ namespace Archon {
     }
 
     // read frame
-    if ( error==NO_ERROR && (error=this->read_frame()) != NO_ERROR ) {
+    if ( (error=this->read_frame(Camera::FRAME_IMAGE)) != NO_ERROR ) {
       camera.log_error(function, "reading frame buffer");
+    }
+
+    // write frame
+    if (error==NO_ERROR && (error = this->write_fcs()) != NO_ERROR) {
+      camera.log_error(function, "writing image frame");
     }
 
     // ASYNC status message on completion of each file
@@ -484,6 +489,63 @@ namespace Archon {
     return error;
   }
   /***** Archon::Interface::sci_readout ***************************************/
+
+
+  long Interface::write_fcs() {
+    const std::string function("Archon::Interface::write_fcs");
+    long error=NO_ERROR;
+    uint32_t *cbuf32 = (uint32_t *)this->image_data;
+
+    if (!cbuf32) {
+      logwrite(function, "ERROR invalid image_data buffer");
+      return ERROR;
+    }
+
+/***
+    float *fbuf = nullptr;
+    fbuf = new float[this->camera_info.section_size];
+    for (long pix=0; pix < this->camera_info.section_size; pix++) {
+      fbuf[pix] = (float)(cbuf32[pix]/65536.0);
+    }
+
+    error = this->fits_file.write_image(fbuf, this->camera_info);
+
+    if (error != NO_ERROR) {
+      camera.log_error(function, "writing image to disk");
+    }
+
+    delete [] fbuf;
+ ***/
+
+    int num_detect = this->modemap[this->camera_info.current_observing_mode].geometry.num_detect;
+    int num_cols   = this->camera_info.axes[0];
+    int num_rows   = this->camera_info.axes[1];
+    long buf_width = num_cols * num_detect/2;
+
+    if (num_rows==0 || buf_width==0) {
+      logwrite(function, "ERROR zero-dimension image");
+      return ERROR;
+    }
+    if (num_detect != 2) {
+      logwrite(function, "ERROR expected 2 CCDs");
+      return ERROR;
+    }
+
+    {
+    std::ostringstream oss;
+    oss << "[DEBUG] section_size=" << this->camera_info.section_size
+        << " image_memory=" << this->camera_info.image_memory
+        << " num_detect=" << this->modemap[this->camera_info.current_observing_mode].geometry.num_detect
+        << " num_cols=" << num_cols
+        << " num_rows=" << num_rows
+        << " buf_width=" << buf_width
+        << " axes[0]=" << this->camera_info.axes[0]
+        << " axes[1]=" << this->camera_info.axes[1];
+    logwrite(function, oss.str());
+    }
+
+    return error;
+  }
 
 
   long Interface::write_science() {
