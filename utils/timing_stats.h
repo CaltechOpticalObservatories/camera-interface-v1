@@ -80,15 +80,15 @@ namespace Utils {
         return (1.0e6 * sd) / (m * m);
       }
 
-      [[nodiscard]] std::string summary() const {
+      [[nodiscard]] std::string summary(const std::string &label = "") const {
         std::ostringstream ss;
-        ss << std::fixed << std::setprecision(1)
-           << "median=" << median() << " us, "
-           << "mean=" << mean() << " us, "
-           << "jitter=" << jitter() << " us, "
+        ss << std::fixed << std::setprecision(1);
+        if (!label.empty()) ss << label << " ";
+        ss << "(n=" << count() << ")\n"
+           << "  median=" << median() << "us  mean=" << mean() << "us\n"
+           << "  Jitter:    peak2peak=" << jitter() << "us  stddev=" << stddev() << "us\n"
            << std::setprecision(2)
-           << hertz() << " +/- " << hertz_stddev() << " Hz"
-           << " (n=" << count() << ")";
+           << "  Frequency: mean=" << hertz() << "Hz  stddev=" << hertz_stddev() << "Hz";
         return ss.str();
       }
 
