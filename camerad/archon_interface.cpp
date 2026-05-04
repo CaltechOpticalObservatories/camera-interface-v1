@@ -807,12 +807,13 @@ namespace Camera {
 
     // if we made it all the way to the end then this is the selected mode
     this->controller->selectedmode = modeselect;
+    this->controller->is_camera_mode = true;
 
-    // Set the exposure mode to match the camera mode name if recognized
-    if (this->set_exposure_mode(modeselect, {}) != NO_ERROR) {
-      // Fall back to SINGLE if the camera mode name doesn't match an exposure mode
-      this->set_exposure_mode(std::string(ArchonExposureMode::SINGLE), {});
+    std::string target = ArchonExposureMode::SINGLE;
+    for (const auto &m : this->get_exposure_modes()) {
+      if (m == modeselect) { target = modeselect; break; }
     }
+    this->set_exposure_mode(target, {});
 
     return NO_ERROR;
   }

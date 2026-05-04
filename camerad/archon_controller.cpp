@@ -1640,6 +1640,15 @@ namespace Camera {
       logwrite(function, "applied mode geometry to controller");
     }
 
+    for (const auto &[name, info] : mode->parammap) {
+      try {
+        this->set_parameter(name, std::stoi(info.value));
+      } catch (const std::exception &e) {
+        logwrite(function, "ERROR applying mode param "+name+"="+info.value+": "+e.what());
+        return ERROR;
+      }
+    }
+
     return NO_ERROR;
   }
   /***** Camera::ArchonController::load_mode_settings *************************/
