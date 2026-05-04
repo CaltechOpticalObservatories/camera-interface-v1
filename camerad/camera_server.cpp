@@ -223,6 +223,14 @@ namespace Camera {
         }
         ret = HELP;
       }
+      /**
+       * instrument-specific commands
+       */
+      else
+      if (interface->is_instrument_command(cmd))
+      {
+        ret = interface->instrument_cmd(cmd, args, retstring);
+      }
       else
       if ( cmd == CAMERAD_ABORT ) {
         ret = interface->abort(args, retstring);
@@ -284,17 +292,7 @@ namespace Camera {
       if ( cmd == CAMERAD_TEST ) {
         ret = interface->test(args, retstring);
       }
-      /**
-       * instrument-specific commands
-       */
-      else
-      if ( cmd == "hispec_this" ) {
-        ret = interface->instrument_cmd(cmd, args, retstring);
-      }
-      else
-      if ( cmd == "hispec_that" ) {
-        ret = interface->instrument_cmd(cmd, args, retstring);
-      }
+
       /**
        * controller-specific commands
        */
@@ -324,6 +322,10 @@ namespace Camera {
       }
       else
       if ( cmd == "bob" ) {
+        ret = interface->controller_cmd(cmd, args, retstring);
+      }
+      else
+      if ( cmd == "autofetch_mode" ) {
         ret = interface->controller_cmd(cmd, args, retstring);
       }
 

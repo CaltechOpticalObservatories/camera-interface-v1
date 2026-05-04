@@ -94,6 +94,10 @@ namespace Camera {
 
       virtual long do_expose() = 0;
 
+      /** @brief  returns true if cmd is an instrument-specific command
+       */
+      virtual bool is_instrument_command(const std::string &cmd) { return false; }
+
       /** @brief  returns error if not overridden
        */
       virtual long instrument_cmd(const std::string &cmd,
