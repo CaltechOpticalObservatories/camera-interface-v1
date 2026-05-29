@@ -139,8 +139,23 @@ namespace Archon {
           T* preset  = _resbuf[idx].data();
           for ( long row=0; row < _rows; ++row ) {
             for ( long col=0; col < _cols; col+=64 ) {
-              std::memcpy( &psignal[row*_cols + col], &typed_image[row*_cols*2 + col*2],      64*sizeof(T) );
-              std::memcpy(  &preset[row*_cols + col], &typed_image[row*_cols*2 + col*2 + 64], 64*sizeof(T) );
+              long chan = col / 64;
+              // even-number channels are a straight copy
+              if (chan % 2 == 0) {
+                std::memcpy( &psignal[row*_cols + col], &typed_image[row*_cols*2 + col*2],      64*sizeof(T) );
+                std::memcpy(  &preset[row*_cols + col], &typed_image[row*_cols*2 + col*2 + 64], 64*sizeof(T) );
+              }
+              else {
+              // odd-number channels read out in the opposite direction so copy each element
+                const T* signal_source = &typed_image[row * _cols * 2 + col*2 + 64];  // signal is the 2nd block
+                const T* reset_source  = &typed_image[row * _cols * 2 + col*2];       // reset is the 1st block
+                T* signal_dest = &psignal[row * _cols + col];
+                T* reset_dest  = &preset[row * _cols + col];
+                for (long i=0; i<64; ++i) {
+                  signal_dest[i] = signal_source[63-i];
+                  reset_dest[i]  = reset_source[63-i];
+                }
+              }
             }
           }
         }
