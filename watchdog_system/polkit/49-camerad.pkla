@@ -1,0 +1,22 @@
+#
+# 49-camerad.pkla -- passwordless systemctl for the camerad service group
+#
+# Ubuntu 22.04 (Jammy) ships polkit 0.105, which uses this .pkla format and NOT
+# the JavaScript .rules format (which needs polkit >= 0.106).
+# Install to: /etc/polkit-1/localauthority/50-local.d/49-camerad.pkla
+#
+# Grants group "user" the right to manage systemd units WITHOUT a password and
+# WITHOUT an active login session (ResultAny=yes). The session-less grant is
+# what lets the headless camerad-watchdog account call "systemctl restart
+# camerad", and it also lets operators in group "user" use the "camera" wrapper.
+#
+# NOTE: .pkla cannot scope the grant to specific units (that needs JS rules), so
+# group "user" can manage ALL units. Keep membership tight, or use the sudoers
+# alternative in readme.txt if you need per-unit scoping.
+#
+[Allow group user to manage systemd units]
+Identity=unix-group:user
+Action=org.freedesktop.systemd1.manage-units
+ResultActive=yes
+ResultInactive=yes
+ResultAny=yes

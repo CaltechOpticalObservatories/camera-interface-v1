@@ -1,0 +1,29 @@
+#
+# camerad.service -- CryoScope camera daemon (Layer 1: Restart=always)
+#
+# Edit User/Group, the EnvironmentFile/ExecStart paths, and the config file
+# basename to match your deployment, then install to /etc/systemd/system/.
+#
+[Unit]
+Description=CryoScope camerad camera daemon
+After=network-online.target
+Wants=network-online.target
+PartOf=camerad.target
+# never give up restarting; the off-switch is a commanded "camera stop"
+StartLimitIntervalSec=0
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=user
+Group=user
+UMask=0022
+EnvironmentFile=-/home/user/Software/camera-interface/watchdog_system/systemd/camerad.env
+ExecStart=/home/user/Software/camera-interface/bin/camerad --foreground -f /home/user/Software/camera-interface/Config/cryoscope.cfg
+Restart=always
+RestartSec=2
+KillSignal=SIGINT
+TimeoutStopSec=10
+
+[Install]
+WantedBy=camerad.target

@@ -10,6 +10,7 @@
 #include "build_date.h"
 #include "camerad.h"
 #include "daemonize.h"
+#include "sd_notify.h"
 
 Camera::Server server;
 
@@ -284,6 +285,11 @@ int main(int argc, char **argv) {
     //
     std::thread(new_log_day).detach();
 
+    // All listening sockets are up and worker threads are running, so notify
+    // the service manager that we are ready.
+    //
+    Systemd::sd_notify_ready();
+
     for (;;) pause(); // main thread suspends
     return 0;
 }
@@ -439,9 +445,10 @@ void doit(Network::TcpSocket sock) {
 
     bool connection_open = true;
 
-    message.str("");
-    message << "thread " << sock.id << " accepted connection on fd " << sock.getfd();
+#ifdef LOGLEVEL_DEBUG
+    message.str(""); message << "[DEBUG] thread " << sock.id << " accepted connection on fd " << sock.getfd();
     logwrite(function, message.str());
+#endif
 
     while (connection_open) {
         memset(buf, '\0', BUFSIZE); // init buffers
@@ -474,11 +481,8 @@ void doit(Network::TcpSocket sock) {
                 message << "Read error on fd " << sock.getfd() << ": " << strerror(errno);
                 logwrite(function, message.str());
             }
-            if (ret == 0) {
-                message.str("");
-                message << "timeout reading from fd " << sock.getfd();
-                logwrite(function, message.str());
-            }
+            // ret==0 is an orderly peer shutdown (TCP FIN); not an error, and the
+            // lower layer (Network::TcpSocket::Read) logs it at DEBUG.
             break; // Breaking out of the while loop will close the connection.
             // This probably means that the client has terminated abruptly,
             // having sent FIN but not stuck around long enough
@@ -512,6 +516,13 @@ void doit(Network::TcpSocket sock) {
                 args = ""; // then the arg list is empty,
             } else {
                 args = sbuf.substr(cmd_sep + 1); // otherwise args is everything after that space.
+            }
+
+            // liveness probe from camerad-watchdog replies "pong" and skips everything else
+            //
+            if (cmd == "ping") {
+                sock.Write("pong\n");
+                break; // one-shot probe connection, close now
             }
 
             ++server.cmd_num;

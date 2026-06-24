@@ -896,8 +896,12 @@ namespace Network {
         break;
       }
       if ( nread == 0 ) {
-        message << "no data on socket " << this->host << "/" << this->port << " fd " << this->fd << ": closing connection";
+        // orderly peer shutdown (TCP FIN); normal connection lifecycle, not an
+        // error -- log only in a DEBUG build so periodic probes stay silent
+#ifdef LOGLEVEL_DEBUG
+        message << "[DEBUG] no data on socket " << this->host << "/" << this->port << " fd " << this->fd << ": closing connection";
         logwrite( function, message.str() );
+#endif
         this->Close();
         break;
       }

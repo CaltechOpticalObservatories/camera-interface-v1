@@ -1,0 +1,26 @@
+#
+# camerad-watchdog.service -- liveness watchdog for camerad
+#
+# Layer 2 (ping probe) plus Layer 3 (WatchdogSec= catches a wedged watchdog).
+# WatchdogSec must comfortably exceed one probe round, which is roughly
+# FAIL_THRESHOLD * PROBE_INTERVAL_SEC (~15 s with the shipped defaults).
+#
+[Unit]
+Description=Liveness watchdog for camerad
+After=camerad.service
+Wants=camerad.service
+PartOf=camerad.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=notify
+NotifyAccess=main
+User=user
+Group=user
+WatchdogSec=30
+ExecStart=/home/user/Software/camera-interface/bin/camerad-watchdog /home/user/Software/camera-interface/Config/cryoscope.cfg camerad
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=camerad.target

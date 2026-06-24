@@ -26,7 +26,7 @@ endif ()
 # ----------------------------------------------------------------------------
 
 # un-comment the following to log verbose debug messages
-add_definitions(-DLOGLEVEL_DEBUG)
+#add_definitions(-DLOGLEVEL_DEBUG)
 
 cmake_minimum_required(VERSION 3.12)
 
@@ -64,3 +64,4 @@ add_subdirectory(${PROJECT_BASE_DIR}/common)
 add_subdirectory(${PROJECT_BASE_DIR}/camerad)
 add_subdirectory(${PROJECT_BASE_DIR}/emulator)
 add_subdirectory(${PROJECT_BASE_DIR}/tests EXCLUDE_FROM_ALL)
+add_subdirectory(${PROJECT_BASE_DIR}/watchdog_system)

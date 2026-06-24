@@ -1,0 +1,47 @@
+#!/bin/bash
+#
+# uninstall-watchdog -- undo the install-watchdog install and return the host to a
+# clean state (no camerad systemd units, polkit grant, or cameractl wrapper).
+#
+# Run as root or via sudo. Stops the units before removing the unit files so
+# systemd does not lose track of running processes.
+#
+set -e
+
+# Stop everything (a commanded stop suppresses Restart=always)
+sudo systemctl stop camerad-watchdog 2>/dev/null || true
+sudo systemctl stop camerad.target   2>/dev/null || true   # cascades via PartOf=
+
+# Disable so nothing comes back on reboot
+sudo systemctl disable camerad.target camerad camerad-watchdog 2>/dev/null || true
+
+# Remove the unit files and any symlinks left behind
+sudo rm -f  /etc/systemd/system/camerad.service
+sudo rm -f  /etc/systemd/system/camerad-watchdog.service
+sudo rm -f  /etc/systemd/system/camerad.target
+sudo rm -f  /etc/systemd/system/multi-user.target.wants/camerad.target
+sudo rm -rf /etc/systemd/system/camerad.target.wants
+
+# Remove the polkit grant and the cameractl wrapper
+sudo rm -f /etc/polkit-1/localauthority/50-local.d/49-camerad.pkla
+sudo systemctl restart polkit 2>/dev/null || true
+sudo rm -f /usr/local/bin/cameractl
+hash -r
+
+# Tell systemd everything is gone
+sudo systemctl daemon-reload
+sudo systemctl reset-failed
+
+cat <<'EOF'
+
+Uninstall complete. Verify with:
+
+    systemctl list-unit-files 'camerad*'   # camerad.service / .target / -watchdog should NOT appear
+    systemctl list-units --failed          # empty (or unrelated)
+    ls /usr/local/bin/cameractl            # not found
+    ls /etc/polkit-1/localauthority/50-local.d/ | grep camerad   # empty
+
+The deploy tree under WATCHDOG_DIR is untouched; re-run ./install-watchdog to
+reinstall. The "user" account/group is left as-is (it is the login user).
+
+EOF

@@ -1,0 +1,109 @@
+#!/bin/bash
+#
+# install-watchdog -- install the camerad watchdog system from the deploy tree.
+#
+# Installs the systemd units (camerad.service, camerad-watchdog.service,
+# camerad.target), the polkit grant, and the cameractl operator wrapper, then
+# enables and starts the whole service group so it also survives a reboot.
+# Undo with ./uninstall-watchdog.
+#
+# Target platform: Ubuntu 22.04 (Jammy) -- systemd 249, polkit 0.105 (.pkla).
+#
+# Run as root or via sudo. Override the deploy paths with the WATCHDOG_DIR /
+# BIN_DIR environment variables if your tree does not live under
+# /home/user/Software/camera-interface.
+#
+
+set -e
+
+WATCHDOG_DIR="${WATCHDOG_DIR:-/home/user/Software/camera-interface/watchdog_system}"
+BIN_DIR="${BIN_DIR:-/home/user/Software/camera-interface/bin}"
+
+# Sanity: required source files must exist under WATCHDOG_DIR
+for f in \
+  "$WATCHDOG_DIR/systemd/camerad.service" \
+  "$WATCHDOG_DIR/systemd/camerad-watchdog.service" \
+  "$WATCHDOG_DIR/systemd/camerad.target" \
+  "$WATCHDOG_DIR/systemd/camerad.env" \
+  "$WATCHDOG_DIR/polkit/49-camerad.pkla" \
+  "$WATCHDOG_DIR/bin/cameractl"; do
+  if [ ! -f "$f" ]; then
+    echo "ERROR: missing $f -- check out the watchdog branch and rebuild," >&2
+    echo "       or set WATCHDOG_DIR to the correct path." >&2
+    exit 1
+  fi
+done
+
+# Verify the built binaries that the units will exec
+for b in camerad camerad-watchdog; do
+  if [ ! -x "$BIN_DIR/$b" ]; then
+    echo "ERROR: $BIN_DIR/$b not found or not executable." >&2
+    echo "       Build the project (cd build && cmake .. && make) before installing," >&2
+    echo "       or set BIN_DIR to the correct path." >&2
+    exit 1
+  fi
+done
+
+# Every install step below uses sudo. Make sure the invoking user actually has
+# sudo privileges (and prime the credential cache) before we start touching /etc;
+# fail early with a clear message rather than partway through the install.
+if ! sudo -v; then
+  echo "ERROR: this script must be run by a user with sudo privileges." >&2
+  echo "       Add the account to the sudo group, or run as root." >&2
+  exit 1
+fi
+
+# Install systemd units. The unit files reference the in-tree EnvironmentFile
+# (camerad.env) and the deploy paths above; edit them there, not in /etc.
+sudo install -m 0644 "$WATCHDOG_DIR/systemd/camerad.service"          /etc/systemd/system/camerad.service
+sudo install -m 0644 "$WATCHDOG_DIR/systemd/camerad-watchdog.service" /etc/systemd/system/camerad-watchdog.service
+sudo install -m 0644 "$WATCHDOG_DIR/systemd/camerad.target"           /etc/systemd/system/camerad.target
+
+# Install the polkit grant. Jammy = polkit 0.105 -> .pkla (NOT JS .rules).
+# The localauthority backend re-reads .pkla on each check, so no reload is
+# needed, but restart polkit anyway to be safe (harmless no-op if unchanged).
+sudo mkdir -p /etc/polkit-1/localauthority/50-local.d
+sudo install -m 0644 "$WATCHDOG_DIR/polkit/49-camerad.pkla" \
+                     /etc/polkit-1/localauthority/50-local.d/49-camerad.pkla
+sudo systemctl restart polkit 2>/dev/null || true
+
+# Install the cameractl operator wrapper into PATH.
+sudo install -m 0755 "$WATCHDOG_DIR/bin/cameractl" /usr/local/bin/cameractl
+
+# Enable + start the whole group.
+# NOTE: camerad.target MUST be enabled too, or nothing starts at boot. The
+# services are WantedBy=camerad.target, which is WantedBy=multi-user.target;
+# enabling only the services links them into camerad.target.wants but leaves
+# the target itself out of the boot chain (services show "enabled" yet stay
+# "inactive (dead)" after a reboot). Enable all three to complete the chain.
+sudo systemctl daemon-reload
+sudo systemctl reset-failed
+sudo systemctl enable --now camerad.target camerad camerad-watchdog
+
+cat <<'EOF'
+
+camerad watchdog system installed.
+
+The service account and the operator group are both "user". Add any additional
+human operators to that group (they must log out + back in afterward):
+
+    sudo usermod -aG user <username>
+
+usage:
+
+    cameractl restart            # the nightly command: restart the whole group
+    cameractl status
+    cameractl stop
+
+The plain systemctl equivalents still work and are in the readme:
+
+    systemctl {start|stop|restart} camerad.target          # all units
+    systemctl {start|stop|restart} camerad                 # just the daemon
+
+Verify:
+
+    systemctl is-enabled camerad.target                              # -> enabled
+    ls -l /etc/systemd/system/multi-user.target.wants/camerad.target # must exist
+    systemctl status camerad.target camerad camerad-watchdog
+
+EOF

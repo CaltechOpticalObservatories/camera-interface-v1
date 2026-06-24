@@ -1,0 +1,13 @@
+#
+# camerad.target -- aggregate for the camerad service group
+#
+# Lets you start/stop camerad and its watchdog as a unit. The PartOf= in each
+# service means "stop the world" semantics: stopping the target stops both.
+#
+[Unit]
+Description=CryoScope camerad service group
+After=network-online.target
+Wants=network-online.target
+
+[Install]
+WantedBy=multi-user.target

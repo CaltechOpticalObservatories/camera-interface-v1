@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+#
+# cameractl -- user control wrapper for the camerad service group, named by
+# analogy to systemctl/journalctl: it IS systemctl, scoped to the camera units.
+#
+# Installed to /usr/local/bin/cameractl by install-watchdog. sudo-free: relies on
+# the polkit .pkla grant for group "user". It exists so operators can drive the
+# instrument ("cameractl restart") without learning systemctl or the unit names;
+# the underlying mechanism stays hidden and can change without retraining anyone.
+#
+set -euo pipefail
+
+UNITS=(camerad camerad-watchdog)
+
+usage() {
+    echo "usage: cameractl {start|stop|restart|status|enable|disable}" >&2
+    echo "       acts on: ${UNITS[*]}" >&2
+    exit 2
+}
+
+[[ $# -eq 1 ]] || usage
+
+case "$1" in
+    start|stop|restart|enable|disable)
+        exec systemctl "$1" "${UNITS[@]}"
+        ;;
+    status)
+        exec systemctl status "${UNITS[@]}"
+        ;;
+    *)
+        usage
+        ;;
+esac
