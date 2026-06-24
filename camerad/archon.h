@@ -15,6 +15,7 @@
 #include <string_view>
 #include <variant>
 #include <memory>
+#include <functional>
 
 #include "opencv2/opencv.hpp"
 #include "utilities.h"
@@ -86,19 +87,11 @@ namespace Archon {
     const int DEF_SHUTENABLE_ENABLE = 1;
     const int DEF_SHUTENABLE_DISABLE = 0;
 
-    /**
-     * @brief   deinterlacing modes
-     */
-    enum class DeInterlaceMode {
-      NONE,
-      RXRVIDEO
-    };
-
     /***** Archon::PostProcess ***********************************************/
     template <typename T>
     class PostProcess {
       protected:
-        DeInterlaceMode _mode;
+        int _frames;   //!< frames per buffer (1 = signal only; 2 = signal+reset)
         std::vector<std::vector<T>> _sigbuf;
         std::vector<std::vector<T>> _resbuf;
         std::vector<int32_t> _cdsbuf;
@@ -114,29 +107,55 @@ namespace Archon {
 
       public:
 
-        PostProcess( DeInterlaceMode mode, std::vector<long> naxes ) : _mode(mode), _naxes(naxes) {
+        PostProcess( int frames, std::vector<long> naxes ) : _frames(frames), _naxes(naxes) {
           const std::string function="Archon::PostProcess::PostProcess";
           std::stringstream message;
 
-          // rows and cols in an image (not the buffer)
-          // half as many cols because the buffer contains two frames
+          // A single-frame buffer is the full width; a two-frame (signal+reset)
+          // buffer holds both frames, so one frame is half the buffer width.
           //
-          _cols = _naxes[0] / 2;
+          _cols = _naxes[0] / _frames;
           _rows = _naxes[1];
 
           long single_image_size = _cols * _rows;
 
           _sigbuf.resize( 2, std::vector<T>(single_image_size) );
-          _resbuf.resize( 2, std::vector<T>(single_image_size) );
-          _cdsbuf.resize(single_image_size);
+          if ( _frames == 2 ) {
+            _resbuf.resize( 2, std::vector<T>(single_image_size) );
+            _cdsbuf.resize(single_image_size);
+          }
         }
 
         void deinterlace(const T* typed_image, size_t idx) {
           std::stringstream message;
           message << "[DEBUG] datatype=" << demangle(typeid(T).name()) << " storing pair for idx=" << idx;
           logwrite( "PostProcess::deinterlace", message.str() );
+
+          // Single-frame buffer (no reset).
+          // Buffer row stride is _cols; copy each 64-pixel channel straight for
+          // even channels and reversed for odd channels (opposite readout dir).
+          //
+          if ( _frames == 1 ) {
+            T* psignal = _sigbuf[idx].data();
+            for ( long row=0; row < _rows; ++row ) {
+              for ( long col=0; col < _cols; col+=64 ) {
+                long chan = col / 64;
+                if (chan % 2 == 0) {
+                  std::memcpy( &psignal[row*_cols + col], &typed_image[row*_cols + col], 64*sizeof(T) );
+                }
+                else {
+                  const T* signal_source = &typed_image[row*_cols + col];
+                  T* signal_dest = &psignal[row*_cols + col];
+                  for (long i=0; i<64; ++i) signal_dest[i] = signal_source[63-i];
+                }
+              }
+            }
+            return;
+          }
+
           T* psignal = _sigbuf[idx].data();
           T* preset  = _resbuf[idx].data();
+
           for ( long row=0; row < _rows; ++row ) {
             for ( long col=0; col < _cols; col+=64 ) {
               long chan = col / 64;
@@ -254,11 +273,15 @@ for (int i=0; i<5; i++) {
 
           camera_info.set_axes(USHORT_IMG);
 
+          // always write signal
           T* sigbuf = _sigbuf[idx].data();
           fits_file.write_image( sigbuf, get_timestamp(), ++camera_info.extension-1, camera_info );
 
-          T* resbuf = _resbuf[idx].data();
-          fits_file.write_image( resbuf, get_timestamp(), ++camera_info.extension-1, camera_info );
+          // write the reset extension only for two-frame (signal+reset) buffers
+          if ( _frames == 2 ) {
+            T* resbuf = _resbuf[idx].data();
+            fits_file.write_image( resbuf, get_timestamp(), ++camera_info.extension-1, camera_info );
+          }
         }
         /***** Archon::PostProcess::write_unp *********************************/
     };
@@ -679,9 +702,18 @@ for (int i=0; i<5; i++) {
             Common::FitsKeys acfkeys; //!< create a FitsKeys object to hold user keys read from ACF file for each mode
             geometry_t geometry;
             tapinfo_t tapinfo;
+            int frames_per_buffer;              //!< derived from PIXELCOUNT in set_camera_mode
+            bool subtract_reset;                //!< CDS: 2nd frame is a reset to subtract; set by a CALL action
+            std::vector<std::string> callbacks; //!< CALL: function keys, run on mode select
         } modeinfo_t;
 
         std::map<std::string, modeinfo_t> modemap;
+
+        //!< registry of mode-select actions, keyed by CALL: directive value (never a mode name)
+        std::map<std::string, std::function<long(const std::string&)>> mode_actions;
+
+        long mode_init_rxrvideo  ( const std::string &mode ); //!< CALL action: dual-frame inreg + subtract_reset
+        long mode_init_enhancedrx( const std::string &mode ); //!< CALL action: single-frame inreg
 
         /**
          * generic key=value STL map for Archon commands

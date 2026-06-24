@@ -43,6 +43,8 @@ namespace Archon {
     this->is_window = false;
     this->is_autofetch = false;
     this->is_unp = true;  // always write unp images for now but add control
+    this->mode_actions["init_rxrvideo"]   = [this](const std::string &m){ return this->mode_init_rxrvideo(m);   };
+    this->mode_actions["init_enhancedrx"] = [this](const std::string &m){ return this->mode_init_enhancedrx(m); };
     this->win_hstart = 0;
     this->win_hstop = 2047;
     this->win_vstart = 0;
@@ -1667,6 +1669,9 @@ namespace Archon {
             message.str(""); message << "detected mode: " << mode; logwrite(function, message.str());
             this->modemap[mode].rawenable=-1;    // initialize to -1, require it be set somewhere in the ACF
                                                  // this also ensures something is saved in the modemap for this mode
+            this->modemap[mode].frames_per_buffer = 1;     // overridden from PIXELCOUNT in set_camera_mode
+            this->modemap[mode].subtract_reset    = false; // safe default; a CALL action may set true
+            this->modemap[mode].callbacks.clear();
           }
 
         } else {                                   // somehow there's no xxx left after removing "[MODE_" and "]"
@@ -1866,6 +1871,18 @@ namespace Archon {
           //
           // ----- all done looking for "TAGS:" -----
           //
+
+      } else if (line.compare(0,5,"CALL:")==0) {
+          // "CALL:" tag: names a registered function to run at mode select.
+          // Host-only (does not populate key, so nothing is sent to Archon).
+          std::string callkey = line.substr(5);          // the registered function key (taken literally)
+          if ( callkey.empty() || this->mode_actions.find(callkey) == this->mode_actions.end() ) {
+            message.str(""); message << "[MODE_" << mode << "] CALL names unregistered function: \"" << callkey << "\"";
+            this->camera.log_error( function, message.str() );
+            filestream.close();
+            return ERROR;
+          }
+          this->modemap[mode].callbacks.push_back(callkey);
 
       } else if ( (line.compare(0,11,"PARAMETERS=")!=0) &&   // not the "PARAMETERS=xx line
             (line.compare(0, 9,"PARAMETER"  )==0) ) {  // but must start with "PARAMETER"
@@ -2114,6 +2131,20 @@ namespace Archon {
       if ( error != NO_ERROR ) { logwrite( function, "ERROR: unable to get PIXELCOUNT,LINECOUNT from ACF" ); return error; }
     }
 
+    // Derive frames-per-buffer from the per-amp PIXELCOUNT (64 px per frame).
+    {
+      int pc = this->modemap[mode].geometry.pixelcount;
+      this->modemap[mode].frames_per_buffer = ( pc > 0 && pc % 64 == 0 ) ? pc/64 : 1;
+    }
+
+    // Run any mode-select actions declared by CALL: in the ACF (replaces the
+    // former hard-coded if(mode==...) blocks). Keys were validated at load time.
+    for ( const auto &key : this->modemap[mode].callbacks ) {
+      if (error==NO_ERROR) error = this->mode_actions.at(key)(mode);
+    }
+
+    if (error==NO_ERROR) error = write_parameter("Start", 1);
+
     // set bitpix based on SAMPLEMODE
     // This is done with a call to set_axes( bitpix )
     // First read the samplemode from the configuration map
@@ -2229,6 +2260,37 @@ namespace Archon {
     return error;
   }
   /**************** Archon::Interface::set_camera_mode ************************/
+
+
+  /**************** Archon::Interface mode-select actions *********************/
+  /**
+   * @brief  Registered CALL: actions, invoked by name from set_camera_mode.
+   *         Each holds one mode's hardware setup; must be idempotent.
+   */
+  long Interface::mode_init_rxrvideo( const std::string &mode ) {
+    long error = NO_ERROR;
+    this->modemap[mode].subtract_reset = true;   // 2nd frame is a reset to subtract
+    if (error==NO_ERROR && (error=this->inreg("10 1 16402"))) std::this_thread::sleep_for(std::chrono::seconds(1));
+    if (error==NO_ERROR && (error=this->inreg("10 0 1")))     std::this_thread::sleep_for(std::chrono::seconds(1));
+    if (error==NO_ERROR && (error=this->inreg("10 0 0")))     std::this_thread::sleep_for(std::chrono::seconds(1));
+    if (error==NO_ERROR && (error=this->inreg("10 1 20480"))) std::this_thread::sleep_for(std::chrono::seconds(1));
+    if (error==NO_ERROR && (error=this->inreg("10 0 1")))     std::this_thread::sleep_for(std::chrono::seconds(1));
+    if (error==NO_ERROR && (error=this->inreg("10 0 0")))     std::this_thread::sleep_for(std::chrono::seconds(1));
+    if (error==NO_ERROR) error = write_parameter("Start", 1);
+    return error;
+  }
+  long Interface::mode_init_enhancedrx( const std::string &mode ) {
+    long error = NO_ERROR;
+    this->modemap[mode].subtract_reset = false;  // single frame, no reset to subtract
+    if (error==NO_ERROR && (error=this->inreg("10 1 16402"))) std::this_thread::sleep_for(std::chrono::seconds(1));
+    if (error==NO_ERROR && (error=this->inreg("10 0 1")))     std::this_thread::sleep_for(std::chrono::seconds(1));
+    if (error==NO_ERROR && (error=this->inreg("10 0 0")))     std::this_thread::sleep_for(std::chrono::seconds(1));
+    if (error==NO_ERROR && (error=this->inreg("10 1 20497"))) std::this_thread::sleep_for(std::chrono::seconds(1));
+    if (error==NO_ERROR && (error=this->inreg("10 0 1")))     std::this_thread::sleep_for(std::chrono::seconds(1));
+    if (error==NO_ERROR && (error=this->inreg("10 0 0")))     std::this_thread::sleep_for(std::chrono::seconds(1));
+    return error;
+  }
+  /**************** Archon::Interface mode-select actions *********************/
 
 
   /**************** Archon::Interface::load_mode_settings *********************/
@@ -4061,9 +4123,9 @@ namespace Archon {
     }
     this->lastframe = this->frame.bufframen[this->frame.index];     // save the last frame number acquired (wait_for_readout will need this)
 
-    // Set the deinterlacing mode (only one for now)
+    // frames per buffer for this mode (derived from PIXELCOUNT in set_camera_mode)
     //
-    DeInterlaceMode deinterlace_mode = DeInterlaceMode::RXRVIDEO;
+    int frames = this->modemap[mode].frames_per_buffer;
 
     // Before creating an appropriate PostProcess object, declare a pointer
     // to each possible type, then use bitpix to instantiate the PostProcess
@@ -4076,15 +4138,15 @@ namespace Archon {
     std::unique_ptr<PostProcess<uint16_t>> postproc_ushort;
 
     switch ( this->camera_info.bitpix ) {
-      case FLOAT_IMG:  postproc_float  = std::make_unique<PostProcess<float>>(deinterlace_mode, this->camera_info.naxes );
+      case FLOAT_IMG:  postproc_float  = std::make_unique<PostProcess<float>>(frames, this->camera_info.naxes );
                        break;
-      case LONG_IMG:   postproc_long   = std::make_unique<PostProcess<int32_t>>(deinterlace_mode, this->camera_info.naxes );
+      case LONG_IMG:   postproc_long   = std::make_unique<PostProcess<int32_t>>(frames, this->camera_info.naxes );
                        break;
-      case SHORT_IMG:  postproc_short  = std::make_unique<PostProcess<int16_t>>(deinterlace_mode, this->camera_info.naxes );
+      case SHORT_IMG:  postproc_short  = std::make_unique<PostProcess<int16_t>>(frames, this->camera_info.naxes );
                        break;
-      case ULONG_IMG:  postproc_ulong  = std::make_unique<PostProcess<uint32_t>>(deinterlace_mode, this->camera_info.naxes );
+      case ULONG_IMG:  postproc_ulong  = std::make_unique<PostProcess<uint32_t>>(frames, this->camera_info.naxes );
                        break;
-      case USHORT_IMG: postproc_ushort = std::make_unique<PostProcess<uint16_t>>(deinterlace_mode, this->camera_info.naxes );
+      case USHORT_IMG: postproc_ushort = std::make_unique<PostProcess<uint16_t>>(frames, this->camera_info.naxes );
                        break;
       default:         message.str(""); message << "unknown datatype " << this->camera_info.bitpix;
                        this->camera.log_error( function, message.str() );
@@ -4175,7 +4237,9 @@ namespace Archon {
         this->camera.log_error( function, message.str() );
         return ERROR;
     }
-    file_cds = std::make_unique<FITS_file<int32_t>>( ( this->camera.datacube() ? true : false ) );
+    // CDS (subtracted) file only when this mode subtracts a reset frame
+    if ( this->modemap[mode].subtract_reset )
+      file_cds = std::make_unique<FITS_file<int32_t>>( ( this->camera.datacube() ? true : false ) );
 
     // **********************************
     // *** initiate the exposure here ***
@@ -4430,10 +4494,12 @@ simplify for cryoscope *****/
             float* typed_image = this->typed_convert_buffer<uint32_t, float>( cbuf32 );
             // deinterlace that typed image
             postproc_float->deinterlace(typed_image, this->ring_index);
-            // perform CDS subtraction of signal - reset frames
-            int sig = this->ring_index;
-            int res = this->prev_ring_index();
-            postproc_float->cds_subtract(sig, res);
+            // perform CDS subtraction of signal - reset frames (subtract modes only)
+            if ( this->modemap[mode].subtract_reset ) {
+              int sig = this->ring_index;
+              int res = this->prev_ring_index();
+              postproc_float->cds_subtract(sig, res);
+            }
 //          float* cdsframe = postproc_float->get_cdsbuf();
             // write the CDS frame
 //          this->typed_write_frame( cdsframe, *file_float );
@@ -4449,10 +4515,12 @@ simplify for cryoscope *****/
             int16_t* typed_image = this->typed_convert_buffer<int16_t,int16_t>( cbuf16s );
             // deinterlace that typed image
             postproc_short->deinterlace(typed_image, this->ring_index);
-            // perform CDS subtraction of signal - reset frames
-            int i = this->ring_index;
-            int j = this->prev_ring_index();
-            postproc_short->cds_subtract(i, j);
+            // perform CDS subtraction of signal - reset frames (subtract modes only)
+            if ( this->modemap[mode].subtract_reset ) {
+              int i = this->ring_index;
+              int j = this->prev_ring_index();
+              postproc_short->cds_subtract(i, j);
+            }
 //          int16_t* cdsframe = postproc_short->get_cdsbuf();
             // write the CDS frame
 //          this->typed_write_frame( cdsframe, *file_short );
@@ -4468,10 +4536,12 @@ simplify for cryoscope *****/
             uint16_t* typed_image = this->typed_convert_buffer<uint16_t,uint16_t>( cbuf16 );
             // deinterlace that typed image
             postproc_ushort->deinterlace(typed_image, this->ring_index);
-            // perform CDS subtraction of signal - reset frames
-            int i = this->ring_index;
-            int j = this->prev_ring_index();
-            postproc_ushort->cds_subtract(i, j);
+            // perform CDS subtraction of signal - reset frames (subtract modes only)
+            if ( this->modemap[mode].subtract_reset ) {
+              int i = this->ring_index;
+              int j = this->prev_ring_index();
+              postproc_ushort->cds_subtract(i, j);
+            }
 //          uint16_t* cdsframe = postproc_ushort->get_cdsbuf();
             // write the CDS frame
 //          this->typed_write_frame( cdsframe, *file_ushort );
@@ -4482,8 +4552,10 @@ simplify for cryoscope *****/
           }
         }
 
-int32_t* cdsframe = postproc_ushort->get_cdsbuf();
-this->typed_write_frame( cdsframe, *file_cds );
+if ( this->modemap[mode].subtract_reset ) {
+  int32_t* cdsframe = postproc_ushort->get_cdsbuf();
+  this->typed_write_frame( cdsframe, *file_cds );
+}
 
 /*****
         // For non-sequence multiple exposures, including cubeamps, close the fits file here
