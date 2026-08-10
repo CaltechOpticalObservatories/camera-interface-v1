@@ -47,7 +47,7 @@ set(CMAKE_GXX_EXTENSIONS OFF)
 
 # Run "cmake .." from the project's build/ directory!
 #
-set(PROJECT_BASE_DIR $ENV{PWD}/../)
+set(PROJECT_BASE_DIR ${CMAKE_SOURCE_DIR})
 
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_BASE_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH ${PROJECT_BASE_DIR}/lib)
