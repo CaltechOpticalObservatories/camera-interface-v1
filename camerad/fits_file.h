@@ -205,7 +205,11 @@ private:
    \details This is the max allowed number of frames that can be written to any
    single data cube */
   int max_cube_frames;
-  
+
+  /** \var     in_process
+   *  \details add this extension while fits writing is in process, remove on close */
+  inline static const std::string in_process = ".writing";
+
 
   /**************** FITS_file::swap ****************/
   /**
@@ -361,7 +365,8 @@ private:
         num_axis = 2;
       }
       
-      this->fits_name = camera_info.fits_name;
+      this->fits_name = camera_info.fits_name + this->in_process;
+
 
       // Check that we can write the file, because CCFits will crash if not
       std::ofstream checkfile (this->fits_name.c_str());
@@ -514,6 +519,23 @@ private:
             << this->cube_size << " image bytes, frames waiting: "
             << this->cube_frames.size() << " " << this->cube_cache.size();
     logwrite(function, message.str());
+
+    //
+    // Rename the file to remove the in_process extension
+    //
+
+    std::string finished_file { this->fits_name, 0, this->fits_name.rfind( this->in_process ) };
+    std::filesystem::path in_process_path( this->fits_name );
+    std::filesystem::path finished_path( finished_file );
+
+    try {
+      std::filesystem::rename( in_process_path, finished_path );
+      logwrite(function, "renamed "+this->fits_name+" to "+finished_file);
+    }
+    catch ( const std::filesystem::filesystem_error &e ) {
+      logwrite(function, "ERROR renaming "+this->fits_name+" to "+finished_file+": "+std::string(e.what()));
+    }
+
     return(NO_ERROR);
   }
   /**************** FITS_file::close_cube ****************/
