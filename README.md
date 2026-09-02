@@ -1,3 +1,6 @@
+# SUPERSEDED
+This branch is superseded by https://github.com/CaltechOpticalObservatories/cryoscope-camera (its main branch, split at 2257f06c). Do not build from here; nothing is merged into or out of this branch.
+
 # Camera Interface
 
 Camera Detector Controller Interface Software
