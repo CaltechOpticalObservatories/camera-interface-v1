@@ -474,7 +474,9 @@ class FITS_file {
 
         // Add the extension here
         //
-        this->imageExt = self->pFits->addImage(extname, info.bitpix, axes);
+        // Raw samples are unsigned, so CCfits stores them signed with BZERO=32768
+        //
+        this->imageExt = self->pFits->addImage(extname, ( info.frame_type == Common::FRAME_RAW ? USHORT_IMG : info.bitpix ), axes);
 
         // Add extension-only keys now
         //
@@ -485,7 +487,10 @@ class FITS_file {
 
         // Add AMPSEC keys
         //
-        if ( info.amp_section.size() > 0 ) {
+        if ( info.frame_type == Common::FRAME_RAW ) {
+          // raw samples come from one AD channel, not an amplifier section, so no AMPSEC
+        }
+        else if ( info.amp_section.size() > 0 ) {
           try {
             int x1 = info.amp_section.at( info.extension ).at( 0 );
             int x2 = info.amp_section.at( info.extension ).at( 1 );

@@ -14,6 +14,7 @@
 #include <cctype>
 #include <string>
 #include <fstream>
+#include <array>
 
 namespace Archon {
 
@@ -1668,6 +1669,7 @@ namespace Archon {
     if ( error != NO_ERROR ) { logwrite( function, "ERROR: unable to get SAMPLEMODE from ACF" ); return error; }
     if (samplemode < 0) { this->common.log_error( function, "bad or missing SAMPLEMODE from ACF" ); return ERROR; }
     this->camera_info.bitpix = (samplemode==0) ? 16 : 32;
+    if (mode=="RAW") this->camera_info.bitpix = 16;  // raw data are always 16 bpp
 
     // Load parameters and Apply CDS/Deint configuration if any of them changed
     //
@@ -2331,11 +2333,11 @@ namespace Archon {
     std::string function = "Archon::Interface::fetch";
     std::stringstream message;
     uint32_t maxblocks = (uint32_t)(1.5E9 / this->camera_info.activebufs / 1024 );
-    uint64_t maxoffset = this->camera_info.activebufs==2 ? 0xD0000000 : 0xE0000000;
-    uint64_t maxaddr = maxoffset + maxblocks;
+    uint64_t minaddr = this->frame.bufbase[this->frame.index];        // start of the buffer being read
+    uint64_t maxaddr = minaddr + (uint64_t)maxblocks * BLOCK_LEN;     // end of that buffer
 
-    if (bufaddr < 0xA0000000 || bufaddr > maxaddr) {
-      message.str(""); message << "fetch Archon buffer requested address 0x" << std::hex << bufaddr << " outside range {0xA0000000:0x" << maxaddr << "}";
+    if (bufaddr < minaddr || bufaddr + (uint64_t)bufblocks * BLOCK_LEN > maxaddr) {
+      message.str(""); message << "fetch Archon buffer requested address 0x" << std::hex << bufaddr << " + 0x" << bufblocks << " blocks outside range {0x" << minaddr << ":0x" << maxaddr << "}";
       this->common.log_error( function, message.str() );
       return(ERROR);
     }
@@ -2454,17 +2456,21 @@ namespace Archon {
         message.str(""); message << "error=" << error << "[DEBUG] calling read_frame(Common::FRAME_RAW) if error=0"; logwrite(function, message.str());
 #endif
         error = this->read_frame(Common::FRAME_RAW);                      // read raw frame
-        if ( error != NO_ERROR ) { logwrite( function, "ERROR: reading raw frame" ); return error; }
+        if ( error != NO_ERROR ) { logwrite( function, "ERROR: reading raw frame" ); }
 #ifdef LOGLEVEL_DEBUG
         message.str(""); message << "error=" << error << "[DEBUG] calling write_frame() for raw data if error=0"; logwrite(function, message.str());
 #endif
-        error = this->write_frame();                                      // write raw frame
-        if ( error != NO_ERROR ) { logwrite( function, "ERROR: writing raw frame" ); return error; }
+        if ( error == NO_ERROR ) {
+          error = this->write_frame();                                    // write raw frame
+          if ( error != NO_ERROR ) { logwrite( function, "ERROR: writing raw frame" ); }
+        }
 #ifdef LOGLEVEL_DEBUG
-        message.str(""); message << "error=" << error << "[DEBUG] switching back to original mode if error=0"; logwrite(function, message.str());
+        message.str(""); message << "error=" << error << "[DEBUG] switching back to original mode"; logwrite(function, message.str());
 #endif
-        error = this->set_camera_mode(orig_mode);                         // switch back to the original mode
-        if ( error != NO_ERROR ) { logwrite( function, "ERROR: switching back to previous mode" ); return error; }
+        // Switch back even after a raw error, so the next exposure isn't taken in mode RAW
+        //
+        long modeerror = this->set_camera_mode(orig_mode);                // switch back to the original mode
+        if ( modeerror != NO_ERROR ) { logwrite( function, "ERROR: switching back to previous mode" ); return modeerror; }
       }
     }
 
@@ -2884,7 +2890,9 @@ namespace Archon {
     //
     if ( error == NO_ERROR ) {
       if ( this->common.datacube() ) {
-        this->camera_info.extension++;                                // increment extension for cubes
+        // A 32-bit cubeamps write already advanced the extension once per amplifier
+        //
+        if ( !( this->common.cubeamps() && this->camera_info.bitpix == 32 ) ) this->camera_info.extension++;
         message.str(""); message << "DATACUBE:" << this->camera_info.extension << " " << ( error==NO_ERROR ? "COMPLETE" : "ERROR" );
         this->common.message.enqueue( message.str() );
         error == NO_ERROR ? logwrite( function, message.str() ) : this->common.log_error( function, message.str() );
@@ -3559,6 +3567,20 @@ namespace Archon {
 
     }
     else if ( mode == "RAW") {
+      if ( this->camera_info.exposure_time != 0 ) {                 // wait for the exposure delay to complete (if there is one)
+        error = this->wait_for_exposure();
+        if ( error != NO_ERROR ) {
+          logwrite( function, "ERROR: waiting for exposure" );
+          return error;
+        }
+      }
+
+      error = this->wait_for_readout();                             // wait for the frame just triggered, which holds the raw data
+      if ( error != NO_ERROR ) {
+        logwrite( function, "ERROR: waiting for readout" );
+        return error;
+      }
+
       error = this->get_frame_status();                             // Get the current frame buffer status
       if (error != NO_ERROR) {
         logwrite( function, "ERROR: unable to get frame status" );
@@ -3575,7 +3597,7 @@ namespace Archon {
         this->common.log_error( function, "couldn't open fits file" );
         return( error );
       }
-      error = read_frame();                    // For raw mode just read immediately
+      error = read_frame();                    // read the raw data from the frame just completed
       this->fits_file.close_file( (this->common.writekeys_when=="after"?true:false), this->camera_info );
       this->common.increment_imnum();          // increment image_num when fitsnaming == "number"
     }
