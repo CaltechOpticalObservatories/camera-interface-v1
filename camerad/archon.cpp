@@ -1583,7 +1583,10 @@ namespace Archon {
     if (error==NO_ERROR) error = get_configmap_value("RAWENABLE", this->modemap[mode].rawenable);
     if (error==NO_ERROR) error = get_configmap_value("RAWSEL", this->rawinfo.adchan);
     if (error==NO_ERROR) error = get_configmap_value("RAWSAMPLES", this->rawinfo.rawsamples);
-    if (error==NO_ERROR) error = get_configmap_value("RAWENDLINE", this->rawinfo.rawlines);
+    int rawstartline=-1, rawendline=-1;
+    if (error==NO_ERROR) error = get_configmap_value("RAWSTARTLINE", rawstartline);
+    if (error==NO_ERROR) error = get_configmap_value("RAWENDLINE", rawendline);
+    this->rawinfo.rawlines = rawendline - rawstartline + 1;               // Archon stores lines RAWSTARTLINE..RAWENDLINE
 #ifdef LOGLEVEL_DEBUG
     message.str(""); 
     message << "[DEBUG] mode=" << mode << " RAWENABLE=" << this->modemap[mode].rawenable 
@@ -1608,9 +1611,14 @@ namespace Archon {
     // There is one special reserved mode name, "RAW"
     //
     if (mode=="RAW") {
-      this->camera_info.detector_pixels[0] = this->rawinfo.rawsamples;
-      this->camera_info.detector_pixels[1] = this->rawinfo.rawlines; 
-      this->camera_info.detector_pixels[1]++;
+      if ( this->rawinfo.rawlines < 1 ) {
+        this->common.log_error( function, "RAWENDLINE must not be less than RAWSTARTLINE" );
+        return ERROR;
+      }
+      // Archon stores each raw line rounded up to a multiple of 1024 samples
+      //
+      this->camera_info.detector_pixels[0] = ( ( this->rawinfo.rawsamples + 1023 ) / 1024 ) * 1024;
+      this->camera_info.detector_pixels[1] = this->rawinfo.rawlines;
       // frame_type will determine the bits per pixel and where the detector_axes come from
       this->camera_info.frame_type = Common::FRAME_RAW;
       this->camera_info.region_of_interest[0] = 1;
@@ -1621,9 +1629,9 @@ namespace Archon {
       this->camera_info.binning[0] = 1;
       this->camera_info.binning[1] = 1;
 #ifdef LOGLEVEL_DEBUG
-      message.str(""); message << "[DEBUG] this->camera_info.detector_pixels[0] (RAWSAMPLES) = " << this->camera_info.detector_pixels[0];
+      message.str(""); message << "[DEBUG] this->camera_info.detector_pixels[0] (RAWSAMPLES rounded up) = " << this->camera_info.detector_pixels[0];
       logwrite(function, message.str());
-      message.str(""); message << "[DEBUG] this->camera_info.detector_pixels[1] (RAWENDLINE) = " << this->camera_info.detector_pixels[1];
+      message.str(""); message << "[DEBUG] this->camera_info.detector_pixels[1] (raw lines) = " << this->camera_info.detector_pixels[1];
       logwrite(function, message.str());
 #endif
     }
@@ -3429,9 +3437,9 @@ namespace Archon {
     //
     this->camera_info.iscube = this->common.datacube();
 
-    // Open the FITS file now for cubes
+    // Open the FITS file now for cubes. RAW mode opens its own file below.
     //
-    if ( this->common.datacube() && !this->common.cubeamps() ) {
+    if ( this->common.datacube() && !this->common.cubeamps() && (mode != "RAW") ) {
 #ifdef LOGLEVEL_DEBUG
       logwrite( function, "[DEBUG] opening fits file for multi-exposure sequence data cube" );
 #endif
@@ -3602,9 +3610,10 @@ namespace Archon {
       this->common.increment_imnum();          // increment image_num when fitsnaming == "number"
     }
 
-    // for multi-exposure (non-cubeamp) cubes, close the FITS file now that they've all been written
+    // for multi-exposure (non-cubeamp) cubes, close the FITS file now that they've all been written.
+    // RAW mode closed its own file above.
     //
-    if ( this->common.datacube() && !this->common.cubeamps() ) {
+    if ( this->common.datacube() && !this->common.cubeamps() && (mode != "RAW") ) {
 #ifdef LOGLEVEL_DEBUG
       logwrite( function, "[DEBUG] closing fits file (2)" );
 #endif
@@ -4493,6 +4502,17 @@ namespace Archon {
     //
     if ( this->trigin_state == "readout" ) {
 
+      // If mode is not "RAW" but RAWENABLE is set then we're going to require a multi-extension data cube,
+      // one extension for the image and a separate extension for raw data.
+      //
+      if ( (mode != "RAW") && (this->modemap[mode].rawenable) ) {
+        if ( !this->common.datacube() ) {                                   // if datacube not already set then it must be overridden here
+          this->common.message.enqueue( "NOTICE:override datacube true" );  // let everyone know
+          logwrite( function, "NOTICE:override datacube true" );
+          this->common.datacube(true);
+        }
+      }
+
       // Save the datacube state in camera_info so that the FITS writer can know about it
       //
       this->camera_info.iscube = this->common.datacube();
@@ -4576,9 +4596,9 @@ namespace Archon {
       //
       this->camera_info.iscube = this->common.datacube();
 
-      // Open the FITS file now for cubes
+      // Open the FITS file now for cubes. RAW mode opens its own file below.
       //
-      if ( this->common.datacube() ) {
+      if ( this->common.datacube() && (mode != "RAW") ) {
         error = this->fits_file.open_file( (this->common.writekeys_when=="before"?true:false), this->camera_info );
         if ( error != NO_ERROR ) {
           this->common.log_error( function, "couldn't open fits file" );
@@ -4639,17 +4659,21 @@ namespace Archon {
         }
       }
       else if ( (error == NO_ERROR) && (mode == "RAW") ) {
-        error = this->get_frame_status();                             // Get the current frame buffer status
+        if (error==NO_ERROR && this->camera_info.exposure_time != 0) {  // wait for the exposure delay to complete (if there is one)
+          error = this->wait_for_exposure();
+        }
+        if (error==NO_ERROR) error = this->wait_for_readout();        // wait for the frame just triggered, which holds the raw data
+        if (error==NO_ERROR) error = this->get_frame_status();        // Get the current frame buffer status
         if (error==NO_ERROR) error = this->common.get_fitsname( this->camera_info.fits_name ); // Assemble the FITS filename
         this->add_filename_key();                                     // add filename to system keys database
         if (error==NO_ERROR) error = this->fits_file.open_file( (this->common.writekeys_when=="before"?true:false), this->camera_info );
-        if (error==NO_ERROR) error = read_frame();                    // For raw mode just read immediately
+        if (error==NO_ERROR) error = read_frame();                    // read the raw data from the frame just completed
         this->fits_file.close_file( (this->common.writekeys_when=="after"?true:false), this->camera_info );
         this->common.increment_imnum();                               // increment image_num when fitsnaming == "number"
       }
-      // for cubes, close the FITS file now that they've all been written
+      // for cubes, close the FITS file now that they've all been written. RAW mode closed its own file above.
       //
-      if ( this->common.datacube() ) {
+      if ( this->common.datacube() && (mode != "RAW") ) {
         this->fits_file.close_file( (this->common.writekeys_when=="after"?true:false), this->camera_info );
         this->common.increment_imnum();                               // increment image_num when fitsnaming == "number"
 
