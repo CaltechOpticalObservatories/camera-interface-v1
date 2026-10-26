@@ -137,14 +137,13 @@ namespace Archon {
         camera.log_error(function, "setting mode '"+mode_fcs+"'");
         return ERROR;
       }
-    }
 
-    // The FCS output FITS file is a single flat image holding all CCDs
-    // side-by-side (along axis 1) at their full row count. set_camera_mode()
-    // set axes[0] to the per-CCD column count, so widen it here to cover all
-    // CCDs before opening the FITS file, and update section_size to match.
-    // num_detect is defined by the mode geometry (nominally 2 for FCS).
-    {
+      // The FCS output FITS file is a single flat image holding all CCDs
+      // side-by-side (along axis 1) at their full row count. set_camera_mode()
+      // set axes[0] to the per-CCD column count, so widen it here to cover all
+      // CCDs before opening the FITS file, and update section_size to match.
+      // num_detect is defined by the mode geometry (nominally 2 for FCS).
+      // Widen only on a mode change since axes persist across exposures
       const int num_detect = this->modemap[this->camera_info.current_observing_mode].geometry.num_detect;
       if (num_detect <= 0) {
         camera.log_error(function, "invalid num_detect for FCS mode");
@@ -565,6 +564,14 @@ namespace Archon {
       std::ostringstream oss;
       oss << "ERROR section_size=" << this->camera_info.section_size
           << " does not match expected pixel count " << npix;
+      logwrite(function, oss.str());
+      return ERROR;
+    }
+
+    if (npix * static_cast<long>(sizeof(uint32_t)) > static_cast<long>(this->image_data_allocated)) {
+      std::ostringstream oss;
+      oss << "ERROR " << npix << " pixels exceed image_data buffer of "
+          << this->image_data_allocated << " bytes";
       logwrite(function, oss.str());
       return ERROR;
     }
